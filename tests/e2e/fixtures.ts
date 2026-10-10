@@ -4,6 +4,7 @@ import type {
   Account,
   AccountsResponse,
   AssetsResponse,
+  AssetMarketResponse,
   Cashflow,
   LeaderboardResponse,
   Overview,
@@ -199,6 +200,48 @@ export function assetResponse(stale = false): AssetsResponse {
   };
 }
 
+export function marketResponse(
+  instrument = 0,
+  stale = false,
+  now = Date.now(),
+): AssetMarketResponse {
+  const at = now - (stale ? 120_000 : 0);
+  const base = instrument === 1 ? 2_500 : 82_000;
+  const points = Array.from({ length: 180 }, (_, index) => ({
+    time: at - (179 - index) * 5_000,
+    priceUsd: base + (Math.sin(index / 12) * 0.0005 + index * 0.000006) * base,
+  }));
+  return {
+    instrument,
+    symbol: instrument === 1 ? "ETH" : "BTC",
+    price: { priceUsd: points.at(-1)!.priceUsd, sourceAt: at, receivedAt: at },
+    points,
+    trades: Array.from({ length: 12 }, (_, index) => ({
+      id: `market-${instrument}-${index}`,
+      ts: at - 5_000 - index * 30_000,
+      wallet: index % 2 ? SECOND_WALLET : WALLET,
+      instrument,
+      side: index % 2 ? ("short" as const) : ("long" as const),
+      leverage: 10,
+      notionalUsd: 50_000 * (index + 1),
+      kind: index % 3 ? ("open" as const) : ("close" as const),
+      pnlUsd: index % 3 ? null : 200,
+      provenance: "public-stream" as const,
+      priceUsd: points[178 - index * 6].priceUsd,
+    })),
+    windowFrom: at - 3_600_000,
+    windowTo: at,
+    receivedAt: at,
+    stale,
+    coverage: {
+      source: "retained-market-observations",
+      observedFrom: points[0].time,
+      partial: true,
+      tradesCapped: false,
+    },
+  };
+}
+
 export function leaderboardResponse(
   metric: LeaderboardResponse["metric"] = "pnl",
   page = 0,
@@ -280,6 +323,13 @@ export async function mockSources(
     }
     if (url.pathname === "/api/assets") {
       await route.fulfill({ json: assetResponse(options.stale) });
+      return;
+    }
+    const marketMatch = url.pathname.match(/^\/api\/assets\/([01])\/market$/);
+    if (marketMatch) {
+      await route.fulfill({
+        json: marketResponse(Number(marketMatch[1]), options.stale),
+      });
       return;
     }
     if (

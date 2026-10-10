@@ -207,6 +207,9 @@ const tickerSchema = z.object({
   kind: z.enum(["open", "close", "liq"]),
   pnlUsd: z.number().finite().nullable(),
   seq: tradeSequence.optional(),
+  // Optional metadata must not discard an otherwise valid execution.
+  entry: z.number().finite().positive().nullable().catch(null).optional(),
+  exit: z.number().finite().positive().nullable().catch(null).optional(),
 });
 export function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -253,6 +256,9 @@ export function normalizeTrade(
       : `stream:${observationId ?? digest(fields)}`,
     ...fields,
     provenance,
+    ...((t.kind === "open" ? t.entry : t.exit) === undefined
+      ? {}
+      : { priceUsd: t.kind === "open" ? t.entry : t.exit }),
   };
 }
 export const sorts = [

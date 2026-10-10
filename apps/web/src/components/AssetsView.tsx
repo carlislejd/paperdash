@@ -12,6 +12,7 @@ import {
   relativeTime,
 } from "../lib/format";
 import { useAnalytics } from "../lib/use-analytics";
+import { AssetLivePanel } from "./AssetLivePanel";
 import {
   AnalyticsNotice,
   AnalyticsStatus,
@@ -380,10 +381,12 @@ function AssetDetail({
 
 export function AssetsView({
   instrument,
+  connected,
   onSelect,
   onWallet,
 }: {
   instrument: number;
+  connected: boolean;
   onSelect: (instrument: number) => void;
   onWallet: (address: string) => void;
 }) {
@@ -448,6 +451,12 @@ export function AssetsView({
           );
         })}
       </div>
+      <AssetLivePanel
+        key={instrument}
+        instrument={instrument}
+        connected={connected}
+        onWallet={onWallet}
+      />
       {selected ? (
         <AssetDetail
           asset={selected}

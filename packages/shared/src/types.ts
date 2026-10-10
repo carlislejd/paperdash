@@ -56,6 +56,31 @@ export interface TradeEvent {
   kind: "open" | "close" | "liq";
   pnlUsd: number | null;
   provenance: "public-stream" | "recent-api";
+  /** Verified execution price when supplied; never part of observation identity. */
+  priceUsd?: number | null;
+}
+export interface AssetPricePoint {
+  time: number;
+  priceUsd: number;
+  /** First observed bucket after a connection/restart gap. */
+  gapBefore?: boolean;
+}
+export interface AssetMarketResponse {
+  instrument: number;
+  symbol: string;
+  price: { priceUsd: number; sourceAt: number; receivedAt: number } | null;
+  points: AssetPricePoint[];
+  trades: TradeEvent[];
+  windowFrom: number;
+  windowTo: number;
+  receivedAt: number;
+  stale: boolean;
+  coverage: {
+    source: "retained-market-observations";
+    observedFrom: number | null;
+    partial: true;
+    tradesCapped: boolean;
+  };
 }
 export interface ChartPoint {
   time: number;
@@ -216,4 +241,8 @@ export type StreamMessage =
     }
   | { type: "history"; data: Pick<Overview, "history" | "historyCoverage"> }
   | { type: "trade"; data: TradeEvent }
+  | {
+      type: "asset-price";
+      data: { instrument: number; point: AssetPricePoint; receivedAt: number };
+    }
   | { type: "status"; data: DataStatus };

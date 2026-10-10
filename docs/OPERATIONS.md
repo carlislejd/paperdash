@@ -102,7 +102,7 @@ Favicons and link-preview metadata are included in the initial HTML, so crawlers
 
 The initial Blueprint injects the managed database owner's connection into both services. This makes schema bootstrap runnable, but grants more permission than a public API should retain. **It is not a least-privilege production setup.** The API writes current account/directory caches and prioritizes wallet indexing, so a strictly read-only role would break those operations.
 
-Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables, eight history tables, seven activity tables and four position-metric tables; the `\password` commands prompt without putting passwords in shell history:
+Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables, eight history tables, seven activity tables, four position-metric tables and the market-price table; the `\password` commands prompt without putting passwords in shell history:
 
 ```sql
 CREATE ROLE paperdash_api LOGIN;
@@ -120,7 +120,8 @@ GRANT SELECT ON paperdash_snapshots, paperdash_trade_observations,
   paperdash_analytics_minutes, paperdash_analytics_oi_samples,
   paperdash_analytics_wallet_fingerprints, paperdash_analytics_wallet_minutes,
   paperdash_analytics_state, paperdash_position_metrics_queue,
-  paperdash_position_metrics_rollups, paperdash_position_metrics_state
+  paperdash_position_metrics_rollups, paperdash_position_metrics_state,
+  paperdash_market_prices
   TO paperdash_api, paperdash_ingest;
 GRANT SELECT ON paperdash_position_metrics_facts TO paperdash_ingest;
 GRANT INSERT, UPDATE ON paperdash_snapshots,
@@ -147,6 +148,7 @@ GRANT INSERT, UPDATE ON paperdash_position_metrics_queue,
   paperdash_position_metrics_state TO paperdash_ingest;
 GRANT DELETE ON paperdash_position_metrics_queue,
   paperdash_position_metrics_facts TO paperdash_ingest;
+GRANT INSERT, UPDATE ON paperdash_market_prices TO paperdash_ingest;
 ```
 
 Neither runtime role needs `CREATE`, `ALTER`, `DROP`, ownership or access to unrelated schemas. New tables/sequences require explicit reviewed grants. Store the two role URLs separately in Render, replace the two `fromDatabase` entries with `sync: false`, and set `AUTO_MIGRATE=false` in both services. Keep the database's internal host/database name; only the URL-encoded username/password change.

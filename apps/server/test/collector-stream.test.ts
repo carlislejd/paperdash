@@ -18,6 +18,12 @@ interface MockClient extends EventEmitter {
   disconnect: ReturnType<typeof vi.fn>;
 }
 const clients = vi.hoisted(() => [] as MockClient[]);
+vi.mock("../src/market-feed.js", () => ({
+  MarketFeed: class {
+    start() {}
+    async stop() {}
+  },
+}));
 vi.mock("centrifuge", async () => {
   const { EventEmitter } = await import("node:events");
   class Subscription extends EventEmitter {
@@ -235,9 +241,7 @@ describe("collector stream lifecycle diagnostics", () => {
       stream: "disconnected",
       message: expect.stringContaining("Trade connection is disconnected."),
     });
-    expect(await streamError()).toBe(
-      "Trade connection is disconnected.",
-    );
+    expect(await streamError()).toBe("Trade connection is disconnected.");
     await vi.advanceTimersByTimeAsync(60000);
     expect(client.connect).toHaveBeenCalledTimes(1);
     expect(client.subscription.subscribe).toHaveBeenCalledTimes(1);

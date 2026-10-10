@@ -22,6 +22,7 @@ import { AssetsView } from "./components/AssetsView";
 import { LeaderboardView } from "./components/LeaderboardView";
 import { PositionMetrics } from "./components/PositionMetrics";
 import { readDashboardRoute, type DashboardView } from "./lib/navigation";
+import { publishLiveEvent } from "./lib/live-events";
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
@@ -166,6 +167,7 @@ function useOverview() {
       source.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data) as StreamMessage;
+          publishLiveEvent(message);
           if (message.type === "overview") {
             setData(message.data);
             setError("");
@@ -810,6 +812,7 @@ function App() {
         {section === "assets" && (
           <AssetsView
             instrument={asset}
+            connected={Boolean(streamLive)}
             onSelect={(instrument) => navigate("assets", instrument)}
             onWallet={openWallet}
           />

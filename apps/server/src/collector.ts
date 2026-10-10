@@ -25,6 +25,8 @@ import {
   retainAssetSource,
   refreshAssetAnalytics,
 } from "./assets.js";
+import { MarketFeed } from "./market-feed.js";
+import { refreshMarkets } from "./market.js";
 
 export interface StreamDiagnostics {
   at: number;
@@ -176,6 +178,7 @@ export class Collector {
   private ingestion: Promise<void> = Promise.resolve();
   private metricsSignature = "";
   private historySignature = "";
+  private marketFeed: MarketFeed | null = null;
   constructor(
     private store: Store,
     private upstream: Upstream,
@@ -184,6 +187,22 @@ export class Collector {
   async start(): Promise<boolean> {
     this.release = await this.store.lease();
     if (!this.release) return false;
+    this.marketFeed = new MarketFeed(
+      async (quote) => {
+        if (await this.store.market.quote(quote)) this.bus.notify();
+      },
+      async (connection) => {
+        await this.store.put("market-connection", connection, connection.at);
+        if (connection.connected) this.errors.delete("market-quotes");
+        else
+          this.errors.set(
+            "market-quotes",
+            connection.reason ?? "Market quotes are delayed.",
+          );
+      },
+    );
+    this.marketFeed.start();
+    this.loop("asset-live", 5000, () => refreshMarkets(this.store));
     this.loop("asset-market", 5000, async () => {
       const source = await this.upstream.request(
         "/state/house/current",
@@ -610,6 +629,7 @@ export class Collector {
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
     this.client?.disconnect();
+    await this.marketFeed?.stop();
     await Promise.allSettled([...this.tasks]);
     await this.ingestion;
     await this.statusPersistence;

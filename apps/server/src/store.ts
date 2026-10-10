@@ -27,6 +27,13 @@ import {
   positionMetricsSchemaSql,
   type PositionMetricsStore,
 } from "./position-metrics-store.js";
+import {
+  createLocalMarket,
+  createPgMarket,
+  marketSchemaSql,
+  migrateLocalMarket,
+  type MarketStore,
+} from "./market-store.js";
 
 export interface Saved<T> {
   value: T;
@@ -41,6 +48,7 @@ export interface Store {
   history: HistoryStore;
   analytics: AnalyticsStore;
   positionMetrics: PositionMetricsStore;
+  market: MarketStore;
   get<T>(key: string): Promise<Saved<T> | null>;
   put(key: string, value: unknown, receivedAt?: number): Promise<void>;
   trade(value: TradeEvent): Promise<boolean>;
@@ -72,6 +80,7 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query(historySchemaSql("paperdash_", true));
     await client.query(analyticsSchemaSql("paperdash_", true));
     await client.query(positionMetricsSchemaSql("paperdash_", true));
+    await client.query(marketSchemaSql("paperdash_", true));
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -106,7 +115,7 @@ export async function createStore(
     else
       await pool
         .query(
-          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0",
+          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0",
         )
         .catch(() => {
           throw new Error(
@@ -163,6 +172,7 @@ export async function createStore(
       history,
       analytics: createPgAnalytics(pool),
       positionMetrics: createPgPositionMetrics(pool),
+      market: createPgMarket(pool),
       async get<T>(key: string) {
         const r = await pool.query(
           "SELECT payload,received_at FROM paperdash_snapshots WHERE key=$1",
@@ -343,6 +353,7 @@ export async function createStore(
   db.exec(historySchemaSql("", false));
   db.exec(analyticsSchemaSql("", false));
   db.exec(positionMetricsSchemaSql("", false));
+  migrateLocalMarket(db);
   const maxBytes = options.maxBytes ?? config.localMaxBytes;
   let checkAt = 0;
   async function writable() {
@@ -366,6 +377,7 @@ export async function createStore(
     kind: "local",
     analytics: createLocalAnalytics(db, writable),
     positionMetrics: createLocalPositionMetrics(db, writable),
+    market: createLocalMarket(db, writable),
     history: createHistoryStore({
       prefix: "",
       async rows<T>(sql: string, params: unknown[] = []) {
@@ -556,7 +568,7 @@ export async function createStore(
 export function tradeFingerprint(t: TradeEvent): string {
   return economicFingerprint(t);
 }
-export function visibleTrades(trades: TradeEvent[]): TradeEvent[] {
+export function visibleTrades(trades: TradeEvent[], limit = 50): TradeEvent[] {
   const recent = new Map<string, number>();
   for (const trade of trades)
     if (trade.provenance === "recent-api") {
@@ -574,5 +586,5 @@ export function visibleTrades(trades: TradeEvent[]): TradeEvent[] {
       }
       return true;
     })
-    .slice(0, 50);
+    .slice(0, Math.max(1, Math.min(500, Math.floor(limit))));
 }

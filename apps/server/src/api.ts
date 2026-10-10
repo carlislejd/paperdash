@@ -17,6 +17,7 @@ import { readAssets } from "./assets.js";
 import { analyticsResponse } from "./analytics-response.js";
 import { HistoryCursorError } from "./history-store.js";
 import { readPositionMetrics } from "./position-metrics.js";
+import { readMarket } from "./market.js";
 
 interface Client {
   response: ServerResponse;
@@ -284,6 +285,12 @@ export async function buildApi(
   });
   app.get("/api/assets", async (req, reply) => {
     return analyticsResponse(req, reply, await readAssets(store));
+  });
+  app.get("/api/assets/:instrument/market", async (req, reply) => {
+    const { instrument } = z
+      .object({ instrument: z.enum(["0", "1"]).transform(Number) })
+      .parse(req.params);
+    return analyticsResponse(req, reply, await readMarket(store, instrument));
   });
   app.get("/api/position-metrics", async (req, reply) => {
     return analyticsResponse(req, reply, await readPositionMetrics(store));

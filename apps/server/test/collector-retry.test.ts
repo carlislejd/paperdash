@@ -5,6 +5,12 @@ import { Upstream, UpstreamError } from "../src/upstream.js";
 import { CoordinationError } from "../src/coordination.js";
 import { ChangeBus } from "../src/bus.js";
 import { config } from "../src/config.js";
+vi.mock("../src/market-feed.js", () => ({
+  MarketFeed: class {
+    start() {}
+    async stop() {}
+  },
+}));
 
 // Exercise the real collector scheduling and persistence without connecting a
 // test to the public exchange WebSocket or making any upstream HTTP requests.
