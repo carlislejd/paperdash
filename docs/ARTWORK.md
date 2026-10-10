@@ -20,9 +20,11 @@ Use case: background-extraction. Edit target: the attached original manga illust
 
 ## Browser identity and link previews
 
-The character appears in browser icons and shared-link previews, while the dashboard itself stays compact. These edits were made with the built-in image-generation tool, using the existing original illustration and cutout as edit targets. PNG/ICO size variants were encoded from the generated portrait; the social image was encoded as a 1200 × 630 JPEG.
+Browser and saved-link icons use the site's paper-plane mark in lavender on an ink tile. The canonical source is `apps/web/public/favicon.svg`, with the same plane geometry as the header mark. Run `node scripts/generate-icons.mjs` to regenerate PNG/ICO variants with the installed Playwright Chromium. Explicit icon URLs are versioned to refresh older cached portraits.
 
-- `apps/web/public/art/observer-avatar.webp`: 512px portrait master.
+The character remains in the larger shared-link preview, while the dashboard itself stays compact. That illustration was edited with the built-in image-generation tool using the existing original illustration and cutout, then encoded as a 1200 × 630 JPEG. The earlier portrait is retained as source artwork and is no longer used as an icon.
+
+- `apps/web/public/art/observer-avatar.webp`: retained 512px portrait master.
 - `apps/web/public/favicon-16.png`, `favicon-32.png`, `favicon-192.png`, and `favicon.ico`: browser icons.
 - `apps/web/public/apple-touch-icon.png`: 180px icon for saved home-screen links.
 - `apps/web/public/art/paperdash-social.jpg`: shared-link preview artwork.
