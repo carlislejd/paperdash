@@ -13,6 +13,9 @@
   padding: 0;
   background: transparent;
 }
+.house-funds > .pc-chart-card .pc-chart-plot {
+  --pc-plot-height: clamp(230px, 30cqw, 280px);
+}
 .paper-panel {
   padding: 16px 0 12px 20px;
   border-left: 1px solid var(--line);
@@ -223,6 +226,9 @@
   font-size: 11px;
 }
 @media (max-width: 720px) {
+  .house-funds > .pc-chart-card .pc-chart-plot {
+    --pc-plot-height: 180px;
+  }
   .house-panel {
     grid-template-columns: minmax(0, 1fr);
   }

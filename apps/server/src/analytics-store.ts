@@ -50,11 +50,18 @@ export interface AnalyticsStore {
     now?: number,
   ): Promise<WalletActivity>;
   walletCounts(addresses: string[], now?: number): Promise<WalletCounts>;
+  walletMetrics(addresses: string[], now?: number): Promise<WalletMetrics>;
 }
 export interface WalletCounts {
   counts: Record<string, number | null>;
   observedFrom: number | null;
   projectionBackfillComplete: boolean;
+}
+export interface WalletMetrics extends WalletCounts {
+  volumesUsd: Record<string, number | null>;
+  assetsTraded: Record<string, number[] | null>;
+  windowFrom: number;
+  windowTo: number;
 }
 export interface WalletActivity {
   rows: { address: string; count: number; notionalUsd: number }[];
@@ -78,6 +85,7 @@ CREATE TABLE IF NOT EXISTS ${prefix}analytics_minutes(instrument INTEGER NOT NUL
 CREATE TABLE IF NOT EXISTS ${prefix}analytics_oi_samples(instrument INTEGER NOT NULL,time ${int} NOT NULL,long_raw TEXT NOT NULL,short_raw TEXT NOT NULL,source_block TEXT,source_at ${int} NOT NULL,received_at ${int} NOT NULL,PRIMARY KEY(instrument,time));
 CREATE TABLE IF NOT EXISTS ${prefix}analytics_wallet_fingerprints(fingerprint TEXT PRIMARY KEY,wallet TEXT NOT NULL,source_at ${int} NOT NULL,notional ${real} NOT NULL,effective_count ${int} NOT NULL);
 CREATE INDEX IF NOT EXISTS ${prefix}analytics_wallet_fingerprint_time ON ${prefix}analytics_wallet_fingerprints(source_at,wallet);
+${postgres ? "" : `CREATE INDEX IF NOT EXISTS ${prefix}analytics_wallet_fingerprint_wallet_time ON ${prefix}analytics_wallet_fingerprints(wallet,source_at,fingerprint);`}
 CREATE TABLE IF NOT EXISTS ${prefix}analytics_wallet_minutes(wallet TEXT NOT NULL,time ${int} NOT NULL,event_count ${int} NOT NULL,notional ${real} NOT NULL,PRIMARY KEY(wallet,time));
 CREATE INDEX IF NOT EXISTS ${prefix}analytics_wallet_minute_time ON ${prefix}analytics_wallet_minutes(time,wallet);
 CREATE TABLE IF NOT EXISTS ${prefix}analytics_state(id INTEGER PRIMARY KEY,cursor TEXT NOT NULL,complete INTEGER NOT NULL);
@@ -305,63 +313,125 @@ function readAnalytics(
   db: ReadDb,
 ): Pick<
   AnalyticsStore,
-  "activity" | "samples" | "walletActivity" | "walletCounts"
+  "activity" | "samples" | "walletActivity" | "walletCounts" | "walletMetrics"
 > {
   const f = `${db.prefix}analytics_fingerprints`,
     m = `${db.prefix}analytics_minutes`;
   const effective =
     "CASE WHEN stream_count>recent_count THEN stream_count ELSE recent_count END";
+  async function walletBatch(
+    addresses: string[],
+    now: number,
+    includeAssets = false,
+  ): Promise<WalletMetrics> {
+    if (addresses.length > 25 || !Number.isSafeInteger(now) || now < 0)
+      throw new Error("Invalid directory trade-count query");
+    const wallets = [...new Set(addresses.map((v) => addressSchema.parse(v)))];
+    const from = Math.max(0, now - DAY),
+      fullFrom = Math.ceil(from / MINUTE) * MINUTE,
+      fullTo = Math.floor(now / MINUTE) * MINUTE;
+    const requested = wallets.length
+      ? `VALUES ${wallets.map(() => "(?)").join(",")}`
+      : "SELECT CAST(NULL AS TEXT) WHERE 1=0";
+    // One statement gives every displayed row the same projection snapshot.
+    // Interior minute totals plus two exact edges match walletActivity;
+    // the boundary index covers less than two minutes, never raw history.
+    const rows = await db.rows<{
+      wallet: string | null;
+      event_count: string | number | null;
+      notional: string | number | null;
+      instrument: number | string | null;
+      complete: number | null;
+      observed_from: string | number | null;
+    }>(
+      `WITH requested(wallet) AS (${requested}), parts AS (SELECT wallet,event_count,notional FROM ${db.prefix}analytics_wallet_minutes WHERE wallet IN (SELECT wallet FROM requested) AND time>=? AND time<? UNION ALL SELECT wallet,effective_count AS event_count,notional*effective_count AS notional FROM ${db.prefix}analytics_wallet_fingerprints WHERE wallet IN (SELECT wallet FROM requested) AND ((source_at>=? AND source_at<?) OR (source_at>=? AND source_at<=?))), totals AS (SELECT wallet,sum(event_count) AS event_count,sum(notional) AS notional FROM parts GROUP BY wallet), coverage AS (SELECT (SELECT complete FROM ${db.prefix}analytics_state WHERE id=2) AS complete,(SELECT source_at FROM ${db.prefix}analytics_wallet_fingerprints WHERE source_at<=? ORDER BY source_at LIMIT 1) AS observed_from)${includeAssets ? `, assets AS (SELECT DISTINCT w.wallet,f.instrument FROM ${db.prefix}analytics_wallet_fingerprints w JOIN ${f} f ON f.fingerprint=w.fingerprint WHERE w.wallet IN (SELECT wallet FROM requested) AND w.source_at>=? AND w.source_at<=? AND w.effective_count>0 ORDER BY w.wallet,f.instrument LIMIT 801)` : ""} SELECT requested.wallet,CAST(totals.event_count AS TEXT) AS event_count,totals.notional,coverage.complete,coverage.observed_from,NULL AS instrument FROM coverage LEFT JOIN requested ON 1=1 LEFT JOIN totals ON totals.wallet=requested.wallet${includeAssets ? " UNION ALL SELECT wallet,NULL,NULL,NULL,NULL,instrument FROM assets" : ""}`,
+      [
+        ...wallets,
+        fullFrom,
+        fullTo,
+        from,
+        fullFrom,
+        fullTo,
+        now,
+        now,
+        ...(includeAssets ? [from, now] : []),
+      ],
+    );
+    const totals = rows.filter((row) => row.instrument === null);
+    const assets = rows.filter((row) => row.instrument !== null);
+    const projectionBackfillComplete = Number(totals[0]?.complete) === 1;
+    const observedFrom =
+      totals[0]?.observed_from == null ? null : Number(totals[0].observed_from);
+    const zeroAvailable = projectionBackfillComplete && observedFrom !== null;
+    const result: WalletMetrics = {
+      counts: Object.fromEntries(
+        totals
+          .filter((r) => r.wallet !== null)
+          .map((r) => {
+            const count = r.event_count === null ? null : Number(r.event_count);
+            return [
+              r.wallet!,
+              count === null
+                ? zeroAvailable
+                  ? 0
+                  : null
+                : Number.isSafeInteger(count) && count >= 0
+                  ? count
+                  : null,
+            ];
+          }),
+      ),
+      volumesUsd: Object.fromEntries(
+        totals
+          .filter((r) => r.wallet !== null)
+          .map((r) => {
+            const value = r.notional === null ? null : Number(r.notional);
+            return [
+              r.wallet!,
+              value === null
+                ? zeroAvailable
+                  ? 0
+                  : null
+                : Number.isFinite(value) && value >= 0
+                  ? value
+                  : null,
+            ];
+          }),
+      ),
+      assetsTraded: Object.fromEntries(wallets.map((wallet) => [wallet, null])),
+      windowFrom: from,
+      windowTo: now,
+      observedFrom,
+      projectionBackfillComplete,
+    };
+    // A single SQL snapshot keeps asset lists and numeric activity coherent.
+    // Bound the result; oversized/invalid sets remain unknown, never truncated.
+    if (includeAssets && assets.length <= 800) {
+      for (const wallet of wallets) {
+        const values = assets
+          .filter((row) => row.wallet === wallet)
+          .map((row) => Number(row.instrument));
+        result.assetsTraded[wallet] = values.some(
+          (value) => !Number.isSafeInteger(value) || value < 0,
+        )
+          ? null
+          : values.length
+            ? values
+            : result.counts[wallet] === 0
+              ? []
+              : null;
+      }
+    }
+    return result;
+  }
   return {
     async walletCounts(addresses, now = Date.now()) {
-      if (addresses.length > 25 || !Number.isSafeInteger(now) || now < 0)
-        throw new Error("Invalid directory trade-count query");
-      const wallets = [
-        ...new Set(addresses.map((v) => addressSchema.parse(v))),
-      ];
-      const from = Math.max(0, now - DAY),
-        fullFrom = Math.ceil(from / MINUTE) * MINUTE,
-        fullTo = Math.floor(now / MINUTE) * MINUTE;
-      const requested = wallets.length
-        ? `VALUES ${wallets.map(() => "(?)").join(",")}`
-        : "SELECT CAST(NULL AS TEXT) WHERE 1=0";
-      // One statement gives every displayed row the same projection snapshot.
-      // Interior minute totals plus two exact edges match walletActivity;
-      // the boundary index covers less than two minutes, never raw history.
-      const rows = await db.rows<{
-        wallet: string | null;
-        event_count: string | number | null;
-        complete: number | null;
-        observed_from: string | number | null;
-      }>(
-        `WITH requested(wallet) AS (${requested}), parts AS (SELECT wallet,event_count FROM ${db.prefix}analytics_wallet_minutes WHERE wallet IN (SELECT wallet FROM requested) AND time>=? AND time<? UNION ALL SELECT wallet,effective_count AS event_count FROM ${db.prefix}analytics_wallet_fingerprints WHERE wallet IN (SELECT wallet FROM requested) AND ((source_at>=? AND source_at<?) OR (source_at>=? AND source_at<=?))), totals AS (SELECT wallet,sum(event_count) AS event_count FROM parts GROUP BY wallet), coverage AS (SELECT (SELECT complete FROM ${db.prefix}analytics_state WHERE id=2) AS complete,(SELECT source_at FROM ${db.prefix}analytics_wallet_fingerprints WHERE source_at<=? ORDER BY source_at LIMIT 1) AS observed_from) SELECT requested.wallet,CAST(totals.event_count AS TEXT) AS event_count,coverage.complete,coverage.observed_from FROM coverage LEFT JOIN requested ON 1=1 LEFT JOIN totals ON totals.wallet=requested.wallet`,
-        [...wallets, fullFrom, fullTo, from, fullFrom, fullTo, now, now],
-      );
-      const projectionBackfillComplete = Number(rows[0]?.complete) === 1;
-      const observedFrom =
-        rows[0]?.observed_from == null ? null : Number(rows[0].observed_from);
-      const zeroAvailable = projectionBackfillComplete && observedFrom !== null;
-      return {
-        counts: Object.fromEntries(
-          rows
-            .filter((r) => r.wallet !== null)
-            .map((r) => {
-              const count =
-                r.event_count === null ? null : Number(r.event_count);
-              return [
-                r.wallet!,
-                count === null
-                  ? zeroAvailable
-                    ? 0
-                    : null
-                  : Number.isSafeInteger(count) && count >= 0
-                    ? count
-                    : null,
-              ];
-            }),
-        ),
-        observedFrom,
-        projectionBackfillComplete,
-      };
+      const { counts, observedFrom, projectionBackfillComplete } =
+        await walletBatch(addresses, now);
+      return { counts, observedFrom, projectionBackfillComplete };
+    },
+    async walletMetrics(addresses, now = Date.now()) {
+      return walletBatch(addresses, now, true);
     },
     async activity(instruments, now = Date.now()) {
       if (

@@ -152,7 +152,7 @@ function TradeFeed({
     .filter(
       (t) => market === "All" || t.instrument === (market === "BTC" ? 0 : 1),
     )
-    .slice(0, 8);
+    .slice(0, 10);
   return (
     <section className="activity-panel" id="activity">
       <div className="section-heading">

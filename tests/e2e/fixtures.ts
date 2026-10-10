@@ -257,14 +257,29 @@ export function leaderboardResponse(
         leaderboardName: page === 0 ? "Aoi" : "Yuki",
         rank: page * 25 + 1,
         pnlRaw: metric === "pnl" ? usd(page === 0 ? 5001 : -50) : null,
-        volumeUsd: metric !== "pnl" ? 3000000 : null,
-        tradeCount: metric !== "pnl" ? 23 : null,
+        volumeUsd: 3000000,
+        tradeCount: 23,
+        currentUnrealizedPnlRaw:
+          metric === "pnl" ? usd(page === 0 ? 1250000 : -125) : null,
+        assetsTraded: [0, 1],
       },
     ],
     count: 26,
     pageInfo: { page, totalPages: 2 },
     receivedAt: Date.now(),
     stale,
+    accountReceivedAt: metric === "pnl" ? Date.now() : null,
+    accountStale: metric === "pnl" && stale,
+    activityCoverage: {
+      source: "retained-public-observations",
+      partial: true,
+      observedFrom: Date.now() - 7200000,
+      projectionBackfillComplete: true,
+      receivedAt: Date.now(),
+      windowFrom: Date.now() - 86400000,
+      windowTo: Date.now(),
+      stale,
+    },
     coverage: {
       source:
         metric === "pnl"

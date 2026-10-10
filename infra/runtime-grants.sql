@@ -151,6 +151,7 @@ GRANT SELECT ON TABLE
   :"app_schema".paperdash_history_corrections,
   :"app_schema".paperdash_history_points,
   :"app_schema".paperdash_analytics_state,
+  :"app_schema".paperdash_analytics_fingerprints,
   :"app_schema".paperdash_analytics_wallet_fingerprints,
   :"app_schema".paperdash_analytics_wallet_minutes,
   :"app_schema".paperdash_position_metrics_queue,

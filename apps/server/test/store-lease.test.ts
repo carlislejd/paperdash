@@ -25,7 +25,9 @@ let client: LeaseClient;
 beforeEach(async () => {
   vi.clearAllMocks();
   client = new LeaseClient();
-  pool.query.mockResolvedValue({ rows: [{ available: true }] });
+  pool.query.mockResolvedValue({
+    rows: [{ available: true, valid: true, expected: true }],
+  });
   pool.connect.mockResolvedValue(client);
   pool.end.mockResolvedValue(undefined);
   store = await createStore({

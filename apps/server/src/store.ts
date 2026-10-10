@@ -1,6 +1,10 @@
 import { DeadlinePgClient, rollbackPg } from "./pg-deadline.js";
 import { monitorPgLease } from "./pg-lease.js";
 import {
+  migratePgAnalyticsIndexes,
+  walletAssetIndexStatusSql,
+} from "./analytics-indexes.js";
+import {
   createLocalTradeInbox,
   createPgTradeInbox,
   tradeInboxSchemaSql,
@@ -118,6 +122,7 @@ export async function migrate(pool: Pool): Promise<void> {
   } finally {
     client.release();
   }
+  await migratePgAnalyticsIndexes(pool);
 }
 
 export async function createStore(
@@ -144,24 +149,35 @@ export async function createStore(
     pool.on("error", (error) =>
       console.error("Database connection error:", error.message),
     );
-    if (options.autoMigrate ?? config.autoMigrate) await migrate(pool);
-    else {
-      await pool
-        .query(
-          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0; SELECT 1 FROM paperdash_house_samples LIMIT 0; SELECT 1 FROM paperdash_liquidation_state LIMIT 0",
-        )
-        .catch(() => {
-          throw new Error(
-            "Database schema is unavailable; run npm run db:migrate with the schema owner.",
-          );
-        });
-      const inboxSchema = await pool.query(
-        "SELECT to_regclass('paperdash_trade_inbox') IS NOT NULL AND to_regclass('paperdash_trade_inbox_totals') IS NOT NULL AND to_regclass('paperdash_trade_ingestion_gaps') IS NOT NULL AS available",
-      );
-      if (!inboxSchema.rows[0]?.available)
-        throw new Error(
-          "Database inbox schema is unavailable; run npm run db:migrate with the schema owner.",
+    try {
+      if (options.autoMigrate ?? config.autoMigrate) await migrate(pool);
+      else {
+        await pool
+          .query(
+            "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0; SELECT 1 FROM paperdash_house_samples LIMIT 0; SELECT 1 FROM paperdash_liquidation_state LIMIT 0",
+          )
+          .catch(() => {
+            throw new Error(
+              "Database schema is unavailable; run npm run db:migrate with the schema owner.",
+            );
+          });
+        const inboxSchema = await pool.query(
+          "SELECT to_regclass('paperdash_trade_inbox') IS NOT NULL AND to_regclass('paperdash_trade_inbox_totals') IS NOT NULL AND to_regclass('paperdash_trade_ingestion_gaps') IS NOT NULL AS available",
         );
+        if (!inboxSchema.rows[0]?.available)
+          throw new Error(
+            "Database inbox schema is unavailable; run npm run db:migrate with the schema owner.",
+          );
+        const assetIndex = (await pool.query(walletAssetIndexStatusSql))
+          .rows[0];
+        if (!assetIndex?.valid || !assetIndex.expected)
+          throw new Error(
+            "Wallet asset index is unavailable; run npm run db:migrate with the schema owner.",
+          );
+      }
+    } catch (error) {
+      await pool.end();
+      throw error;
     }
     let leaseClient: PoolClient | null = null;
     let stopLeaseMonitor: (() => void) | null = null;

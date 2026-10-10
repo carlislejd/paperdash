@@ -6,7 +6,7 @@ import type {
 import { useAnalytics } from "../lib/use-analytics";
 import { formatRawUsd, rawToNumber, relativeTime } from "../lib/format";
 import { ChartCard } from "./ChartCard";
-import type { ChartRange } from "../lib/chart-data";
+import { validChartTime, type ChartRange } from "../lib/chart-data";
 import "./protocol-stats.css";
 
 export function HouseStats({
@@ -23,10 +23,10 @@ export function HouseStats({
   const id = useId();
   const points = useMemo(
     () =>
-      (data?.history ?? []).flatMap((point) => {
-        const value = rawToNumber(point.fundsRaw);
-        return value === null ? [] : [{ ...point, value }];
-      }),
+      (data?.history ?? []).map((point) => ({
+        ...point,
+        value: rawToNumber(point.fundsRaw),
+      })),
     [data?.history],
   );
   const stale = Boolean(error || data?.stale);
@@ -39,13 +39,32 @@ export function HouseStats({
           maximumFractionDigits: 2,
         }).format(value);
   };
-  const houseTo = data?.sourceAt ?? Date.now();
+  const houseTo = validChartTime(data?.sourceAt) ? data.sourceAt : Date.now();
+  const dayStart = Math.max(0, houseTo - 86400000);
+  const availableTimes = points
+    .filter(
+      (point) =>
+        validChartTime(point.time) &&
+        point.time >= dayStart &&
+        point.time <= houseTo,
+    )
+    .map((point) => point.time);
   const houseRange = {
-    from: Math.max(0, houseTo - 86400000),
+    // The endpoint retains at most a day. Fit shorter history without inventing
+    // earlier points, while keeping a meaningful interval for a single sample.
+    from: availableTimes.length
+      ? Math.max(dayStart, Math.min(...availableTimes, houseTo - 60000))
+      : dayStart,
+    to: houseTo,
+    label: availableTimes.length
+      ? "Available history · up to 24h"
+      : "24 hours · awaiting observations",
+  };
+  const paperRange = chartRange ?? {
+    from: dayStart,
     to: houseTo,
     label: "24 hours",
   };
-  const paperRange = chartRange ?? houseRange;
   const annualized = data?.annualizedStakingRevenue;
   return (
     <section className="house-panel" aria-label="House and PAPER statistics">

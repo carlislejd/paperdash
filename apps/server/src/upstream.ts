@@ -252,6 +252,7 @@ export class Upstream {
       wait?: boolean;
       staleAfter?: number;
       waitForInitial?: boolean;
+      isCurrent?: (value: T) => boolean;
     } = {},
   ): Promise<Cached<T>> {
     // Read the shared cache on every lookup. A local entry must not hide a newer
@@ -265,7 +266,11 @@ export class Upstream {
         `cache-error:${key}`,
       )
     )?.value;
-    if (saved && Date.now() - saved.receivedAt <= ttl)
+    if (
+      saved &&
+      Date.now() - saved.receivedAt <= ttl &&
+      (options.isCurrent?.(saved.value) ?? true)
+    )
       return { ...saved, stale: false };
     if (failure && Date.now() < failure.until) {
       if (saved) return { ...saved, stale: true, error: failure.message };
@@ -288,7 +293,11 @@ export class Upstream {
           if (lease) {
             try {
               const current = await this.store.get<T>(`cache:${key}`);
-              if (current && Date.now() - current.receivedAt <= ttl)
+              if (
+                current &&
+                Date.now() - current.receivedAt <= ttl &&
+                (options.isCurrent?.(current.value) ?? true)
+              )
                 return { ...current, stale: false };
               const sharedFailure = (
                 await this.store.get<{ until: number; message: string }>(
@@ -311,7 +320,11 @@ export class Upstream {
             }
           }
           const current = await this.store.get<T>(`cache:${key}`);
-          if (current && Date.now() - current.receivedAt <= ttl)
+          if (
+            current &&
+            Date.now() - current.receivedAt <= ttl &&
+            (options.isCurrent?.(current.value) ?? true)
+          )
             return { ...current, stale: false };
           const sharedFailure = (
             await this.store.get<{ until: number; message: string }>(
@@ -446,6 +459,27 @@ export class Upstream {
       const result = await this.cached(path, 20000, () =>
         this.request(path, accountsSchema),
       );
+      const activityAt = Date.now();
+      const addresses = result.value.accounts.map((a) => a.address);
+      const activity = await this.cached(
+        `leaderboard-activity:${path}`,
+        20000,
+        () => this.store.analytics.walletMetrics(addresses, activityAt),
+        {
+          wait: true,
+          isCurrent: (value) =>
+            Object.keys(value.counts).length === addresses.length &&
+            addresses.every((address) => address in value.counts),
+        },
+      ).catch(() => null);
+      const activityStale =
+        !activity ||
+        activity.stale ||
+        Boolean(activity.error) ||
+        addresses.some((address) => !(address in activity.value.counts)) ||
+        (await activityDelayed(this.store, activityAt)) ||
+        !activity.value.projectionBackfillComplete ||
+        activity.value.observedFrom === null;
       return {
         window: "24h",
         metric,
@@ -454,13 +488,29 @@ export class Upstream {
           leaderboardName: account.leaderboardName,
           rank: page * 25 + index + 1,
           pnlRaw: account.totalWindowedPnl,
-          volumeUsd: null,
-          tradeCount: null,
+          volumeUsd: activity?.value.volumesUsd[account.address] ?? null,
+          tradeCount: activity?.value.counts[account.address] ?? null,
+          currentUnrealizedPnlRaw: account.currentUnrealizedPnl,
+          assetsTraded: activity?.value.assetsTraded[account.address] ?? null,
         })),
         count: result.value.count,
         pageInfo: result.value.pageInfo,
         receivedAt: result.receivedAt,
         stale: result.stale,
+        accountReceivedAt: result.receivedAt,
+        accountStale: result.stale,
+        activityCoverage: {
+          source: "retained-public-observations",
+          partial: true,
+          observedFrom: activity?.value.observedFrom ?? null,
+          projectionBackfillComplete:
+            activity?.value.projectionBackfillComplete ?? false,
+          receivedAt: activity?.receivedAt ?? activityAt,
+          windowFrom:
+            activity?.value.windowFrom ?? Math.max(0, activityAt - 86400000),
+          windowTo: activity?.value.windowTo ?? activityAt,
+          stale: activityStale,
+        },
         ...(result.error ? { error: result.error } : {}),
         coverage: {
           source: "papertrade-leaderboard",
@@ -475,7 +525,20 @@ export class Upstream {
     const result = await this.cached(
       `observed-leaderboard:${metric}:${page}:${q}`,
       20000,
-      () => this.store.analytics.walletActivity(metric, page, q),
+      async () => {
+        const ranking = await this.store.analytics.walletActivity(
+          metric,
+          page,
+          q,
+        );
+        const metrics = await this.store.analytics
+          .walletMetrics(
+            ranking.rows.map((row) => row.address),
+            ranking.windowTo,
+          )
+          .catch(() => null);
+        return { ...ranking, metrics };
+      },
     );
     const collectorStale = await activityDelayed(this.store);
     return {
@@ -488,6 +551,8 @@ export class Upstream {
         pnlRaw: null,
         volumeUsd: row.notionalUsd,
         tradeCount: row.count,
+        currentUnrealizedPnlRaw: null,
+        assetsTraded: result.value.metrics?.assetsTraded[row.address] ?? null,
       })),
       count: result.value.count,
       pageInfo: {
@@ -496,6 +561,24 @@ export class Upstream {
       },
       receivedAt: result.receivedAt,
       stale: result.stale || collectorStale,
+      accountReceivedAt: null,
+      accountStale: true,
+      activityCoverage: {
+        source: "retained-public-observations",
+        partial: true,
+        observedFrom: result.value.coverage.observedFrom,
+        projectionBackfillComplete:
+          result.value.coverage.projectionBackfillComplete,
+        receivedAt: result.receivedAt,
+        windowFrom: result.value.windowFrom,
+        windowTo: result.value.windowTo,
+        stale:
+          result.stale ||
+          collectorStale ||
+          !result.value.coverage.projectionBackfillComplete ||
+          result.value.coverage.observedFrom === null ||
+          !result.value.metrics,
+      },
       ...(result.error
         ? { error: result.error }
         : collectorStale

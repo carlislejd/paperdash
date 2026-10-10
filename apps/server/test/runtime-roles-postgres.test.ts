@@ -297,6 +297,17 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
         observedFrom: at - 1000,
         projectionBackfillComplete: true,
       });
+      // The restricted API role can join the wallet/asset projections in one
+      // snapshot; overlapping source observations count once.
+      expect(await api.store.analytics.walletMetrics([wallet], at)).toEqual({
+        counts: { [wallet]: 1 },
+        volumesUsd: { [wallet]: 100 },
+        assetsTraded: { [wallet]: [0] },
+        windowFrom: at - 86400000,
+        windowTo: at,
+        observedFrom: at - 1000,
+        projectionBackfillComplete: true,
+      });
       await worker.store.market.quote({
         instrument: 0,
         sourceAt: at,
@@ -415,6 +426,15 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       await expect(
         api.pool.query("DELETE FROM paperdash_snapshots"),
       ).rejects.toMatchObject({ code: "42501" });
+      for (const query of [
+        "INSERT INTO paperdash_analytics_fingerprints SELECT * FROM paperdash_analytics_fingerprints WHERE false",
+        "UPDATE paperdash_analytics_fingerprints SET instrument=instrument WHERE false",
+        "DELETE FROM paperdash_analytics_fingerprints WHERE false",
+      ]) {
+        await expect(api.pool.query(query)).rejects.toMatchObject({
+          code: "42501",
+        });
+      }
       await expect(
         api.pool.query("UPDATE paperdash_history_jobs SET state='{}'"),
       ).rejects.toMatchObject({ code: "42501" });

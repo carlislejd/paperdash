@@ -70,6 +70,23 @@
 .overview-activity-grid .activity-panel {
   padding-left: 22px;
 }
+.overview-activity-grid .trade-list {
+  max-height: none;
+  overflow: visible;
+}
+@media (min-width: 851px) {
+  .overview-activity-grid .open-pnl-panel {
+    display: flex;
+    flex-direction: column;
+  }
+  .overview-activity-grid .open-pnl-footer {
+    margin-top: auto;
+    padding-top: 12px;
+  }
+  .overview-activity-grid .trade-list {
+    flex: 1;
+  }
+}
 .overview-page .position-metrics-global {
   padding: 12px 0;
 }

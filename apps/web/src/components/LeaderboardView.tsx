@@ -8,6 +8,64 @@ import {
   AnalyticsWallet,
 } from "./AnalyticsShared";
 
+function TradedAssets({ instruments }: { instruments?: number[] | null }) {
+  if (instruments == null)
+    return (
+      <span className="muted" title="Observed assets unavailable">
+        —
+      </span>
+    );
+  if (!instruments.length)
+    return <span className="muted leaderboard-no-assets">None observed</span>;
+  return (
+    <div
+      className="leaderboard-assets"
+      aria-label="Assets traded in the past 24 hours"
+    >
+      {[...new Set(instruments)]
+        .sort((a, b) => a - b)
+        .map((instrument) => {
+          const symbol =
+            instrument === 0
+              ? "BTC"
+              : instrument === 1
+                ? "ETH"
+                : `Asset ${instrument}`;
+          return (
+            <span
+              className="leaderboard-asset"
+              key={instrument}
+              title={`${symbol} · observed trades in the past 24 hours`}
+            >
+              <span
+                className={`leaderboard-asset-mark ${instrument === 1 ? "eth" : ""}`}
+                aria-hidden="true"
+              >
+                {instrument === 0 ? (
+                  "₿"
+                ) : instrument === 1 ? (
+                  <svg
+                    width="12"
+                    height="19"
+                    viewBox="0 0 24 38"
+                    fill="currentColor"
+                  >
+                    <path d="M12 0 0 20l12 7 12-7L12 0Z" opacity=".85" />
+                    <path d="M0 23 12 38 24 23l-12 7L0 23Z" />
+                    <path d="M12 0v27l12-7L12 0Z" opacity=".4" />
+                  </svg>
+                ) : (
+                  "·"
+                )}
+              </span>
+              {symbol}
+            </span>
+          );
+        })}
+    </div>
+  );
+}
+
 export function LeaderboardView({
   onWallet,
 }: {
@@ -84,18 +142,15 @@ export function LeaderboardView({
           onRefresh={refresh}
         />
       </div>
-      {metric !== "pnl" && (
-        <p className="analytics-coverage-note">
-          Partial activity coverage · opens, closes and liquidations · possible
-          duplicate observations.
-          {data?.coverage.observedFrom
-            ? ` Records available since ${new Date(data.coverage.observedFrom).toLocaleString()}.`
-            : ""}
-          {data && !data.coverage.projectionBackfillComplete
-            ? " Retained activity is still being indexed."
-            : ""}
-        </p>
-      )}
+      <p className="analytics-coverage-note">
+        Partial activity coverage · trade counts, volume and assets cover
+        observed opens, closes and liquidations in the past 24 hours. Current
+        uPnL is a separate account snapshot.
+        {data?.activityCoverage?.stale ? " Activity data is delayed." : ""}
+        {data?.accountStale && data.accountReceivedAt != null
+          ? " Account valuations are delayed."
+          : ""}
+      </p>
       <AnalyticsNotice error={message} hasData={Boolean(data)} />
       <div
         className={`table-scroll ${loading ? "table-loading" : ""}`}
@@ -118,6 +173,13 @@ export function LeaderboardView({
                   {columnLabels[column]}
                 </th>
               ))}
+              <th
+                className="numeric"
+                title="Current unrealized PnL on open positions; not a 24-hour change"
+              >
+                CURRENT UPNL
+              </th>
+              <th>ASSETS · 24H</th>
             </tr>
           </thead>
           <tbody>
@@ -127,13 +189,14 @@ export function LeaderboardView({
                     <td colSpan={2}>
                       <span className="skeleton-line" />
                     </td>
-                    <td colSpan={3}>
+                    <td colSpan={5}>
                       <span className="skeleton-line short" />
                     </td>
                   </tr>
                 ))
               : data?.rows.map((row) => {
                   const pnl = rawToNumber(row.pnlRaw);
+                  const upnl = rawToNumber(row.currentUnrealizedPnlRaw);
                   return (
                     <tr key={row.address}>
                       <td className="rank-cell">
@@ -163,6 +226,20 @@ export function LeaderboardView({
                           )}
                         </td>
                       ))}
+                      <td
+                        className={`numeric leaderboard-upnl ${upnl === null || upnl === 0 ? "muted" : upnl > 0 ? "positive" : "negative"}`}
+                        title={
+                          upnl === null
+                            ? "Current account valuation unavailable for this ranking"
+                            : `${data.accountStale ? "Last available" : "Current"} unrealized PnL${data.accountReceivedAt ? ` · ${new Date(data.accountReceivedAt).toLocaleString()}` : ""}`
+                        }
+                      >
+                        {upnl !== null && upnl > 0 ? "+" : ""}
+                        {formatRawUsd(row.currentUnrealizedPnlRaw)}
+                      </td>
+                      <td>
+                        <TradedAssets instruments={row.assetsTraded} />
+                      </td>
                     </tr>
                   );
                 })}

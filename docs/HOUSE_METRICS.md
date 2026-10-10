@@ -18,6 +18,8 @@ The existing collector house request serves all viewers. One latest sample per m
 
 The worker builds a cached 24-hour history with at most 300 points from at most 1,441 indexed minute observations. The public `/api/house` handler reads the saved response, rather than upstream history or per-viewer historical scans. Chart time is the actual observation's source time. Discontinuities from generation changes or observation gaps greater than two minutes are marked `gapBefore`, including when thinning skips over a gap. Retained history is partial observation history, never an assertion of complete canonical protocol history.
 
+The default House Funds chart fits the available observations within that 24-hour window, with a minimum one-minute range for a single sample. Its taller plot preserves missing values and gap markers. The chart does not offer a longer history window than the endpoint provides; PAPER charts retain their independently selected range.
+
 House values and PAPER values may have independent source times. Missing values remain null. Freshness considers each source/receipt time, the collector heartbeat and source-loop errors; repeated receipt of an old house frame does not make its valuation fresh. The response includes `house`, `paper`, `sourceAt`, `receivedAt`, `sourceBlock`, `summarySourceAt`, `history`, `stale`, and coverage `{source:'retained-house-observations',approximate:true,observedFrom,partial:true}`.
 
 Public ticker liquidations use `kind:'liq'`; closed wallet outcomes use `kind:'Liquidated'`. A live liquidation feed made from retained ticker observations remains partial, even when its connection and collector are healthy. It must not claim a complete canonical liquidation archive.

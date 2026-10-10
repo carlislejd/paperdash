@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { assetResponse, mockSources, WALLET } from "./fixtures";
+import {
+  assetResponse,
+  leaderboardResponse,
+  mockSources,
+  WALLET,
+  SECOND_WALLET,
+} from "./fixtures";
 
 test("asset deep links expose entry notional, valid shares and wallet-linked activity", async ({
   page,
@@ -72,14 +78,29 @@ test("leaderboard separates 24h PnL from partial observed rankings and pages wal
   const pnlRow = panel
     .getByRole("row")
     .filter({ has: page.getByRole("button", { name: /^Aoi / }) });
-  await expect(pnlRow.getByRole("cell").nth(3)).toHaveText("—");
-  await expect(pnlRow.getByRole("cell").nth(4)).toHaveText("—");
+  await expect(pnlRow.getByRole("cell").nth(3)).toHaveText("$3,000,000.00");
+  await expect(pnlRow.getByRole("cell").nth(4)).toHaveText("23");
+  await expect(pnlRow.locator(".leaderboard-upnl")).toHaveText(
+    "+$1,250,000.00",
+  );
+  await expect(pnlRow.locator(".leaderboard-asset")).toHaveText([
+    /BTC$/,
+    /^ETH$/,
+  ]);
+  await expect(pnlRow.locator(".leaderboard-asset-mark.eth svg")).toHaveCount(
+    1,
+  );
   await panel
     .getByRole("button", { name: "Observed volume", exact: true })
     .click();
   await expect(panel).toContainText("$3,000,000.00");
   await expect(panel).toContainText("Partial activity coverage");
   await expect(pnlRow.getByRole("cell").nth(3)).toHaveText("—");
+  await expect(pnlRow.locator(".leaderboard-upnl")).toHaveText("—");
+  await expect(pnlRow.locator(".leaderboard-upnl")).toHaveAttribute(
+    "title",
+    /unavailable/,
+  );
   await panel
     .getByRole("button", { name: "Observed trades", exact: true })
     .click();
@@ -100,8 +121,57 @@ test("leaderboard separates 24h PnL from partial observed rankings and pages wal
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.screenshot({
+    path: `/tmp/paperclub-expanded-leaderboard-${test.info().project.name}.png`,
+    fullPage: true,
+  });
   await panel.getByRole("button", { name: /^Aoi / }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+});
+
+test("leaderboard distinguishes unavailable asset data from no observed trades", async ({
+  page,
+}) => {
+  await mockSources(page);
+  await page.route("**/api/leaderboard?**", (route) => {
+    const data = leaderboardResponse();
+    data.activityCoverage!.stale = true;
+    data.accountStale = true;
+    const original = data.rows[0];
+    data.rows = [
+      {
+        ...original,
+        assetsTraded: null,
+        currentUnrealizedPnlRaw: null,
+        tradeCount: null,
+        volumeUsd: null,
+      },
+      {
+        ...original,
+        address: SECOND_WALLET,
+        leaderboardName: "No activity",
+        rank: 2,
+        assetsTraded: [],
+        currentUnrealizedPnlRaw: "0",
+        tradeCount: 0,
+        volumeUsd: 0,
+      },
+    ];
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/?view=leaderboard");
+  const rows = page.locator(".leaderboard-table tbody tr");
+  await expect(rows.first().locator("td").last()).toHaveText("—");
+  await expect(rows.first().locator(".leaderboard-upnl")).toHaveText("—");
+  await expect(rows.nth(1).locator("td").last()).toHaveText("None observed");
+  await expect(rows.nth(1).locator(".leaderboard-upnl")).toHaveText("$0.00");
+  await expect(page.locator(".leaderboard-asset-mark")).toHaveCount(0);
+  await expect(page.locator(".analytics-coverage-note")).toContainText(
+    "Activity data is delayed",
+  );
+  await expect(page.locator(".analytics-coverage-note")).toContainText(
+    "Account valuations are delayed",
+  );
 });
 
 test("analytics polling stops on navigation and cached values survive refresh errors", async ({

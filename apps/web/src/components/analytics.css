@@ -356,16 +356,49 @@
   font-size: 11px;
 }
 .leaderboard-table {
-  min-width: 530px;
+  min-width: 1010px;
 }
 .leaderboard-table .rank-cell {
-  width: 75px;
+  width: 55px;
 }
 .leaderboard-table td {
   height: 79px;
 }
 .leaderboard-table tbody tr:first-child .rank-cell {
   color: #6b5879;
+}
+.leaderboard-assets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 122px;
+}
+.leaderboard-asset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.leaderboard-asset-mark {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #ece7d6;
+  color: #696552;
+  font-size: 17px;
+  line-height: 1;
+}
+.leaderboard-asset-mark.eth {
+  background: #e5dff0;
+  color: #79648b;
+}
+.leaderboard-no-assets {
+  font-size: 11px;
 }
 .analytics-table-footer {
   gap: 15px;
@@ -502,7 +535,7 @@
     font-size: 11px;
   }
   .leaderboard-table {
-    min-width: 600px;
+    min-width: 960px;
   }
 }
 .analytics-view .wallet-identity > span:last-child {

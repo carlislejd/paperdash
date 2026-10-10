@@ -154,12 +154,28 @@ export interface LeaderboardResponse {
     pnlRaw: Raw | null;
     volumeUsd: number | null;
     tradeCount: number | null;
+    /** Current account snapshot, distinct from the ranking's 24h P&L. */
+    currentUnrealizedPnlRaw?: Raw | null;
+    /** Instrument IDs seen in retained 24h executions, not open positions. */
+    assetsTraded?: number[] | null;
   }[];
   count: number;
   pageInfo: { page: number; totalPages: number };
   receivedAt: number;
   stale: boolean;
   error?: string;
+  accountReceivedAt?: number | null;
+  accountStale?: boolean;
+  activityCoverage?: {
+    source: "retained-public-observations";
+    partial: true;
+    observedFrom: number | null;
+    projectionBackfillComplete: boolean;
+    receivedAt: number;
+    windowFrom: number;
+    windowTo: number;
+    stale: boolean;
+  };
   coverage: {
     source: "papertrade-leaderboard" | "retained-public-observations";
     observedFrom: number | null;
