@@ -4,6 +4,7 @@ import type {
   PortfolioHistory,
 } from "../../../packages/shared/src/types.js";
 import { addressSchema, digest } from "./schemas.js";
+import { enqueuePositionMetrics } from "./position-metrics-store.js";
 
 export type LedgerKind = "cashflows" | "trades";
 export type JobKind = LedgerKind | "portfolio";
@@ -514,7 +515,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
               : at + 1000,
         ),
       ];
-      for (const row of identified.rows)
+      for (const row of identified.rows) {
         statements.push({
           sql: `INSERT INTO ${t("records")} VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(address,kind,record_key) DO UPDATE SET source_at=excluded.source_at,payload=excluded.payload,payload_hash=excluded.payload_hash,ambiguous=excluded.ambiguous,received_at=excluded.received_at WHERE ${t("records")}.received_at<=excluded.received_at`,
           params: [
@@ -528,6 +529,11 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
             at,
           ],
         });
+        if (job.kind === "trades")
+          statements.push(
+            enqueuePositionMetrics(db.prefix, job.address, row.key),
+          );
+      }
       statements.push({
         sql: `INSERT INTO ${t("pages")} VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,
         params: [

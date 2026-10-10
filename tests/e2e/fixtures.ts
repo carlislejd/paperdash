@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import type { PositionMetricsResponse } from "../../packages/shared/src/position-metrics";
 import type {
   Account,
   AccountsResponse,
@@ -232,6 +233,28 @@ export function leaderboardResponse(
   };
 }
 
+export function positionMetricsResponse(
+  stale = false,
+): PositionMetricsResponse {
+  return {
+    positionCount: 0,
+    avgHoldMs: null,
+    avgLeverage: null,
+    excludedCount: 0,
+    updatedAt: Date.now(),
+    stale,
+    coverage: {
+      source: "retained-closed-positions",
+      projectionBackfillComplete: true,
+      pending: false,
+      historyBackfillComplete: null,
+      lastHistoryIndexedAt: Date.now(),
+      walletsDiscovered: 2,
+      totalWallets: 2,
+    },
+  };
+}
+
 export async function mockSources(
   page: Page,
   options: {
@@ -257,6 +280,13 @@ export async function mockSources(
     }
     if (url.pathname === "/api/assets") {
       await route.fulfill({ json: assetResponse(options.stale) });
+      return;
+    }
+    if (
+      url.pathname === "/api/position-metrics" ||
+      /^\/api\/wallets\/0x[0-9a-f]{40}\/position-metrics$/i.test(url.pathname)
+    ) {
+      await route.fulfill({ json: positionMetricsResponse(options.stale) });
       return;
     }
     if (url.pathname === "/api/leaderboard") {

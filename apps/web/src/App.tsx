@@ -20,6 +20,7 @@ import { DataInfoDialog } from "./components/DataInfoDialog";
 import { Avatar } from "./components/Avatar";
 import { AssetsView } from "./components/AssetsView";
 import { LeaderboardView } from "./components/LeaderboardView";
+import { PositionMetrics } from "./components/PositionMetrics";
 import { readDashboardRoute, type DashboardView } from "./lib/navigation";
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
@@ -779,6 +780,7 @@ function App() {
           </section>
         )}
 
+        {section === "overview" && <PositionMetrics />}
         {section === "overview" && (
           <div className="story-grid">
             <div className="history-panel">

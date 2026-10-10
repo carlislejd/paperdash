@@ -16,6 +16,8 @@ import type {
 } from "../../../../packages/shared/src/types";
 import { fetchJson } from "../lib/api";
 import { mergeHistory } from "../lib/wallet-history";
+import { closedHoldingTimeMs, formatHoldingTime } from "../lib/position-format";
+import { PositionMetrics } from "./PositionMetrics";
 import {
   formatRawUsd,
   formatUsd,
@@ -344,7 +346,13 @@ function CashflowRow({ item }: { item: Cashflow }) {
   );
 }
 
-function TradeRow({ item }: { item: ClosedTrade }) {
+function TradeRow({
+  item,
+  receivedAt,
+}: {
+  item: ClosedTrade;
+  receivedAt?: number | null;
+}) {
   const timestamp =
     typeof item.timestampMs === "number" ? item.timestampMs : null;
   const pnl =
@@ -358,6 +366,7 @@ function TradeRow({ item }: { item: ClosedTrade }) {
       : "Position";
   const liquidated = item.kind === "Liquidated";
   const negative = pnl?.startsWith("-");
+  const heldMs = closedHoldingTimeMs(item, receivedAt ?? Date.now());
   return (
     <li className="wd-history-row">
       <div
@@ -378,6 +387,7 @@ function TradeRow({ item }: { item: ClosedTrade }) {
           <span>
             {liquidated ? "Liquidated" : "Closed"} · {dateLabel(timestamp)}
           </span>
+          {heldMs !== null && <span>Held {formatHoldingTime(heldMs)}</span>}
           <TransactionLink hash={item.txHash} />
         </div>
       </div>
@@ -873,6 +883,7 @@ export function WalletDrawer({
                       : "Positions unavailable"}
                   </span>
                 </div>
+                <PositionMetrics key={wallet.address} wallet={wallet} />
                 <PortfolioChart history={wallet.portfolio} />
                 <section className="wd-activity" aria-label="Wallet activity">
                   <div className="wd-section-heading">
@@ -959,6 +970,7 @@ export function WalletDrawer({
                                     : `${String(item.txHash)}-${String(item.positionId)}-${index}`
                                 }
                                 item={item}
+                                receivedAt={wallet.trades.receivedAt}
                               />
                             ))}
                       </ol>

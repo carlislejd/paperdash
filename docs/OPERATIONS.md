@@ -98,7 +98,7 @@ Favicons and link-preview metadata are included in the initial HTML, so crawlers
 
 The initial Blueprint injects the managed database owner's connection into both services. This makes schema bootstrap runnable, but grants more permission than a public API should retain. **It is not a least-privilege production setup.** The API writes current account/directory caches and prioritizes wallet indexing, so a strictly read-only role would break those operations.
 
-Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables, eight history tables and seven analytics tables; the `\password` commands prompt without putting passwords in shell history:
+Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables, eight history tables, seven activity tables and four position-metric tables; the `\password` commands prompt without putting passwords in shell history:
 
 ```sql
 CREATE ROLE paperdash_api LOGIN;
@@ -115,8 +115,10 @@ GRANT SELECT ON paperdash_snapshots, paperdash_trade_observations,
   paperdash_analytics_members, paperdash_analytics_fingerprints,
   paperdash_analytics_minutes, paperdash_analytics_oi_samples,
   paperdash_analytics_wallet_fingerprints, paperdash_analytics_wallet_minutes,
-  paperdash_analytics_state
+  paperdash_analytics_state, paperdash_position_metrics_queue,
+  paperdash_position_metrics_rollups, paperdash_position_metrics_state
   TO paperdash_api, paperdash_ingest;
+GRANT SELECT ON paperdash_position_metrics_facts TO paperdash_ingest;
 GRANT INSERT, UPDATE ON paperdash_snapshots,
   paperdash_history_wallets, paperdash_history_jobs TO paperdash_api;
 GRANT UPDATE ON paperdash_history_corrections TO paperdash_api;
@@ -136,6 +138,11 @@ GRANT INSERT, UPDATE ON paperdash_analytics_members,
   paperdash_analytics_oi_samples, paperdash_analytics_wallet_fingerprints,
   paperdash_analytics_wallet_minutes, paperdash_analytics_state
   TO paperdash_ingest;
+GRANT INSERT, UPDATE ON paperdash_position_metrics_queue,
+  paperdash_position_metrics_facts, paperdash_position_metrics_rollups,
+  paperdash_position_metrics_state TO paperdash_ingest;
+GRANT DELETE ON paperdash_position_metrics_queue,
+  paperdash_position_metrics_facts TO paperdash_ingest;
 ```
 
 Neither runtime role needs `CREATE`, `ALTER`, `DROP`, ownership or access to unrelated schemas. New tables/sequences require explicit reviewed grants. Store the two role URLs separately in Render, replace the two `fromDatabase` entries with `sync: false`, and set `AUTO_MIGRATE=false` in both services. Keep the database's internal host/database name; only the URL-encoded username/password change.
@@ -169,6 +176,14 @@ The `asset-activity` loop resumes up to 500 retained observations per tick and r
 Both endpoints support gzip and ETag revalidation. Visible tabs poll every five seconds; hidden tabs pause. Saved snapshots remain readable during outages. Asset freshness combines market publication age, activity snapshot age, collector heartbeat, stream connection and recent/stream/projection errors; observed rankings use the same feed-health checks. A fresh heartbeat from another loop cannot make failed trade transports appear live. A protocol PnL request has its own source-cache freshness.
 
 The analytics migration is additive (seven tables, no sequences). Deploy compatible worker/API code before the new frontend; with restricted runtime roles, migrate and apply the explicit grants above first. Existing raw observations and wallet history remain retained. This release adds no Render resources or plan changes. Independent accounting and load-capacity claims still require the launch checks below.
+
+## Position holding time and leverage
+
+`GET /api/position-metrics` and `GET /api/wallets/:address/position-metrics` serve saved sums and counts over retained closed/liquidated positions. Both means use the same valid, unambiguous cohort and weight each position equally; the global mean divides total sums by total positions, never by the number of wallets. Empty means are `null`. The UI labels global coverage as partial indexed history and reports sample/excluded counts. These are all-retained-history metrics, separate from the rolling 24-hour leaderboard. Current open-position rows come from the wallet snapshot and stay separate from closed metrics. See [definitions and verified source fields](POSITION_METRICS.md).
+
+Four additive tables retain a pending-record queue, per-record contributions, wallet/global rollups and a durable legacy cursor. Each trade-history commit marks changed retained records in the same fenced transaction as its checkpoint. The collector processes at most 500 legacy keys and 500 queued records every five seconds, retaining progress across restarts. Each projected correction subtracts the prior contribution before adding its replacement. Aggregate sums are stored as exact decimal integers; only displayed means use floating-point numbers. API reads use keyed rollups and bounded queue/status checks, with no history scan or additional upstream requests. Existing available history is projected once; no source backfill is reset.
+
+Deploy the additive migration with the API, then the compatible collector, then the frontend. Restricted runtime roles require the grants above before deployment. Confirm both metric endpoints, advancing or completed projection status, empty `null` means when appropriate, and ordinary history indexing. Rollback to an older collector stops marking corrections for this projection; reconcile its missed record keys before treating rollups as current again. No Render resource or plan changes are needed.
 
 ## Freshness, incidents and recovery
 

@@ -21,6 +21,12 @@ import {
   historySchemaSql,
   type HistoryStore,
 } from "./history-store.js";
+import {
+  createLocalPositionMetrics,
+  createPgPositionMetrics,
+  positionMetricsSchemaSql,
+  type PositionMetricsStore,
+} from "./position-metrics-store.js";
 
 export interface Saved<T> {
   value: T;
@@ -34,6 +40,7 @@ export interface Store {
   kind: "postgres" | "local";
   history: HistoryStore;
   analytics: AnalyticsStore;
+  positionMetrics: PositionMetricsStore;
   get<T>(key: string): Promise<Saved<T> | null>;
   put(key: string, value: unknown, receivedAt?: number): Promise<void>;
   trade(value: TradeEvent): Promise<boolean>;
@@ -64,6 +71,7 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query(PG_SCHEMA);
     await client.query(historySchemaSql("paperdash_", true));
     await client.query(analyticsSchemaSql("paperdash_", true));
+    await client.query(positionMetricsSchemaSql("paperdash_", true));
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -98,7 +106,7 @@ export async function createStore(
     else
       await pool
         .query(
-          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0",
+          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0",
         )
         .catch(() => {
           throw new Error(
@@ -154,6 +162,7 @@ export async function createStore(
       kind: "postgres",
       history,
       analytics: createPgAnalytics(pool),
+      positionMetrics: createPgPositionMetrics(pool),
       async get<T>(key: string) {
         const r = await pool.query(
           "SELECT payload,received_at FROM paperdash_snapshots WHERE key=$1",
@@ -333,6 +342,7 @@ export async function createStore(
   `);
   db.exec(historySchemaSql("", false));
   db.exec(analyticsSchemaSql("", false));
+  db.exec(positionMetricsSchemaSql("", false));
   const maxBytes = options.maxBytes ?? config.localMaxBytes;
   let checkAt = 0;
   async function writable() {
@@ -355,6 +365,7 @@ export async function createStore(
   return {
     kind: "local",
     analytics: createLocalAnalytics(db, writable),
+    positionMetrics: createLocalPositionMetrics(db, writable),
     history: createHistoryStore({
       prefix: "",
       async rows<T>(sql: string, params: unknown[] = []) {

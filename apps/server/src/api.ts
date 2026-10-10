@@ -16,6 +16,7 @@ import { Upstream, UpstreamError } from "./upstream.js";
 import { readAssets } from "./assets.js";
 import { analyticsResponse } from "./analytics-response.js";
 import { HistoryCursorError } from "./history-store.js";
+import { readPositionMetrics } from "./position-metrics.js";
 
 interface Client {
   response: ServerResponse;
@@ -283,6 +284,18 @@ export async function buildApi(
   });
   app.get("/api/assets", async (req, reply) => {
     return analyticsResponse(req, reply, await readAssets(store));
+  });
+  app.get("/api/position-metrics", async (req, reply) => {
+    return analyticsResponse(req, reply, await readPositionMetrics(store));
+  });
+  app.get("/api/wallets/:address/position-metrics", async (req, reply) => {
+    const { address } = z.object({ address: addressSchema }).parse(req.params);
+    await store.history.ensureWallet(address, 10);
+    return analyticsResponse(
+      req,
+      reply,
+      await readPositionMetrics(store, address),
+    );
   });
   app.get("/api/leaderboard", async (req, reply) => {
     const query = z

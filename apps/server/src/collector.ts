@@ -195,6 +195,9 @@ export class Collector {
       await this.store.analytics.backfill(500);
       await refreshAssetAnalytics(this.store);
     });
+    this.loop("position-metrics", 5000, async () => {
+      await this.store.positionMetrics.tick(500);
+    });
     this.loop("summary", config.summaryInterval, async () => {
       const summary = await this.upstream.request(
         "/query/protocol/summary",

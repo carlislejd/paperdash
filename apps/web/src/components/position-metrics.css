@@ -1,0 +1,200 @@
+.position-metrics {
+  min-width: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--line, #c9c6bb);
+}
+.position-metrics-global {
+  margin-top: 4px;
+}
+.position-metrics-wallet {
+  margin-top: -10px;
+  padding-bottom: 18px;
+}
+.position-metrics-heading,
+.position-metrics-status,
+.open-position-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.position-metrics-heading h2,
+.position-metrics-heading h3,
+.open-position-heading h3 {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 550;
+  letter-spacing: 0;
+}
+.position-metrics-heading h2 > span,
+.position-metrics-heading h3 > span,
+.open-position-heading h3 > span {
+  color: var(--muted, #77796e);
+  font-size: 10px;
+  font-weight: 400;
+  margin-left: 7px;
+  font-variant-numeric: tabular-nums;
+}
+.position-metrics-status {
+  color: var(--muted, #77796e);
+  font-size: 10px;
+  gap: 7px;
+}
+.position-metrics-status button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 6px;
+  font-size: 13px;
+  line-height: 1;
+  min-height: 28px;
+}
+.position-metrics-status button:disabled {
+  opacity: 0.5;
+}
+.position-metrics-status button:focus-visible,
+.position-more:focus-visible {
+  outline: 2px solid #85739e;
+  outline-offset: 3px;
+}
+.position-averages {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin: 10px 0 8px;
+}
+.position-averages > div {
+  min-width: 0;
+}
+.position-averages > div + div {
+  border-left: 1px solid var(--line, #c9c6bb);
+  padding-left: 20px;
+}
+.position-averages dt {
+  color: var(--muted, #77796e);
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+.position-averages dd {
+  margin: 0;
+  font-size: 25px;
+  font-weight: 550;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.position-method,
+.position-empty {
+  margin: 7px 0 0 !important;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted, #77796e);
+}
+.position-delayed {
+  color: #977341;
+}
+.open-position-panel {
+  min-width: 0;
+  border-top: 1px solid #c9c6bb;
+  padding: 16px 0 20px;
+}
+.open-position-heading > span {
+  font-size: 10px;
+}
+.open-position-labels,
+.open-position-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 75px minmax(75px, 1fr);
+  gap: 10px;
+}
+.open-position-labels {
+  margin-top: 13px;
+  color: #858779;
+  font-size: 9px;
+}
+.open-position-labels > :not(:first-child),
+.open-position-list li > :not(:first-child) {
+  text-align: right;
+}
+.open-position-list {
+  padding: 0;
+  list-style: none;
+  margin: 2px 0 0;
+}
+.open-position-list li {
+  padding: 9px 0;
+  border-bottom: 1px solid #dedacf;
+  font-size: 11px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.open-position-list strong {
+  font-weight: 600;
+  margin-right: 7px;
+}
+.position-more {
+  display: block;
+  width: 100%;
+  padding: 9px;
+  margin-top: 5px;
+  border: 0;
+  background: transparent;
+  color: #77796e;
+  font-size: 10px !important;
+  cursor: pointer;
+  text-align: center;
+}
+@media (min-width: 850px) {
+  .position-metrics-global {
+    display: grid;
+    grid-template-columns: minmax(210px, 1fr) minmax(260px, 1.2fr) minmax(
+        180px,
+        1fr
+      );
+    align-items: center;
+    gap: 22px;
+    padding: 13px 0;
+  }
+  .position-metrics-global .position-metrics-heading {
+    display: block;
+  }
+  .position-metrics-global .position-metrics-status {
+    margin-top: 3px;
+    justify-content: flex-start;
+  }
+  .position-metrics-global .position-averages {
+    margin: 0;
+  }
+  .position-metrics-global .position-method {
+    margin: 0 !important;
+    max-width: 250px;
+  }
+  .position-metrics-global > .position-empty {
+    grid-column: 1 / -1;
+    margin: -13px 0 0 !important;
+  }
+}
+@media (max-width: 480px) {
+  .position-metrics-heading {
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .position-metrics-status {
+    text-align: right;
+    max-width: 54%;
+  }
+  .position-metrics-status time {
+    display: none;
+  }
+  .position-averages {
+    gap: 15px;
+  }
+  .position-averages > div + div {
+    padding-left: 15px;
+  }
+  .position-averages dd {
+    font-size: 24px;
+  }
+}
