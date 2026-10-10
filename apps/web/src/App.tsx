@@ -613,12 +613,12 @@ function App() {
         <div className="header-inner">
           <button
             className="wordmark"
-            aria-label="Paperdash overview"
+            aria-label="paperclub overview"
             onClick={() => navigate("overview")}
           >
             <PaperMark />
             <span>
-              paperdash<span className="wordmark-dot">.</span>
+              paperclub<span className="wordmark-dot">.</span>
             </span>
           </button>
           <nav aria-label="Main navigation">
@@ -868,6 +868,14 @@ function App() {
                             : "BALANCE"}
                         </th>
                         <th className="numeric">REALIZED PNL</th>
+                        <th
+                          className="numeric trade-count-cell"
+                          title="Observed opens, closes and liquidations over 24 hours. Available collected activity; not lifetime completed trades."
+                        >
+                          {section === "following"
+                            ? "SAVED TRADES · 24H"
+                            : "TRADES · 24H"}
+                        </th>
                         <th className="numeric volume-cell">VOLUME</th>
                         <th className="last-seen">LAST ACTIVE</th>
                         <th>
@@ -886,13 +894,25 @@ function App() {
                               <td>
                                 <span className="skeleton-line" />
                               </td>
-                              <td colSpan={6}>
+                              <td colSpan={7}>
                                 <span className="skeleton-line short" />
                               </td>
                             </tr>
                           ))
                         : displayAccounts.map((account, i) => {
                             const pnl = rawToNumber(account.realizedPnl) ?? 0;
+                            const countAvailable =
+                              Number.isSafeInteger(account.tradeCount24h) &&
+                              account.tradeCount24h! >= 0;
+                            const countAt = account.tradeCount24hAt;
+                            const countDated =
+                              typeof countAt === "number" &&
+                              Number.isSafeInteger(countAt) &&
+                              countAt > 0 &&
+                              countAt <= 8.64e15;
+                            const countDelayed =
+                              account.tradeCount24hStale ||
+                              (countDated && clock - countAt > 60000);
                             const saved = following.some(
                               (a) =>
                                 a.address.toLowerCase() ===
@@ -952,6 +972,22 @@ function App() {
                                 >
                                   {pnl > 0 ? "+" : ""}
                                   {formatRawUsd(account.realizedPnl)}
+                                </td>
+                                <td
+                                  className={`numeric trade-count-cell ${countDelayed ? "muted" : ""}`}
+                                  title={`${countDelayed ? "Last available · " : ""}Observed opens, closes and liquidations over 24 hours${countDated ? ` ending ${new Date(countAt).toLocaleString()}` : ""}. Collection may be partial.`}
+                                >
+                                  {countAvailable
+                                    ? account.tradeCount24h!.toLocaleString(
+                                        "en-US",
+                                      )
+                                    : "—"}
+                                  {countAvailable && countDelayed && (
+                                    <span aria-label="Last available trade count">
+                                      {" "}
+                                      *
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="numeric volume-cell">
                                   {formatRawUsd(account.totalVolume, true)}
@@ -1014,6 +1050,15 @@ function App() {
                 {section === "following"
                   ? "Following is private to this browser."
                   : `${accounts?.count?.toLocaleString() ?? "—"} public accounts${accounts?.stale ? " · cached directory" : ""}`}
+                <span className="wallet-trade-note">
+                  24h trades · observed opens, closes &amp; liquidations
+                  {displayAccounts.some(
+                    (account) =>
+                      account.tradeCount24hStale ||
+                      (account.tradeCount24hAt &&
+                        clock - account.tradeCount24hAt > 60000),
+                  ) && " · * Last available"}
+                </span>
               </span>
               {section !== "following" && (
                 <div className="pagination">
@@ -1048,7 +1093,7 @@ function App() {
         )}
 
         <footer className="site-footer">
-          <span className="footer-brand">paperdash.</span>
+          <span className="footer-brand">paperclub.</span>
           <span>Independent Papertrade analytics</span>
           <div>
             <button onClick={() => setInfo(true)}>Data & sources</button>

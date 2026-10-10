@@ -394,8 +394,36 @@ export class Upstream {
     const r = await this.cached(path, 15000, () =>
       this.request(path, accountsSchema),
     );
+    const countAt = Date.now();
+    const counts = await Promise.all([
+      this.store.analytics.walletCounts(
+        r.value.accounts.map((account) => account.address),
+        countAt,
+      ),
+      activityDelayed(this.store, countAt),
+    ]).catch(() => null);
+    const countStale =
+      !counts ||
+      counts[1] ||
+      !counts[0].projectionBackfillComplete ||
+      counts[0].observedFrom === null;
     return {
       ...r.value,
+      accounts: r.value.accounts.map((account) => ({
+        ...account,
+        tradeCount24h: counts?.[0].counts[account.address] ?? null,
+        tradeCount24hStale: countStale,
+        ...(counts ? { tradeCount24hAt: countAt } : {}),
+      })),
+      tradeCountCoverage: {
+        source: "retained-public-observations",
+        partial: true,
+        observedFrom: counts?.[0].observedFrom ?? null,
+        projectionBackfillComplete:
+          counts?.[0].projectionBackfillComplete ?? false,
+        receivedAt: countAt,
+        stale: countStale,
+      },
       receivedAt: r.receivedAt,
       stale: r.stale,
       ...(r.error ? { error: r.error } : {}),

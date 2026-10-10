@@ -2,7 +2,7 @@ import { rollbackPg } from "./pg-deadline.js";
 import type { DatabaseSync } from "node:sqlite";
 import type { Pool, PoolClient } from "pg";
 import type { TradeEvent } from "../../../packages/shared/src/types.js";
-import { digest } from "./schemas.js";
+import { addressSchema, digest } from "./schemas.js";
 
 const MINUTE = 60000;
 const DAY = 86400000;
@@ -49,6 +49,12 @@ export interface AnalyticsStore {
     q?: string,
     now?: number,
   ): Promise<WalletActivity>;
+  walletCounts(addresses: string[], now?: number): Promise<WalletCounts>;
+}
+export interface WalletCounts {
+  counts: Record<string, number | null>;
+  observedFrom: number | null;
+  projectionBackfillComplete: boolean;
 }
 export interface WalletActivity {
   rows: { address: string; count: number; notionalUsd: number }[];
@@ -297,12 +303,66 @@ type Totals = {
 };
 function readAnalytics(
   db: ReadDb,
-): Pick<AnalyticsStore, "activity" | "samples" | "walletActivity"> {
+): Pick<
+  AnalyticsStore,
+  "activity" | "samples" | "walletActivity" | "walletCounts"
+> {
   const f = `${db.prefix}analytics_fingerprints`,
     m = `${db.prefix}analytics_minutes`;
   const effective =
     "CASE WHEN stream_count>recent_count THEN stream_count ELSE recent_count END";
   return {
+    async walletCounts(addresses, now = Date.now()) {
+      if (addresses.length > 25 || !Number.isSafeInteger(now) || now < 0)
+        throw new Error("Invalid directory trade-count query");
+      const wallets = [
+        ...new Set(addresses.map((v) => addressSchema.parse(v))),
+      ];
+      const from = Math.max(0, now - DAY),
+        fullFrom = Math.ceil(from / MINUTE) * MINUTE,
+        fullTo = Math.floor(now / MINUTE) * MINUTE;
+      const requested = wallets.length
+        ? `VALUES ${wallets.map(() => "(?)").join(",")}`
+        : "SELECT CAST(NULL AS TEXT) WHERE 1=0";
+      // One statement gives every displayed row the same projection snapshot.
+      // Interior minute totals plus two exact edges match walletActivity;
+      // the boundary index covers less than two minutes, never raw history.
+      const rows = await db.rows<{
+        wallet: string | null;
+        event_count: string | number | null;
+        complete: number | null;
+        observed_from: string | number | null;
+      }>(
+        `WITH requested(wallet) AS (${requested}), parts AS (SELECT wallet,event_count FROM ${db.prefix}analytics_wallet_minutes WHERE wallet IN (SELECT wallet FROM requested) AND time>=? AND time<? UNION ALL SELECT wallet,effective_count AS event_count FROM ${db.prefix}analytics_wallet_fingerprints WHERE wallet IN (SELECT wallet FROM requested) AND ((source_at>=? AND source_at<?) OR (source_at>=? AND source_at<=?))), totals AS (SELECT wallet,sum(event_count) AS event_count FROM parts GROUP BY wallet), coverage AS (SELECT (SELECT complete FROM ${db.prefix}analytics_state WHERE id=2) AS complete,(SELECT source_at FROM ${db.prefix}analytics_wallet_fingerprints WHERE source_at<=? ORDER BY source_at LIMIT 1) AS observed_from) SELECT requested.wallet,CAST(totals.event_count AS TEXT) AS event_count,coverage.complete,coverage.observed_from FROM coverage LEFT JOIN requested ON 1=1 LEFT JOIN totals ON totals.wallet=requested.wallet`,
+        [...wallets, fullFrom, fullTo, from, fullFrom, fullTo, now, now],
+      );
+      const projectionBackfillComplete = Number(rows[0]?.complete) === 1;
+      const observedFrom =
+        rows[0]?.observed_from == null ? null : Number(rows[0].observed_from);
+      const zeroAvailable = projectionBackfillComplete && observedFrom !== null;
+      return {
+        counts: Object.fromEntries(
+          rows
+            .filter((r) => r.wallet !== null)
+            .map((r) => {
+              const count =
+                r.event_count === null ? null : Number(r.event_count);
+              return [
+                r.wallet!,
+                count === null
+                  ? zeroAvailable
+                    ? 0
+                    : null
+                  : Number.isSafeInteger(count) && count >= 0
+                    ? count
+                    : null,
+              ];
+            }),
+        ),
+        observedFrom,
+        projectionBackfillComplete,
+      };
+    },
     async activity(instruments, now = Date.now()) {
       if (
         !Number.isSafeInteger(now) ||

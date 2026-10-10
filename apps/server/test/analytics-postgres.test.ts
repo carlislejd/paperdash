@@ -92,6 +92,9 @@ describe.skipIf(!databaseUrl)(
           (await first.analytics.walletActivity("trades", 0, address, now))
             .rows,
         ).toEqual([{ address, count: 2, notionalUsd: 0.25 }]);
+        expect(
+          (await first.analytics.walletCounts([address], now)).counts,
+        ).toEqual({ [address]: 2 });
         const legacy = event("legacy", { side: "short", kind: "close" });
         await admin.query(
           "INSERT INTO paperdash_trade_observations VALUES($1,$2,$3,$4)",
@@ -115,6 +118,15 @@ describe.skipIf(!databaseUrl)(
           processed: 0,
           complete: true,
         });
+        expect(
+          await second.analytics.walletCounts([address], now),
+        ).toMatchObject({
+          counts: { [address]: 3 },
+          projectionBackfillComplete: true,
+        });
+        expect((await second.analytics.walletCounts([], now)).counts).toEqual(
+          {},
+        );
         await first.analytics.sample({
           instrument,
           time: now,

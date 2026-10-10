@@ -29,6 +29,10 @@ export interface Account {
   totalWindowedPnl: Raw;
   paperTotal: Raw;
   lastActiveTs: number;
+  /** Retained opens, closes and liquidations in the rolling 24h window. */
+  tradeCount24h?: number | null;
+  tradeCount24hAt?: number;
+  tradeCount24hStale?: boolean;
 }
 export interface AccountsResponse {
   accounts: Account[];
@@ -44,6 +48,14 @@ export interface AccountsResponse {
   receivedAt: number;
   stale: boolean;
   error?: string;
+  tradeCountCoverage?: {
+    source: "retained-public-observations";
+    partial: true;
+    observedFrom: number | null;
+    projectionBackfillComplete: boolean;
+    receivedAt: number;
+    stale: boolean;
+  };
 }
 export interface TradeEvent {
   id: string;

@@ -253,6 +253,13 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
         (await api.store.analytics.walletActivity("trades", 0, "", at)).rows[0]
           .count,
       ).toBe(1);
+      expect(
+        await api.store.analytics.walletCounts([wallet], at),
+      ).toMatchObject({
+        counts: { [wallet]: 1 },
+        observedFrom: at - 1000,
+        projectionBackfillComplete: true,
+      });
       await worker.store.market.quote({
         instrument: 0,
         sourceAt: at,
