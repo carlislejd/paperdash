@@ -1,3 +1,5 @@
+import { DeadlinePgClient, rollbackPg } from "./pg-deadline.js";
+import { monitorPgLease } from "./pg-lease.js";
 import { DatabaseSync } from "node:sqlite";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -103,7 +105,7 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query(liquidationsSchemaSql("paperdash_", true));
     await client.query("COMMIT");
   } catch (error) {
-    await client.query("ROLLBACK");
+    await rollbackPg(client);
     throw error;
   } finally {
     client.release();
@@ -123,6 +125,9 @@ export async function createStore(
   if (databaseUrl) {
     const pool = new Pool({
       connectionString: databaseUrl,
+      Client: DeadlinePgClient,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
       max: 6,
       connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 30000,
@@ -143,15 +148,13 @@ export async function createStore(
           );
         });
     let leaseClient: PoolClient | null = null;
-    let leaseErrorListener: (() => void) | null = null;
+    let stopLeaseMonitor: (() => void) | null = null;
     function releaseCollectorLease() {
       const client = leaseClient;
       if (!client) return;
       leaseClient = null;
-      if (leaseErrorListener) {
-        client.removeListener("error", leaseErrorListener);
-        leaseErrorListener = null;
-      }
+      stopLeaseMonitor?.();
+      stopLeaseMonitor = null;
       // Closing this dedicated session releases its advisory lock. Do not
       // return a possibly still-locked session to the pool after an unlock
       // query failure, or retain an old owner's fatal listener on a pool client.
@@ -180,7 +183,7 @@ export async function createStore(
           }
           await c.query("COMMIT");
         } catch (error) {
-          await c.query("ROLLBACK");
+          await rollbackPg(c);
           throw error;
         } finally {
           c.release();
@@ -228,7 +231,7 @@ export async function createStore(
           await client.query("COMMIT");
           return r.rowCount === 1;
         } catch (error) {
-          await client.query("ROLLBACK");
+          await rollbackPg(client);
           throw error;
         } finally {
           client.release();
@@ -255,7 +258,7 @@ export async function createStore(
           await client.query("COMMIT");
           return true;
         } catch (error) {
-          await client.query("ROLLBACK");
+          await rollbackPg(client);
           throw error;
         } finally {
           client.release();
@@ -290,7 +293,7 @@ export async function createStore(
           await client.query("COMMIT");
           return id;
         } catch (error) {
-          await client.query("ROLLBACK");
+          await rollbackPg(client);
           throw error;
         } finally {
           client.release();
@@ -334,16 +337,15 @@ export async function createStore(
           return null;
         }
         leaseClient = c;
-        leaseErrorListener = () => {
+        stopLeaseMonitor = monitorPgLease(c, () => {
           if (leaseClient !== c) return;
           console.error(
             "Collector database lease connection lost. Exiting to prevent concurrent ingestion.",
           );
-          // PostgreSQL has already released ownership. Graceful draining here
-          // would let old writes overlap a replacement collector's ingestion.
+          // Ownership can no longer be proven. Graceful draining here could
+          // let old writes overlap a replacement collector's ingestion.
           process.exit(1);
-        };
-        c.on("error", leaseErrorListener);
+        });
         return async () => {
           if (leaseClient === c) releaseCollectorLease();
         };

@@ -1,3 +1,4 @@
+import { rollbackPg } from "./pg-deadline.js";
 import type { DatabaseSync } from "node:sqlite";
 import type { Pool, PoolClient } from "pg";
 import { addressSchema } from "./schemas.js";
@@ -333,7 +334,7 @@ export function createPgPositionMetrics(pool: Pool): PositionMetricsStore {
           await client.query("COMMIT");
         }
       } catch (error) {
-        await client.query("ROLLBACK");
+        await rollbackPg(client);
         throw error;
       } finally {
         client.release();
@@ -352,8 +353,7 @@ export function createPgPositionMetrics(pool: Pool): PositionMetricsStore {
 function projectLocal(db: DatabaseSync, key: Key) {
   const params = [key.address, key.record_key];
   const source = db.prepare(loadSource("")).get(...params) as
-    | Source
-    | undefined;
+    Source | undefined;
   const prior = db
     .prepare(
       "SELECT * FROM position_metrics_facts WHERE address=? AND record_key=?",

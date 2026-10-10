@@ -1,3 +1,4 @@
+import { rollbackPg } from "./pg-deadline.js";
 import type { DatabaseSync } from "node:sqlite";
 import type { Pool, PoolClient } from "pg";
 import type { TradeEvent } from "../../../packages/shared/src/types.js";
@@ -549,7 +550,7 @@ export function createPgAnalytics(pool: Pool): AnalyticsStore {
         }
         return { processed, complete: false };
       } catch (error) {
-        await client.query("ROLLBACK");
+        await rollbackPg(client);
         throw error;
       } finally {
         client.release();

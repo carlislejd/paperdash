@@ -7,7 +7,12 @@ const pool = vi.hoisted(() => ({
   connect: vi.fn(),
   end: vi.fn(),
 }));
-vi.mock("pg", () => ({ Pool: vi.fn(function () { return pool; }) }));
+vi.mock("pg", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("pg")>()),
+  Pool: vi.fn(function () {
+    return pool;
+  }),
+}));
 
 import { createStore, type Store } from "../src/store.js";
 
@@ -23,11 +28,15 @@ beforeEach(async () => {
   pool.query.mockResolvedValue({ rows: [] });
   pool.connect.mockResolvedValue(client);
   pool.end.mockResolvedValue(undefined);
-  store = await createStore({ databaseUrl: "postgres://lease.test/fixture", autoMigrate: false });
+  store = await createStore({
+    databaseUrl: "postgres://lease.test/fixture",
+    autoMigrate: false,
+  });
 });
 afterEach(async () => {
   await store?.close();
   store = undefined;
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -54,13 +63,36 @@ describe("PostgreSQL collector lease ownership", () => {
   it("exits immediately with failure when the held lease connection is lost", async () => {
     await store!.lease();
     const fatal = new Error("intercepted process exit");
-    const exit = vi.spyOn(process, "exit").mockImplementation(() => { throw fatal; });
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw fatal;
+    });
     const kill = vi.spyOn(process, "kill");
     vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => client.emit("error", new Error("connection terminated"))).toThrow(fatal);
+    expect(() =>
+      client.emit("error", new Error("connection terminated")),
+    ).toThrow(fatal);
     expect(exit).toHaveBeenCalledExactlyOnceWith(1);
     expect(kill).not.toHaveBeenCalled();
     expect(client.release).not.toHaveBeenCalled();
+  });
+
+  it("fail-stops if the held lease silently stops answering its heartbeat", async () => {
+    vi.useFakeTimers();
+    await store!.lease();
+    client.query.mockImplementation(() => new Promise(() => {}));
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await vi.advanceTimersByTimeAsync(19999);
+    expect(client.query).toHaveBeenCalledTimes(2); // acquisition plus one heartbeat
+    expect(exit).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(exit).toHaveBeenCalledExactlyOnceWith(1);
+    expect(client.release).not.toHaveBeenCalled(); // never graceful-drain uncertain ownership
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(client.query).toHaveBeenCalledTimes(2);
+    expect(exit).toHaveBeenCalledTimes(1);
   });
 
   it("removes the fatal listener before normal release and releases only once", async () => {

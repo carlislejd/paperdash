@@ -12,3 +12,6 @@ apps/web/dist/
 playwright-report/
 test-results/
 .DS_Store
+
+# Private production operations and audit evidence.
+.private/

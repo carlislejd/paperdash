@@ -1,3 +1,4 @@
+import { rollbackPg } from "./pg-deadline.js";
 import type { DatabaseSync } from "node:sqlite";
 import type { Pool } from "pg";
 import { appendStreamEventPg } from "./stream-event-store.js";
@@ -144,13 +145,11 @@ function reader(db: Reader): MarketStore["read"] {
             receivedAt: Number(row.received_at),
           }
         : null,
-      points: points
-        .reverse()
-        .map((p) => ({
-          time: Number(p.source_at),
-          priceUsd: p.price_usd,
-          ...(p.gap_before === 1 ? { gapBefore: true } : {}),
-        })),
+      points: points.reverse().map((p) => ({
+        time: Number(p.source_at),
+        priceUsd: p.price_usd,
+        ...(p.gap_before === 1 ? { gapBefore: true } : {}),
+      })),
       rawTrades: trades.map(
         (r) =>
           (typeof r.payload === "string"
@@ -191,7 +190,7 @@ export function createPgMarket(pool: Pool): MarketStore {
         await client.query("COMMIT");
         return saved.rowCount === 1;
       } catch (error) {
-        await client.query("ROLLBACK");
+        await rollbackPg(client);
         throw error;
       } finally {
         client.release();
@@ -217,8 +216,7 @@ export function createLocalMarket(
       db.exec("BEGIN IMMEDIATE");
       try {
         const saved = db.prepare(q.sql).get(...q.params) as
-          | { gap_before: number }
-          | undefined;
+          { gap_before: number } | undefined;
         if (saved) {
           const event = db
             .prepare("INSERT INTO stream_events(payload) VALUES(?)")

@@ -1,3 +1,4 @@
+import { rollbackPg } from "./pg-deadline.js";
 import type { DatabaseSync } from "node:sqlite";
 import type { Pool } from "pg";
 
@@ -159,7 +160,7 @@ export function createPgHouse(pool: Pool): HouseStore {
         await client.query("COMMIT");
         return result.rowCount === 1;
       } catch (error) {
-        await client.query("ROLLBACK");
+        await rollbackPg(client);
         throw error;
       } finally {
         client.release();

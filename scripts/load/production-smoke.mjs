@@ -62,17 +62,22 @@ const profile = values.get("profile") ?? "overview";
 if (!["overview", "mixed"].includes(profile))
   throw new Error("Profile must be overview or mixed");
 function topicsFor(index) {
-  if (profile === "overview" || index % 10 >= 4) return ["overview"];
-  return index % 10 < 2
-    ? ["overview", "trades"]
-    : ["overview", `asset:${index % 2}`];
+  if (profile === "overview") return ["overview"];
+  const cohort = index % 20;
+  if (cohort < 8) return ["overview", "trades"];
+  if (cohort < 11) return ["overview", "asset:0"];
+  if (cohort < 14) return ["overview", "asset:1"];
+  if (cohort < 16) return ["overview", "liquidations"];
+  return ["overview"];
 }
 function permitsTrade(topics, trade) {
   return (
     trade &&
     Number.isSafeInteger(trade.instrument) &&
     trade.instrument >= 0 &&
-    (topics.includes("trades") || topics.includes(`asset:${trade.instrument}`))
+    (topics.includes("trades") ||
+      topics.includes(`asset:${trade.instrument}`) ||
+      (topics.includes("liquidations") && trade.kind === "liq"))
   );
 }
 function permitsMessage(topics, message) {
@@ -93,10 +98,11 @@ const PLAN = Object.freeze({
     profile === "overview"
       ? { overview: 100 }
       : {
-          overview: 60,
-          "overview,trades": 20,
-          "overview,asset:0": 10,
-          "overview,asset:1": 10,
+          overview: 20,
+          "overview,trades": 40,
+          "overview,asset:0": 15,
+          "overview,asset:1": 15,
+          "overview,liquidations": 10,
         },
   stages: targets.map((connections) => ({ connections, holdSeconds })),
   newConnectionsPerSecond: rampPerSecond,
@@ -108,6 +114,7 @@ const PLAN = Object.freeze({
   sharedRestIntervalMs: 4000,
   restPaths: ["/health/ready", "/api/overview", "/api/assets"],
   hardDurationSeconds: deadlineSeconds,
+  generatorRssCapBytes: 2 * 1024 * 1024 * 1024,
   responseByteCap: maxMiB * 1024 * 1024,
   bodyEgressCostUpperEstimateUsdBeforeAllowance:
     ((maxMiB * 1024 * 1024) / 1e9) * 0.15,
@@ -150,6 +157,7 @@ let phaseCollectorAges = [],
   phaseTradeAges = [];
 let stopping = false,
   abortReason = null,
+  abortConnections = null,
   stage = "preflight";
 let attempts = 0,
   ready = 0,
@@ -178,7 +186,141 @@ const pauses = new Map(),
 const eventTypes = {},
   statusCounts = {},
   topicStats = {};
+const diagnosticEventCounts = {},
+  diagnosticFailureCounts = {},
+  connectionTimings = { sse: {}, rest: {} };
 const restAgent = new https.Agent({ keepAlive: true, maxSockets: 2 });
+
+// Do not retain error messages, peer/local addresses, certificates or headers:
+// transport errors can embed addresses and URLs. Codes identify failure classes.
+function safeError(error) {
+  if (!error || typeof error !== "object") return null;
+  const token = (value) =>
+    typeof value === "string" && /^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(value)
+      ? value
+      : null;
+  return {
+    name: token(error.name),
+    code: token(error.code),
+    errno:
+      typeof error.errno === "number" && Number.isFinite(error.errno)
+        ? error.errno
+        : token(error.errno),
+    syscall: token(error.syscall),
+  };
+}
+function diagnosticEvent(kind, event, error) {
+  if (stopping) return;
+  const code = safeError(error)?.code ?? "none";
+  const key = `${kind}:${event}:${code}`;
+  diagnosticEventCounts[key] = (diagnosticEventCounts[key] ?? 0) + 1;
+}
+function connectionTrace(request, kind, started, label) {
+  const elapsed = {},
+    state = {
+      socket: null,
+      response: null,
+      lastByteAt: null,
+      bytes: 0,
+      readyAt: null,
+      family: null,
+      tlsProtocol: null,
+      socketError: null,
+      socketHadError: null,
+    };
+  const mark = (name) => {
+    if (elapsed[name] !== undefined) return;
+    const value = performance.now() - started;
+    elapsed[name] = value;
+    const samples = (connectionTimings[kind][name] ??= []);
+    if (samples.length < PLAN.totalNewConnectionCap + 1000) samples.push(value);
+  };
+  request.once("socket", (socket) => {
+    state.socket = socket;
+    mark("socketAssignedMs");
+    // Reused REST sockets have no new DNS/TCP/TLS phase. Leave these null.
+    if (request.reusedSocket) return;
+    socket.once("lookup", (error, _address, family) => {
+      if (family === 4 || family === 6) state.family = family;
+      mark("dnsLookupMs");
+      if (error) diagnosticEvent(kind, "dns-error", error);
+    });
+    socket.once("connect", () => mark("tcpConnectMs"));
+    socket.once("secureConnect", () => {
+      mark("tlsHandshakeMs");
+      const protocol = socket.getProtocol?.();
+      if (typeof protocol === "string" && /^TLSv[\d.]+$/.test(protocol))
+        state.tlsProtocol = protocol;
+    });
+    socket.once("error", (error) => {
+      state.socketError = safeError(error);
+      diagnosticEvent(kind, "socket-error", error);
+    });
+    socket.once("close", (hadError) => {
+      state.socketHadError = hadError;
+      diagnosticEvent(kind, hadError ? "socket-close-error" : "socket-close");
+    });
+  });
+  return {
+    headers(response) {
+      state.response = response;
+      mark("responseHeadersMs");
+    },
+    data(bytes) {
+      state.bytes += bytes;
+      state.lastByteAt = performance.now();
+      mark("firstByteMs");
+    },
+    ready() {
+      state.readyAt = performance.now();
+      mark("bootstrapMs");
+    },
+    details(event, error) {
+      const now = performance.now();
+      const phase =
+        state.readyAt !== null
+          ? "established"
+          : state.response
+            ? "awaiting-bootstrap-body"
+            : request.reusedSocket || elapsed.tlsHandshakeMs !== undefined
+              ? "awaiting-response-headers"
+              : elapsed.tcpConnectMs !== undefined
+                ? "tls-handshake"
+                : elapsed.dnsLookupMs !== undefined
+                  ? "tcp-connect"
+                  : elapsed.socketAssignedMs !== undefined
+                    ? "dns-or-tcp-connect"
+                    : "awaiting-socket";
+      return {
+        ...label,
+        event,
+        lifecycle: state.readyAt !== null ? "established" : "bootstrap",
+        connectionPhase: phase,
+        ageMs: Math.round(now - started),
+        establishedForMs:
+          state.readyAt === null ? null : Math.round(now - state.readyAt),
+        lastByteAgeMs:
+          state.lastByteAt === null ? null : Math.round(now - state.lastByteAt),
+        bytesReceived: state.bytes,
+        status: state.response?.statusCode ?? null,
+        responseComplete: state.response?.complete ?? null,
+        responseAborted: state.response?.aborted ?? null,
+        socketDestroyed: state.socket?.destroyed ?? null,
+        socketHadError: state.socketHadError,
+        reusedSocket: Boolean(request.reusedSocket),
+        ipFamily: state.family,
+        tlsProtocol: state.tlsProtocol,
+        error: safeError(error) ?? state.socketError,
+        phaseElapsedMs: Object.fromEntries(
+          Object.entries(elapsed).map(([key, value]) => [
+            key,
+            Math.round(value * 100) / 100,
+          ]),
+        ),
+      };
+    },
+  };
+}
 
 function cleanup() {
   stopping = true;
@@ -193,10 +335,23 @@ function cleanup() {
   for (const request of requests) request.destroy();
   restAgent.destroy();
 }
-function abort(reason) {
+function abort(reason, details = undefined) {
   if (abortReason || stopping) return;
   abortReason = reason;
-  errors.push({ atMs: Math.round(performance.now() - start), stage, reason });
+  abortConnections = {
+    active,
+    pendingCount,
+    pending: [...clients]
+      .filter((client) => !client.ready)
+      .slice(0, PLAN.maximumPendingConnections)
+      .map((client) => client.trace.details("pending-at-abort")),
+  };
+  errors.push({
+    atMs: Math.round(performance.now() - start),
+    stage,
+    reason,
+    ...(details ? { details } : {}),
+  });
   console.error(`Smoke aborted: ${reason}`);
   cleanup();
 }
@@ -204,6 +359,9 @@ function failure(reason, immediate = false, details = undefined) {
   if (stopping) return;
   errorCount++;
   consecutiveErrors++;
+  const diagnosticKey = `${details?.kind ?? "general"}:${details?.event ?? reason}:${details?.error?.code ?? "none"}`;
+  diagnosticFailureCounts[diagnosticKey] =
+    (diagnosticFailureCounts[diagnosticKey] ?? 0) + 1;
   if (errors.length < 20)
     errors.push({
       atMs: Math.round(performance.now() - start),
@@ -219,7 +377,7 @@ function failure(reason, immediate = false, details = undefined) {
     errorCount >= 3 ||
     (attempts >= 100 && errorCount / attempts > 0.01)
   )
-    abort(reason);
+    abort(reason, details);
 }
 function countBytes(length) {
   responseBytes += length;
@@ -265,7 +423,8 @@ async function readShared(path) {
   const at = performance.now();
   await new Promise((resolve) => {
     let settled = false,
-      bytes = 0;
+      bytes = 0,
+      trace;
     const chunks = [];
     const done = () => {
       if (!settled) {
@@ -286,6 +445,7 @@ async function readShared(path) {
         },
       },
       (response) => {
+        trace.headers(response);
         const status = response.statusCode ?? 0;
         statusCounts[`${path}:${status}`] =
           (statusCounts[`${path}:${status}`] ?? 0) + 1;
@@ -293,6 +453,7 @@ async function readShared(path) {
           failure(
             `REST ${path} returned ${status}; Retry-After=${response.headers["retry-after"] ?? "none"}`,
             true,
+            trace.details("http-rejection"),
           );
           response.resume();
           done();
@@ -304,6 +465,7 @@ async function readShared(path) {
           return;
         }
         response.on("data", (chunk) => {
+          trace.data(chunk.length);
           countBytes(chunk.length);
           bytes += chunk.length;
           if (bytes > 2 * 1024 * 1024) {
@@ -331,21 +493,36 @@ async function readShared(path) {
           }
           done();
         });
-        response.on("error", () => {
-          failure(`REST transport error: ${path}`, true);
+        response.on("error", (error) => {
+          diagnosticEvent("rest", "response-error", error);
+          failure(
+            `REST transport error: ${path}`,
+            true,
+            trace.details("response-error", error),
+          );
           done();
         });
         response.on("close", done);
       },
     );
+    trace = connectionTrace(request, "rest", at, { kind: "rest", path });
     requests.add(request);
     const timeout = setTimeout(() => {
-      failure(`REST timed out: ${path}`, true);
+      failure(
+        `REST timed out: ${path}`,
+        true,
+        trace.details("request-timeout"),
+      );
       request.destroy();
       done();
     }, PLAN.restRequestTimeoutMs);
-    request.on("error", () => {
-      failure(`REST request error: ${path}`, true);
+    request.on("error", (error) => {
+      diagnosticEvent("rest", "request-error", error);
+      failure(
+        `REST request error: ${path}`,
+        true,
+        trace.details("request-error", error),
+      );
       done();
     });
     request.on("close", done);
@@ -369,12 +546,15 @@ function connect() {
   const at = performance.now();
   return new Promise((resolve) => {
     const client = {
+      connectionId: attempts,
+      topics: topicKey,
       ready: false,
       ended: false,
       lastId: null,
       lastType: null,
       lastByteAt: performance.now(),
       buffer: "",
+      trace: null,
     };
     clients.add(client);
     let settled = false;
@@ -386,13 +566,21 @@ function connect() {
         resolve();
       }
     };
-    const ended = () => {
+    const details = (event, error) => ({
+      ...client.trace.details(event, error),
+      lastEventId: client.lastId === null ? null : String(client.lastId),
+      lastEventType: client.lastType,
+      bufferedCharacters: client.buffer.length,
+    });
+    const ended = (event, error) => {
+      diagnosticEvent("sse", event, error);
       if (client.ended) return;
       client.ended = true;
       clients.delete(client);
       requests.delete(request);
       if (client.ready) active--;
-      if (!stopping) failure("Unexpected SSE disconnect");
+      if (!stopping)
+        failure("Unexpected SSE disconnect", false, details(event, error));
       done();
     };
     const request = https.get(
@@ -406,6 +594,7 @@ function connect() {
         },
       },
       (response) => {
+        client.trace.headers(response);
         const status = response.statusCode ?? 0;
         statusCounts[`SSE:${status}`] =
           (statusCounts[`SSE:${status}`] ?? 0) + 1;
@@ -418,6 +607,7 @@ function connect() {
           failure(
             `SSE rejected: ${status}; Retry-After=${response.headers["retry-after"] ?? "none"}`,
             true,
+            details("http-rejection"),
           );
           response.resume();
           done();
@@ -432,6 +622,7 @@ function connect() {
         response.on("data", (chunk) => {
           if (stopping) return;
           const byteLength = Buffer.byteLength(chunk);
+          client.trace.data(byteLength);
           countBytes(byteLength);
           stats.bytes += byteLength;
           client.lastByteAt = performance.now();
@@ -539,6 +730,7 @@ function connect() {
                 return;
               }
               client.ready = true;
+              client.trace.ready();
               stats.ready++;
               active++;
               ready++;
@@ -549,19 +741,24 @@ function connect() {
             }
           }
         });
-        response.on("error", ended);
-        response.on("end", ended);
-        response.on("close", ended);
+        response.on("error", (error) => ended("response-error", error));
+        response.on("end", () => ended("response-end"));
+        response.on("close", () => ended("response-close"));
       },
     );
+    client.trace = connectionTrace(request, "sse", at, {
+      kind: "sse",
+      connectionId: client.connectionId,
+      topics: topicKey,
+    });
     requests.add(request);
     const timeout = setTimeout(() => {
-      failure("SSE bootstrap timed out", true);
+      failure("SSE bootstrap timed out", true, details("bootstrap-timeout"));
       request.destroy();
       done();
     }, PLAN.connectionBootstrapTimeoutMs);
-    request.on("error", ended);
-    request.on("close", ended);
+    request.on("error", (error) => ended("request-error", error));
+    request.on("close", () => ended("request-close"));
   });
 }
 async function ramp(target) {
@@ -594,7 +791,10 @@ process.on("SIGTERM", () => abort("Operator SIGTERM"));
 watchdog = setInterval(() => {
   const now = performance.now(),
     wall = Date.now();
-  generatorPeakRss = Math.max(generatorPeakRss, process.memoryUsage().rss);
+  const rss = process.memoryUsage().rss;
+  generatorPeakRss = Math.max(generatorPeakRss, rss);
+  if (rss >= PLAN.generatorRssCapBytes)
+    abort("Generator RSS reached the 2 GiB memory cap");
   const cpu = process.cpuUsage(sampleCpu);
   if (now > sampleAt)
     generatorPeakCpuCorePercent = Math.max(
@@ -612,7 +812,10 @@ watchdog = setInterval(() => {
   lastWall = wall;
   for (const client of clients)
     if (client.ready && now - client.lastByteAt > 25000) {
-      abort("SSE heartbeat/data stalled for 25 seconds");
+      abort(
+        "SSE heartbeat/data stalled for 25 seconds",
+        client.trace.details("inactivity-timeout"),
+      );
       break;
     }
 }, 500);
@@ -700,10 +903,35 @@ try {
     responseBytes,
     unintendedErrors: errorCount,
     abortReason,
+    abortConnections,
     stages,
     statusCounts,
     eventTypes,
     topicStats,
+    connectionDiagnostics: {
+      timingBasis:
+        "Elapsed milliseconds from each request start; reused REST sockets omit new DNS/TCP/TLS phases. Missing phases are unknown, not zero.",
+      errorsExcludeMessagesAndAddresses: true,
+      eventCounts: diagnosticEventCounts,
+      countedFailureClasses: diagnosticFailureCounts,
+      timingSummary: Object.fromEntries(
+        Object.entries(connectionTimings).map(([kind, phases]) => [
+          kind,
+          Object.fromEntries(
+            Object.entries(phases).map(([phase, samples]) => [
+              phase,
+              {
+                count: samples.length,
+                p50Ms: quantile(samples, 0.5),
+                p95Ms: quantile(samples, 0.95),
+                p99Ms: quantile(samples, 0.99),
+                maxMs: samples.reduce((max, value) => Math.max(max, value), 0),
+              },
+            ]),
+          ),
+        ]),
+      ),
+    },
     generator: {
       cpuCorePercent:
         (generatorCpu.user + generatorCpu.system) / generatorElapsed / 10,

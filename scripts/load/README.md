@@ -21,13 +21,13 @@ Run increasing stages only while the host is otherwise quiet. Repeated 10,000-co
 
 `production-smoke.mjs` and `edge-cache-validation.mjs` default to an offline plan with **zero network requests**. Both use only the fixed Paperdash API origin. Neither accepts arbitrary targets, sends source-provider requests, spoofs forwarding headers, or retries failed load. They require `--execute-approved` for an authorized, monitored release check.
 
-The stream smoke ramps at at most 20 new connections/second and stops on stream ordering errors, unhealthy/stale data, throttles, transport failures, generator suspension, deadlines or its body-byte budget. Its shared REST probes are deliberately low volume; this is a connection/transport test, not a representative thousands-of-reads-per-second workload. Request and plateau limits are printed before execution. Choose the traffic cap from measured body rates, the integral of the connection ramp and plateau duration; preserve a byte-budget abort as incomplete evidence, not a server-capacity failure.
+The stream smoke ramps at at most 20 new connections/second and stops on stream ordering errors, unhealthy/stale data, throttles, transport failures, generator suspension, a 2 GiB generator RSS cap, deadlines or its body-byte budget. Its shared REST probes are deliberately low volume; this is a connection/transport test, not a representative thousands-of-reads-per-second workload. The `mixed` profile subscribes 40% to global trades, 15% to each asset, 10% to liquidations and 20% to overview only, with overview metrics included in every stream. It does not issue independent wallet-profile requests for that final cohort. Request and plateau limits are printed before execution. Choose the traffic cap from measured body rates, the integral of the connection ramp and plateau duration; preserve a byte-budget abort as incomplete evidence, not a server-capacity failure.
 
 The edge validator checks allowed/absent/denied origins, content encodings, ETags, expiry and no-store exclusions. Optional wallet checks use retained history and metrics only. It is bounded to 65 requests, 60 seconds and 16 MiB, and includes one three-second SSE connection. A public cached object may be served to an Authorization/Cookie request without reaching origin; the report records that behavior and never equates an origin response-header guard with guaranteed edge bypass.
 
 ```sh
 # Offline plans; inspect these before an authorized production run.
-node scripts/load/production-smoke.mjs --max-mib=512
+node scripts/load/production-smoke.mjs --profile=mixed --max-mib=512
 node scripts/load/edge-cache-validation.mjs
 ```
 
