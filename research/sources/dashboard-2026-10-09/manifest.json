@@ -1,0 +1,46 @@
+{
+  "captured_at": "2026-10-09T21:15:56.437447-07:00",
+  "scope": "Public source assets for dashboard planning; no user credentials or private account data",
+  "files": {
+    "deployment-C3VOxZVa.js": {
+      "sha256": "24461168587ffc9d58bd53b6befce362d1a4e0e5eefe384db1b57b27cbc8b74f",
+      "bytes": 18467
+    },
+    "index-CvChIo_I.js": {
+      "sha256": "ad07b441f42b57533976a2c83b5e0a7e2d8076514a27ad761091967e30f88d98",
+      "bytes": 632895
+    },
+    "hooks-C8jAqgfJ.js": {
+      "sha256": "55df97eea058177d217631f774bda80f01d8b230ee84ba00b1ecf48faf54389f",
+      "bytes": 13394
+    },
+    "current-docs.json": {
+      "sha256": "a569c72f75cbd45c34fc0e85606c7257c01ac2bddb0b99361131ed34ab22fddb",
+      "bytes": 67183
+    },
+    "render.yaml.json": {
+      "sha256": "8a3fb8da6b4f55fe686fbefa790e011d3dd7895f013f355953c572a21ab6494a",
+      "bytes": 45751
+    }
+  },
+  "urls": {
+    "deployment-C3VOxZVa.js": "https://exchange.papertrade.xyz/assets/deployment-C3VOxZVa.js",
+    "index-CvChIo_I.js": "https://exchange.papertrade.xyz/assets/index-CvChIo_I.js",
+    "hooks-C8jAqgfJ.js": "https://exchange.papertrade.xyz/assets/hooks-C8jAqgfJ.js",
+    "current-docs.json": "https://docs.papertrade.xyz/assets/index-C6MKhj9z.js",
+    "render.yaml.json": "https://render.com/schema/render.yaml.json"
+  },
+  "probe_summary": {
+    "unauth_protocol_summary": 200,
+    "unauth_account_directory": 200,
+    "reported_accounts": 5902,
+    "reported_tvl_internal_raw": "66315849249545080000000000",
+    "unauth_sample_cashflows": 200,
+    "sample_credited_deposits_usdc": "10779",
+    "sample_wallet_sse_event_received": true,
+    "sample_portfolio_complete": false,
+    "public_trades_websocket_subscribed": true,
+    "actual_trade_publication_observed": false,
+    "exchange_code_bytes": 925
+  }
+}

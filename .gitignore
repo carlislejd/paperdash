@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+node_modules/
+dist/
+apps/web/dist/
+.data/
+playwright-report/
+test-results/
+.DS_Store
