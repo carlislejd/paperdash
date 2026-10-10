@@ -28,6 +28,11 @@ import { retainHouseSource, refreshHouse } from "./house.js";
 import { refreshLiquidations } from "./liquidations.js";
 import { readLiveTvl } from "../../../packages/shared/src/live-tvl.js";
 import { TradeIntake, type IntakeState } from "./trade-intake.js";
+import {
+  retainProtocolChartHistory,
+  retainProtocolChartSummary,
+  refreshProtocolCharts,
+} from "./protocol-charts.js";
 
 export interface StreamDiagnostics {
   at: number;
@@ -106,6 +111,7 @@ export async function retainProtocolHistory(
   await store.history.retainProtocol(points);
   await store.put("protocol-history", { points, source: history.source });
   await store.put("protocol-history-raw", history);
+  await retainProtocolChartHistory(store, history);
 }
 export async function readOverviewSnapshot(
   store: Store,
@@ -267,6 +273,9 @@ export class Collector {
       await retainHouseSource(this.store, source);
     });
     this.loop("house", 5000, () => refreshHouse(this.store));
+    this.loop("protocol-charts", 10000, () =>
+      refreshProtocolCharts(this.store),
+    );
     this.loop("liquidations-backfill", 10000, async () => {
       await this.store.liquidations.backfill(100);
     });
@@ -292,6 +301,7 @@ export class Collector {
           "Upstream protocol summary moved backward; retaining the newer observation.",
         );
       await this.store.put("summary", summary);
+      await retainProtocolChartSummary(this.store, summary);
       await this.store.sample(
         Math.floor(summary.source.at / 60000) * 60000,
         Number(BigInt(summary.balances.tvl)) / 1e18,

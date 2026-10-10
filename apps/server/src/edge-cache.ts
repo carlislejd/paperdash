@@ -6,6 +6,7 @@ const snapshots = new Set([
   "/api/assets/0/market",
   "/api/assets/1/market",
   "/api/house",
+  "/api/protocol/charts",
   "/api/position-metrics",
   "/api/liquidations/stats",
 ]);

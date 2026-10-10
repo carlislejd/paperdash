@@ -865,7 +865,7 @@ export function WalletDrawer({
                     </dd>
                     <span>
                       {snapshot
-                        ? `${paperAmount(snapshot.paper.staked)} staked separately`
+                        ? "Staked PAPER shown below"
                         : "No snapshot available"}
                     </span>
                   </div>
@@ -883,6 +883,49 @@ export function WalletDrawer({
                       : "Positions unavailable"}
                   </span>
                 </div>
+                <section className="wd-staking" aria-label="PAPER staking">
+                  <div className="wd-section-heading">
+                    <h3>PAPER staking</h3>
+                    <span className="wd-tiny-note">
+                      {!snapshot
+                        ? "UNAVAILABLE"
+                        : wallet.stale
+                          ? "LAST AVAILABLE"
+                          : "WALLET SNAPSHOT"}
+                    </span>
+                  </div>
+                  <dl className="wd-staking-metrics">
+                    <div>
+                      <dt>Amount staked</dt>
+                      <dd
+                        title={`${exactAmount(snapshot?.paper.staked)} PAPER`}
+                      >
+                        {paperAmount(snapshot?.paper.staked)}
+                      </dd>
+                      <span>PAPER</span>
+                    </div>
+                    <div>
+                      <dt>Pending rewards</dt>
+                      <dd aria-label="Pending rewards unavailable">—</dd>
+                      <span>USDC · unavailable</span>
+                    </div>
+                    <div>
+                      <dt>Claimed rewards</dt>
+                      <dd
+                        title={`${exactAmount(snapshot?.lifetime.paperRewardsClaimedRaw)} USDC`}
+                      >
+                        {formatRawUsd(
+                          snapshot?.lifetime.paperRewardsClaimedRaw,
+                        )}
+                      </dd>
+                      <span>USDC · lifetime</span>
+                    </div>
+                  </dl>
+                  <p className="wd-staking-note">
+                    Rewards are paid in USDC. Pending rewards aren't available
+                    in this view yet.
+                  </p>
+                </section>
                 <PositionMetrics key={wallet.address} wallet={wallet} />
                 <PortfolioChart history={wallet.portfolio} />
                 <section className="wd-activity" aria-label="Wallet activity">

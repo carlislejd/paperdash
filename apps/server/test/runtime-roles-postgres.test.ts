@@ -215,6 +215,43 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
         1,
       );
       await worker.store.history.retainProtocol([{ time: at, value: 5 }]);
+      const chartHour = Math.floor(at / 3600000) * 3600000;
+      const chartRow = {
+        time: chartHour,
+        endpointAt: chartHour + 1000,
+        sourceAt: chartHour + 1000,
+        generation: "roles",
+        complete: false,
+        values: { openPositions: 7 },
+      };
+      await worker.store.history.retainProtocolCharts("summary", [chartRow]);
+      await worker.store.history.retainProtocolCharts("summary", [
+        {
+          ...chartRow,
+          endpointAt: chartHour + 2000,
+          sourceAt: chartHour + 2000,
+          values: { openPositions: 42 },
+        },
+      ]);
+      await worker.store.history.retainProtocolCharts("summary", [
+        {
+          ...chartRow,
+          endpointAt: chartHour + 1500,
+          sourceAt: chartHour + 1500,
+          values: { openPositions: 8 },
+        },
+      ]);
+      expect(await api.store.history.protocolChartRows("summary")).toEqual([
+        {
+          ...chartRow,
+          endpointAt: chartHour + 2000,
+          sourceAt: chartHour + 2000,
+          values: { openPositions: 42 },
+        },
+      ]);
+      await expect(
+        api.store.history.retainProtocolCharts("summary", [chartRow]),
+      ).rejects.toMatchObject({ code: "42501" });
       await worker.store.sample(at, 5);
       await worker.store.sample(at, 6);
 

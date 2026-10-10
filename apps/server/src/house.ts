@@ -5,6 +5,7 @@ import type {
 import type { Store } from "./store.js";
 import { houseSchema } from "./assets.js";
 import type { HousePoint, HouseSample, HouseStore } from "./house-store.js";
+import { annualizedStakingRevenue } from "./protocol-charts.js";
 export type { HouseResponse } from "../../../packages/shared/src/types.js";
 type HouseContext = Pick<Store, "get" | "put"> & { house: HouseStore };
 interface SavedHouse extends HouseResponse {
@@ -99,6 +100,7 @@ function empty(): HouseResponse {
     sourceBlock: null,
     summarySourceAt: null,
     history: [],
+    annualizedStakingRevenue: annualizedStakingRevenue(null),
     coverage: {
       source: "retained-house-observations",
       approximate: true,
@@ -130,6 +132,10 @@ export async function refreshHouse(
     sourceBlock: summary?.value.source.block ?? null,
     summarySourceAt: summary?.value.source.at ?? null,
     summaryReceivedAt: summary?.receivedAt ?? null,
+    annualizedStakingRevenue: annualizedStakingRevenue(
+      summary?.value ?? null,
+      now,
+    ),
     history: thinHouseHistory(retained.history),
     coverage: {
       source: "retained-house-observations",

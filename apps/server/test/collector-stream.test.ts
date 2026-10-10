@@ -118,7 +118,7 @@ function source(path: string): unknown {
     };
   if (path === "/query/protocol/history?interval=1m")
     return {
-      startMs: Date.now() - 60000,
+      startMs: Math.floor(Date.now() / 60000) * 60000 - 60000,
       intervalMs: 60000,
       source: { asOfMs: Date.now(), revision: "1", generation: "fixture" },
       columns: { tvl: [0] },

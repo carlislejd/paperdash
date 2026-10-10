@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   HistoryPage,
   PortfolioHistory,
+  ProtocolChartMetric,
 } from "../../../packages/shared/src/types.js";
 import { addressSchema, digest } from "./schemas.js";
 import { enqueuePositionMetrics } from "./position-metrics-store.js";
@@ -134,6 +135,23 @@ export interface HistoryStore {
     at?: number,
   ): Promise<void>;
   protocolPoints(limit?: number): Promise<{ time: number; value: number }[]>;
+  retainProtocolCharts(
+    source: "summary" | "history",
+    rows: ProtocolChartObservation[],
+  ): Promise<void>;
+  protocolChartRows(
+    source: "summary" | "history",
+    limit?: number,
+  ): Promise<ProtocolChartObservation[]>;
+}
+export interface ProtocolChartObservation {
+  time: number;
+  endpointAt: number;
+  sourceAt: number;
+  generation: string;
+  complete: boolean;
+  values: Partial<Record<ProtocolChartMetric, number | null>>;
+  volumeRaw?: string;
 }
 
 export function historySchemaSql(prefix: string, postgres: boolean): string {
@@ -414,12 +432,10 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
             correctionId: row.correctionId,
           };
         } catch (error) {
-          if (
-            !(
-              error instanceof Error &&
-              error.message === "History job lease changed"
-            )
-          )
+          if (!(
+            error instanceof Error &&
+            error.message === "History job lease changed"
+          ))
             throw error;
         }
       }
@@ -873,8 +889,8 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
             availableToMs: points.at(-1)?.time ?? null,
             complete: Boolean(
               state.portfolio?.sourceComplete &&
-                !state.portfolio?.gap &&
-                Number(count) <= 10000,
+              !state.portfolio?.gap &&
+              Number(count) <= 10000,
             ),
           },
         },
@@ -949,6 +965,49 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
           time: Number(r.time),
           value: parsed<{ value: number }>(r.payload).value,
         }));
+    },
+    async retainProtocolCharts(source, rows) {
+      if (!["summary", "history"].includes(source) || rows.length > 170)
+        throw new Error("Invalid protocol chart batch");
+      for (const row of rows)
+        if (
+          !Number.isSafeInteger(row.time) ||
+          row.time < 0 ||
+          row.time % 3600000 ||
+          !Number.isSafeInteger(row.sourceAt) ||
+          row.sourceAt < row.time ||
+          !Number.isSafeInteger(row.endpointAt) ||
+          row.endpointAt < row.time ||
+          row.endpointAt > row.sourceAt ||
+          row.endpointAt >= row.time + 3600000 ||
+          typeof row.generation !== "string" ||
+          row.generation.length > 256 ||
+          Object.values(row.values).some(
+            (v) => v !== null && (!Number.isFinite(v) || v < 0),
+          )
+        )
+          throw new Error("Invalid protocol chart observation");
+      if (rows.length)
+        await db.batch(
+          rows.map((row) =>
+            point(`protocol:chart:${source}`, row.time, row, row.sourceAt),
+          ),
+        );
+    },
+    async protocolChartRows(source, limit = 170) {
+      if (!["summary", "history"].includes(source))
+        throw new Error("Invalid protocol chart source");
+      return (
+        await db.rows<{ payload: unknown }>(
+          `SELECT payload FROM ${t("points")} WHERE scope=? ORDER BY time DESC LIMIT ?`,
+          [
+            `protocol:chart:${source}`,
+            Math.max(1, Math.min(170, Math.floor(limit))),
+          ],
+        )
+      )
+        .reverse()
+        .map((row) => parsed<ProtocolChartObservation>(row.payload));
     },
   };
   return api;

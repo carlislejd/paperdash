@@ -23,6 +23,179 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
+
+/* The overview is a compact set of charts and live rankings. */
+.overview-page .overview-board {
+  padding: 22px 0 14px;
+}
+.overview-page .overview-board .metric {
+  gap: 5px;
+}
+.overview-page .overview-board .metric-primary strong {
+  font-size: clamp(34px, 3.6vw, 50px);
+}
+.overview-page .board-status {
+  margin-top: 12px;
+}
+.overview-chart-section {
+  margin: 18px 0;
+}
+.overview-chart-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.overview-chart-toolbar > p {
+  font-size: 10px;
+  color: var(--muted);
+}
+.overview-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.overview-activity-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.overview-page .section-heading h2 {
+  font-size: 22px;
+  margin-top: 0;
+}
+.overview-activity-grid .activity-panel {
+  padding-left: 22px;
+}
+.overview-page .position-metrics-global {
+  padding: 12px 0;
+}
+.open-pnl-panel {
+  min-width: 0;
+}
+.open-pnl-panel .section-heading {
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.open-pnl-caption {
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 5px;
+}
+.open-pnl-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.open-pnl-list li + li {
+  border-top: 1px solid var(--line);
+}
+.open-pnl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 0;
+  text-align: left;
+}
+.open-pnl-row:hover {
+  background: var(--panel);
+}
+.open-pnl-row .avatar {
+  width: 28px;
+  height: 28px;
+}
+.open-pnl-rank {
+  width: 20px;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.open-pnl-wallet {
+  min-width: 0;
+  flex: 1;
+}
+.open-pnl-wallet strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 550;
+}
+.open-pnl-wallet small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 2px;
+}
+.open-pnl-value {
+  width: 32%;
+  position: relative;
+  min-width: 90px;
+  padding: 8px 6px;
+  text-align: right;
+}
+.open-pnl-value strong {
+  position: relative;
+  font-size: 13px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.open-pnl-bar {
+  position: absolute;
+  inset: 0 0 0 auto;
+  background: #dce4cb;
+  opacity: 0.55;
+}
+.open-pnl-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.open-pnl-footer button {
+  white-space: nowrap;
+}
+.open-pnl-empty {
+  padding: 40px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+@media (max-width: 850px) {
+  .overview-chart-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .overview-activity-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .overview-activity-grid .activity-panel {
+    padding: 18px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 650px) {
+  .overview-page .overview-board .metrics-row {
+    row-gap: 12px;
+  }
+  .overview-page .overview-board .metric:nth-child(n + 3) {
+    padding-top: 10px;
+  }
+  .overview-page .overview-board .metric-primary strong {
+    font-size: clamp(32px, 8vw, 44px);
+  }
+  .overview-chart-toolbar {
+    align-items: flex-start;
+  }
+}
 * {
   box-sizing: border-box;
 }
@@ -315,13 +488,6 @@ button svg {
   color: #8a7650;
   margin-top: 16px;
 }
-.story-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
-  gap: 36px;
-  border-bottom: 1px solid var(--line);
-  padding: 34px 0 26px;
-}
 .section-heading {
   display: flex;
   justify-content: space-between;
@@ -342,11 +508,6 @@ button svg {
   letter-spacing: 1px;
   color: #8c917e;
 }
-.chart-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 .caption {
   font-size: 8px;
   letter-spacing: 0.9px;
@@ -354,11 +515,6 @@ button svg {
   gap: 7px;
   align-items: center;
   color: #929784;
-}
-.legend-line {
-  width: 12px;
-  height: 2px;
-  background: #668354;
 }
 .range-control {
   display: flex;
@@ -374,81 +530,11 @@ button svg {
   background: #e5e8db;
   color: #49573d;
 }
-.chart-surface {
-  height: 191px;
-  margin-top: 10px;
-  position: relative;
-}
-.chart-surface > svg {
-  width: 100%;
-  height: 154px;
-  margin-top: 19px;
-}
-.chart-value {
-  position: absolute;
-  left: 0;
-  top: 0;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: #59664e;
-}
-.chart-value small {
-  font-size: 9px;
-  color: var(--muted);
-  margin-left: 6px;
-}
-.chart-axis {
-  display: flex;
-  justify-content: space-between;
-  font-size: 8px;
-  color: #989d8a;
-  gap: 6px;
-}
-.chart-empty {
-  height: 170px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 43px,
-    #e0e1d5 44px,
-    transparent 45px
-  );
-  color: #868c79;
-}
-.chart-empty p {
-  font-family: var(--font);
-  font-size: 20px;
-  margin-top: 9px;
-  color: #68725d;
-}
-.chart-empty > span:last-child {
-  font-size: 10px;
-  margin-top: 5px;
-}
 .ink-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: #8d9d7a;
-}
-.history-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border-top: 1px solid var(--line);
-  padding-top: 13px;
-  font-size: 9px;
-  color: #8b907e;
-}
-.history-footer > span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 .outline-diamond {
   width: 6px;
@@ -980,7 +1066,6 @@ button svg {
 }
 .page-shell,
 .header-inner,
-.history-panel,
 .activity-panel,
 .community-section {
   min-width: 0;
@@ -1007,15 +1092,9 @@ button svg {
 }
 .caption,
 .tiny-caption,
-.chart-axis,
 .panel-footnote {
   font-size: 10px;
 }
-.chart-value {
-  font-size: 12px;
-}
-.chart-value small,
-.history-footer,
 .text-button,
 .pause-button,
 .feed-filters button,
@@ -1061,8 +1140,6 @@ button svg {
   min-width: 0;
   max-width: 100%;
 }
-@media (min-width: 1500px) {
-}
 @media (max-width: 1100px) {
   .header-inner {
     gap: 25px;
@@ -1089,10 +1166,6 @@ button svg {
   }
   .metric-primary strong {
     font-size: 43px;
-  }
-  .story-grid {
-    gap: 24px;
-    grid-template-columns: minmax(0, 1.45fr) minmax(290px, 1fr);
   }
   .activity-panel {
     padding-left: 24px;
@@ -1157,10 +1230,6 @@ button svg {
   .metrics-row {
     grid-template-columns: 1.2fr 1fr 1fr 0.85fr;
   }
-  .story-grid {
-    grid-template-columns: minmax(0, 1.2fr) minmax(250px, 1fr);
-    gap: 20px;
-  }
   .activity-panel {
     padding-left: 20px;
   }
@@ -1173,12 +1242,6 @@ button svg {
   }
   .caption {
     font-size: 7px;
-  }
-  .history-footer > span {
-    display: none;
-  }
-  .history-footer {
-    justify-content: flex-end;
   }
   .community-heading h2 {
     font-size: 27px;
@@ -1270,31 +1333,11 @@ button svg {
     border-left: 0;
     padding-left: 19px;
   }
-  .story-grid {
-    grid-template-columns: 1fr;
-    padding: 27px 0 23px;
-    gap: 26px;
-  }
   .section-heading h2 {
     font-size: 25px;
   }
-  .history-panel {
-    padding-bottom: 0;
-  }
-  .chart-surface {
-    height: 187px;
-  }
   .caption {
     font-size: 8px;
-  }
-  .chart-axis {
-    font-size: 8px;
-  }
-  .history-footer > span {
-    display: flex;
-  }
-  .history-footer {
-    justify-content: space-between;
   }
   .activity-panel {
     border-left: 0;
@@ -1423,9 +1466,6 @@ button svg {
   .header-search {
     width: 175px;
   }
-  .chart-axis {
-    font-size: 9px;
-  }
   .wallet-table th {
     font-size: 9px;
   }
@@ -1465,8 +1505,7 @@ button svg {
     font-size: 11px;
   }
   .caption,
-  .panel-footnote,
-  .chart-axis {
+  .panel-footnote {
     font-size: 9px;
   }
   .wallet-table {
@@ -1482,9 +1521,6 @@ button svg {
   }
   .community-heading h2 {
     margin-top: 0;
-  }
-  .history-footer {
-    font-size: 10px;
   }
   .activity-empty h3 {
     font-size: 16px;

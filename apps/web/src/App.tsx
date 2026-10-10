@@ -1,9 +1,7 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   Account,
   AccountsResponse,
-  ChartPoint,
-  Overview,
   TradeEvent,
 } from "../../../packages/shared/src/types";
 import { fetchJson } from "./lib/api";
@@ -19,7 +17,8 @@ import { DataInfoDialog } from "./components/DataInfoDialog";
 import { Avatar } from "./components/Avatar";
 import { AssetsView } from "./components/AssetsView";
 import { LeaderboardView } from "./components/LeaderboardView";
-import { HouseStats } from "./components/HouseStats";
+import { OverviewCharts } from "./components/OverviewCharts";
+import { OpenPnlLeaders } from "./components/OpenPnlLeaders";
 import {
   LiquidationSummary,
   LiquidationsView,
@@ -136,182 +135,6 @@ function readFollowing(): Account[] {
     return [];
   }
 }
-
-const TvlChart = memo(function TvlChart({
-  points,
-  coverage,
-}: {
-  points: ChartPoint[];
-  coverage: Overview["historyCoverage"];
-}) {
-  const [range, setRange] = useState("All");
-  const [hover, setHover] = useState<number | null>(null);
-  const clean = useMemo(
-    () =>
-      points
-        .filter((p) => Number.isFinite(p.value) && Number.isFinite(p.time))
-        .sort((a, b) => a.time - b.time),
-    [points],
-  );
-  const filtered = useMemo(() => {
-    if (range === "All" || !clean.length) return clean;
-    const cutoff = Date.now() - (range === "24h" ? 86_400_000 : 604_800_000);
-    return clean.filter((p) => p.time >= cutoff);
-  }, [clean, range]);
-  const width = 800,
-    height = 170,
-    pad = 8;
-  const values = filtered.map((x) => x.value);
-  const lo = values.length ? Math.min(...values) : 0;
-  const hi = values.length ? Math.max(...values) : 1;
-  const spread = Math.max(hi - lo, hi * 0.01, 1);
-  const first = filtered[0]?.time ?? 0,
-    last = filtered.at(-1)?.time ?? 1;
-  const x = (p: ChartPoint, i: number) =>
-    first === last
-      ? width / 2
-      : pad + ((p.time - first) / (last - first)) * (width - pad * 2);
-  const y = (p: ChartPoint) =>
-    height -
-    20 -
-    ((p.value - lo + spread * 0.15) / (spread * 1.3)) * (height - 35);
-  const d = filtered
-    .map((p, i) => `${i ? "L" : "M"}${x(p, i).toFixed(1)},${y(p).toFixed(1)}`)
-    .join(" ");
-  const activeIndex =
-    hover == null ? filtered.length - 1 : Math.min(hover, filtered.length - 1);
-  const active = filtered[activeIndex];
-  return (
-    <section className="tvl-chart" aria-label="Protocol TVL history">
-      <div className="chart-toolbar">
-        <span className="caption">
-          <span className="legend-line" />
-          PROTOCOL-REPORTED TVL
-        </span>
-        <div className="range-control" aria-label="Chart range">
-          {["24h", "7d", "All"].map((r) => (
-            <button
-              key={r}
-              aria-pressed={range === r}
-              onClick={() => {
-                setRange(r);
-                setHover(null);
-              }}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="chart-surface" onMouseLeave={() => setHover(null)}>
-        {filtered.length > 0 ? (
-          <>
-            <span className="chart-value">
-              {formatUsd(active?.value, true)}{" "}
-              <small>
-                {active
-                  ? new Date(active.time).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  : ""}
-              </small>
-            </span>
-            <svg
-              role="img"
-              aria-label={`TVL history with ${filtered.length} observations. Latest ${formatUsd(filtered.at(-1)?.value)}.`}
-              viewBox={`0 0 ${width} ${height}`}
-              preserveAspectRatio="none"
-              onMouseMove={(event) => {
-                const box = event.currentTarget.getBoundingClientRect();
-                const fraction = Math.max(
-                  0,
-                  Math.min(1, (event.clientX - box.left) / box.width),
-                );
-                const target = first + fraction * (last - first);
-                let best = 0;
-                filtered.forEach((p, i) => {
-                  if (
-                    Math.abs(p.time - target) <
-                    Math.abs(filtered[best].time - target)
-                  )
-                    best = i;
-                });
-                setHover(best);
-              }}
-            >
-              <defs>
-                <linearGradient id="tvl-area" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#99ac80" stopOpacity=".25" />
-                  <stop offset="100%" stopColor="#99ac80" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              {[40, 90, 140].map((v) => (
-                <line
-                  key={v}
-                  x1="0"
-                  x2={width}
-                  y1={v}
-                  y2={v}
-                  stroke="currentColor"
-                  opacity=".1"
-                  strokeDasharray="2 6"
-                />
-              ))}
-              {filtered.length > 1 && (
-                <path
-                  d={`${d}L${x(filtered.at(-1)!, filtered.length - 1)},${height}L${x(filtered[0], 0)},${height}Z`}
-                  fill="url(#tvl-area)"
-                />
-              )}
-              <path
-                d={d}
-                fill="none"
-                stroke="#526947"
-                strokeWidth="2.4"
-                vectorEffect="non-scaling-stroke"
-              />
-              {active && (
-                <circle
-                  cx={x(active, activeIndex)}
-                  cy={y(active)}
-                  r="4"
-                  fill="#526947"
-                  stroke="var(--paper)"
-                  strokeWidth="2"
-                />
-              )}
-            </svg>
-            <div className="chart-axis">
-              <span>
-                {new Date(first).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
-              <span>
-                {coverage === "observed"
-                  ? "Recorded since this collector started"
-                  : "Available source history"}
-              </span>
-              <span>
-                {new Date(last).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
-            </div>
-          </>
-        ) : (
-          <div className="chart-empty">
-            <span className="ink-dot" />
-            <p>No TVL history available</p>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-});
 
 function TradeFeed({
   trades,
@@ -448,7 +271,7 @@ function App() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState("currentBalance");
   const [page, setPage] = useState(0);
-  const walletPageSize = section === "overview" ? 10 : 25;
+  const walletPageSize = 25;
   const accountsKey = JSON.stringify([
     debouncedQuery,
     sort,
@@ -488,6 +311,7 @@ function App() {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
+    if (section !== "wallets") return;
     const controller = new AbortController();
     let pending = false;
     const params = new URLSearchParams({
@@ -497,12 +321,7 @@ function App() {
       pageSize: String(walletPageSize),
     });
     const refresh = async (foreground = false) => {
-      if (
-        pending ||
-        document.hidden ||
-        (section !== "overview" && section !== "wallets")
-      )
-        return;
+      if (pending || document.hidden || section !== "wallets") return;
       pending = true;
       if (foreground) {
         setLoadingAccounts(true);
@@ -676,7 +495,10 @@ function App() {
           </button>
         </div>
       </header>
-      <main id="main" className="page-shell">
+      <main
+        id="main"
+        className={`page-shell ${section === "overview" ? "overview-page" : ""}`}
+      >
         <h1 className="sr-only">Papertrade analytics</h1>
         {(section === "overview" ||
           section === "wallets" ||
@@ -744,26 +566,14 @@ function App() {
           </section>
         )}
 
-        {section === "overview" && <HouseStats />}
+        {section === "overview" && <OverviewCharts />}
         {section === "overview" && <PositionMetrics />}
         {section === "overview" && (
-          <div className="story-grid">
-            <div className="history-panel">
-              <div className="section-heading">
-                <h2>TVL history</h2>
-                <span className="tiny-caption">USDC</span>
-              </div>
-              <TvlChart
-                points={data?.history ?? []}
-                coverage={data?.historyCoverage ?? "unavailable"}
-              />
-              <div className="history-footer">
-                <span>Protocol-reported USDC</span>
-                <button className="text-button" onClick={() => setInfo(true)}>
-                  Data source <Icon name="northeast" size={13} />
-                </button>
-              </div>
-            </div>
+          <div className="overview-activity-grid">
+            <OpenPnlLeaders
+              onWallet={openWallet}
+              onBrowse={() => navigate("wallets")}
+            />
             <TradeFeed
               trades={data?.trades ?? []}
               onWallet={openWallet}
@@ -788,9 +598,7 @@ function App() {
           />
         )}
 
-        {(section === "overview" ||
-          section === "wallets" ||
-          section === "following") && (
+        {(section === "wallets" || section === "following") && (
           <section className="community-section" id="wallets">
             <div className="community-heading">
               <div>
@@ -1020,29 +828,30 @@ function App() {
                     </tbody>
                   </table>
                 </div>
-                {!loadingAccounts && !displayAccounts.length && (
-                  <div className="table-empty">
-                    <PaperMark size={30} />
-                    <h3>
-                      {section === "following"
-                        ? "No followed wallets"
-                        : "No wallets found"}
-                    </h3>
-                    <p>
-                      {section === "following"
-                        ? "Tap the star beside a wallet to keep it here."
-                        : "Try a full wallet address or a different public name."}
-                    </p>
-                    {section === "following" && (
-                      <button
-                        className="outline-button"
-                        onClick={() => navigate("wallets")}
-                      >
-                        Browse wallets <Icon name="arrow" size={15} />
-                      </button>
-                    )}
-                  </div>
-                )}
+                {(section === "following" || !loadingAccounts) &&
+                  !displayAccounts.length && (
+                    <div className="table-empty">
+                      <PaperMark size={30} />
+                      <h3>
+                        {section === "following"
+                          ? "No followed wallets"
+                          : "No wallets found"}
+                      </h3>
+                      <p>
+                        {section === "following"
+                          ? "Tap the star beside a wallet to keep it here."
+                          : "Try a full wallet address or a different public name."}
+                      </p>
+                      {section === "following" && (
+                        <button
+                          className="outline-button"
+                          onClick={() => navigate("wallets")}
+                        >
+                          Browse wallets <Icon name="arrow" size={15} />
+                        </button>
+                      )}
+                    </div>
+                  )}
               </>
             )}
             <div className="table-footer">

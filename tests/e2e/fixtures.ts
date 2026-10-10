@@ -8,6 +8,7 @@ import type {
   Cashflow,
   LeaderboardResponse,
   Overview,
+  ProtocolChartsResponse,
   WalletResponse,
 } from "../../packages/shared/src/types";
 
@@ -298,6 +299,64 @@ export function positionMetricsResponse(
   };
 }
 
+export function protocolChartsResponse(): ProtocolChartsResponse {
+  const at = Date.now(),
+    hour = 3600000,
+    base = Math.floor(at / hour) * hour;
+  const keys = [
+    "tvl",
+    "openPositions",
+    "volume",
+    "paperSupply",
+    "paperStaked",
+    "stakingRewards",
+  ] as const;
+  const series = Object.fromEntries(
+    keys.map((key) => [
+      key,
+      {
+        unit:
+          key === "openPositions"
+            ? "positions"
+            : key.startsWith("paper")
+              ? "PAPER"
+              : "USD",
+        aggregation:
+          key === "volume"
+            ? "hourly-change"
+            : key === "stakingRewards"
+              ? "cumulative"
+              : "snapshot",
+        points: Array.from({ length: 24 }, (_, i) => ({
+          time: base - (23 - i) * hour,
+          value:
+            i === 7
+              ? null
+              : key === "openPositions"
+                ? 1200 + i * 35
+                : key === "volume"
+                  ? (i + 1) * 1_000_000_000
+                  : 60_000_000 + i * 1_000_000,
+          ...(i === 8 ? { gapBefore: true } : {}),
+          ...(i === 23 ? { partial: true } : {}),
+        })),
+        source:
+          key === "openPositions"
+            ? "retained-summary-observations"
+            : "protocol-history-and-retained-summary",
+        coverage: { observedFrom: base - 23 * hour, partial: true },
+      },
+    ]),
+  ) as ProtocolChartsResponse["series"];
+  return {
+    receivedAt: at,
+    sourceAt: at,
+    stale: false,
+    intervalMs: 3600000,
+    series,
+  };
+}
+
 export async function mockSources(
   page: Page,
   options: {
@@ -319,6 +378,10 @@ export async function mockSources(
     }
     if (url.pathname === "/api/overview") {
       await route.fulfill({ json: overview(options.stale) });
+      return;
+    }
+    if (url.pathname === "/api/protocol/charts") {
+      await route.fulfill({ json: protocolChartsResponse() });
       return;
     }
     if (url.pathname === "/api/assets") {

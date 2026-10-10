@@ -286,6 +286,47 @@ export interface HouseResponse {
     partial: true;
   };
   error?: string;
+  annualizedStakingRevenue?: AnnualizedStakingRevenue;
+}
+
+export interface AnnualizedStakingRevenue {
+  usdPerYearRaw: Raw | null;
+  lifetimeRewardsRaw: Raw | null;
+  fromMs: number | null;
+  toMs: number | null;
+  basis: "protocol-lifetime";
+  yearDays: 365;
+  reason?: string;
+}
+export type ProtocolChartMetric =
+  | "tvl"
+  | "openPositions"
+  | "volume"
+  | "paperSupply"
+  | "paperStaked"
+  | "stakingRewards";
+export interface ProtocolChartPoint {
+  /** UTC hour start; values are the latest available endpoint in that hour. */
+  time: number;
+  value: number | null;
+  gapBefore?: boolean;
+  partial?: boolean;
+}
+export interface ProtocolChartSeries {
+  unit: "USD" | "PAPER" | "positions";
+  aggregation: "snapshot" | "hourly-change" | "cumulative";
+  points: ProtocolChartPoint[];
+  source:
+    "protocol-history-and-retained-summary" | "retained-summary-observations";
+  coverage: { observedFrom: number | null; partial: true };
+}
+export interface ProtocolChartsResponse {
+  receivedAt: number | null;
+  sourceAt: number | null;
+  stale: boolean;
+  intervalMs: 3600000;
+  series: Record<ProtocolChartMetric, ProtocolChartSeries>;
+  error?: string;
 }
 
 export interface LiquidationTotals {

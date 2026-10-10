@@ -263,6 +263,7 @@ export function normalizeTrade(
 }
 export const sorts = [
   "currentBalance",
+  "currentUnrealizedPnl",
   "lastActiveTs",
   "totalWindowedPnl",
   "realizedPnl",

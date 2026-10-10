@@ -25,6 +25,14 @@ function house(): HouseResponse {
     },
     sourceBlock: "12345",
     summarySourceAt: at,
+    annualizedStakingRevenue: {
+      usdPerYearRaw: raw(1484728),
+      lifetimeRewardsRaw: raw(16271),
+      fromMs: at - 4 * 86400000,
+      toMs: at,
+      basis: "protocol-lifetime",
+      yearDays: 365,
+    },
     history: [
       { time: at - 600000, fundsRaw: raw(1_000_000) },
       { time: at - 500000, fundsRaw: raw(1_100_000) },
@@ -98,23 +106,33 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   const panel = page.getByRole("region", {
     name: "House and PAPER statistics",
   });
-  await expect(panel.locator(".house-value strong")).toHaveText("-$10B");
+  await expect(
+    panel.locator(".house-funds .pc-chart-headline strong").first(),
+  ).toHaveText("-$10B");
   await expect(panel).toContainText("125.57M");
   await expect(panel).toContainText("$16.27K");
+  await expect(panel.locator(".annualized-revenue")).toContainText("$1.48M");
+  await expect(panel.locator(".annualized-revenue")).toContainText(
+    "Historical rate, not a forecast",
+  );
   const paper = panel.locator(".paper-details");
-  await expect(paper.locator("dt")).toHaveText([
+  await expect(paper.locator("h3")).toHaveText([
     "PAPER supply",
     "PAPER staked",
     "Staking revenue",
   ]);
-  await expect(paper.locator("strong")).toHaveText(["125.57M", "0", "$16.27K"]);
-  await expect(paper).toContainText("Lifetime allocated · USDC");
-  await expect(paper.locator("strong").first()).toHaveAttribute(
-    "title",
-    "125,571,374 PAPER",
-  );
+  await expect(paper.locator(".pc-chart-headline > strong")).toHaveText([
+    "125.57M",
+    "0",
+    "$16.27K",
+  ]);
+  await expect(
+    paper.locator(".pc-chart-headline > strong").first(),
+  ).toHaveAttribute("title", "125,571,374 PAPER");
   await expect(panel).toContainText("LP balance + open house PnL − queue debt");
-  const d = await panel.locator("svg path").getAttribute("d");
+  const d = await panel
+    .locator(".house-funds .pc-chart-plot path")
+    .getAttribute("d");
   expect(d?.match(/M/g)).toHaveLength(2);
   await expect(
     page.getByRole("button", { name: "View liquidations" }),
@@ -159,7 +177,7 @@ test("liquidation filtering, retained pagination and wallet links remain bounded
     fullPage: true,
   });
 });
-test("overview requests ten wallets and avoids showing prior page rows under new ranks", async ({
+test("wallet directory avoids showing prior page rows under new ranks", async ({
   page,
 }) => {
   await sources(page);
@@ -193,22 +211,16 @@ test("overview requests ten wallets and avoids showing prior page rows under new
       },
     });
   });
-  await page.goto("/");
-  await expect(page.locator(".wallet-table tbody tr")).toHaveCount(10);
-  expect(sizes[0]).toBe("10");
+  await page.goto("/?view=wallets");
+  await expect(page.locator(".wallet-table tbody tr")).toHaveCount(25);
+  expect(sizes[0]).toBe("25");
   await page.getByRole("button", { name: "Next page", exact: true }).click();
   await expect(
     page.getByRole("button", { name: /^Person 1 Papertrade/ }),
   ).toHaveCount(0);
   await expect(page.locator(".wallet-table tbody tr").first()).toContainText(
-    "11",
+    "26",
   );
-  await page
-    .getByRole("navigation")
-    .getByRole("button", { name: "Wallets", exact: true })
-    .click();
-  await expect(page.locator(".wallet-table tbody tr")).toHaveCount(25);
-  expect(sizes.at(-1)).toBe("25");
 });
 
 test("directory refresh failures preserve saved rows with an explicit notice", async ({
@@ -216,7 +228,7 @@ test("directory refresh failures preserve saved rows with an explicit notice", a
 }) => {
   await page.clock.install();
   await sources(page);
-  await page.goto("/");
+  await page.goto("/?view=wallets");
   const table = page.locator("#wallets");
   await expect(table.getByRole("button", { name: /^Aoi / })).toBeVisible();
   await page.route("**/api/accounts?**", (route) =>

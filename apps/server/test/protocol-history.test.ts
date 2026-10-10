@@ -6,7 +6,7 @@ it("retains the historical baseline, upserts corrections, and refuses regressing
   const store = await createStore({ memory: true });
   try {
     const initial = {
-      startMs: 1000,
+      startMs: 0,
       intervalMs: 60000,
       source: { asOfMs: 100000, revision: "2", generation: "a" },
       columns: { tvl: [1, 2] },
@@ -20,19 +20,19 @@ it("retains the historical baseline, upserts corrections, and refuses regressing
       }),
     ).rejects.toThrow("moved backward");
     expect(await store.history.protocolPoints()).toEqual([
-      { time: 1000, value: 1 },
-      { time: 61000, value: 2 },
+      { time: 0, value: 1 },
+      { time: 60000, value: 2 },
     ]);
     await retainProtocolHistory(store, {
       ...initial,
-      startMs: 61000,
+      startMs: 60000,
       columns: { tvl: [3, 4] },
       source: { ...initial.source, revision: "3", asOfMs: 200000 },
     });
     expect(await store.history.protocolPoints()).toEqual([
-      { time: 1000, value: 1 },
-      { time: 61000, value: 3 },
-      { time: 121000, value: 4 },
+      { time: 0, value: 1 },
+      { time: 60000, value: 3 },
+      { time: 120000, value: 4 },
     ]);
     await expect(
       retainProtocolHistory(store, {
