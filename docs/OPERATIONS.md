@@ -81,6 +81,7 @@ Failed collector loops retry within 30 seconds (or their normally shorter interv
 | `CORS_ORIGIN` | Exact, comma-separated allowed frontend origins |
 | `VITE_API_URL` | Public API origin compiled into frontend; empty uses same-origin requests |
 | `VITE_SITE_URL` | Public frontend origin for canonical and link-preview URLs; overrides Render's `RENDER_EXTERNAL_URL` |
+| `VITE_CF_WEB_ANALYTICS_TOKEN` | Optional public Cloudflare Web Analytics token; embedded at build time and enabled only on the canonical HTTPS custom origin |
 | `EMBEDDED_COLLECTOR` | Override local API collector; `false` for production API |
 | `UPSTREAM_ORIGIN` | Official HTTP source, default `https://exchange.papertrade.xyz` |
 | `STREAM_URL` | Official Centrifuge source, default `wss://stream.papertrade.xyz/connection/websocket` |
@@ -101,6 +102,14 @@ Polling values are configuration, not permission to exceed upstream rate limits.
 Keep the dedicated Key Value instance on `noeviction`: evicting coordination or lock keys would break the shared request limits. The keys have short expirations, but memory/error alerts are still required. A Redis interruption stops fresh upstream requests rather than allowing each replica to poll independently; database-backed history remains available with its last source timestamps. Restore Redis before expecting collection to resume, and verify the worker heartbeat and indexing progress afterward.
 
 Favicons and link-preview metadata are included in the initial HTML, so crawlers do not need to run React. Builds use `VITE_SITE_URL`, then Render's automatic `RENDER_EXTERNAL_URL`, for absolute page/image URLs. Outside Render, an unset origin falls back to `http://localhost:5173` with a build warning; configure the real public origin before publishing. Supply an HTTP(S) origin without a path, query, credentials or fragment. The public preview image is `/art/paperdash-social.jpg` (1200 × 630). Social platforms cache previews; after changing it, use the platform's preview refresh tooling when available.
+
+## Custom domain and visitor analytics
+
+The configured public origin is `https://papertrade.club`. Render binds the apex and automatically redirects `www` to it. Cloudflare DNS points both names to `paperdash-web.onrender.com` with DNS-only records; Render handles the website's TLS certificate. Keep the default Render hostname enabled. The application forwards that exact legacy hostname in the browser before mounting React or initializing analytics, preserving path, query and fragment. This is a JavaScript redirect, not a server-side 301; Render static redirect rules cannot match a request's hostname. Canonical and social-preview URLs use the custom origin. The API allows the apex, `www`, and legacy origin during migration. [Render domain behavior](https://render.com/docs/custom-domains), [static routing limits](https://render.com/docs/redirects-rewrites).
+
+Cloudflare Web Analytics uses **Enable with JS Snippet installation**, with automatic injection disabled. Set the dashboard-provided public token in the static site's `VITE_CF_WEB_ANALYTICS_TOKEN` and rebuild; it is not an account API credential. One nonblocking module beacon initializes outside React only on the exact canonical production origin. Local development, unrelated previews and the legacy redirect page do not report; analytics failures never prevent the dashboard from rendering. Keep one installation method to avoid duplicates. [Manual setup](https://developers.cloudflare.com/web-analytics/get-started/).
+
+Use the Cloudflare metrics as **visits and pageviews**, not exact unique people. The service uses no cookies or fingerprinting for usage analytics; blockers may suppress reporting and dashboard ingestion can take a few minutes. Query strings are excluded, so the current `?view=`, `?asset=` and `?wallet=` routes do not provide distinct page-path breakdowns. We add no custom events or wallet identifiers to the beacon. A future domain migration must update the analytics site's configured hostname and use its resulting snippet. [Metric definitions](https://developers.cloudflare.com/web-analytics/data-metrics/high-level-metrics/), [limitations](https://developers.cloudflare.com/web-analytics/faq/).
 
 ## Runtime database roles
 

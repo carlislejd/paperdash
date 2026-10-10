@@ -15,6 +15,8 @@ services:
     repo: https://github.com/carlislejd/paperdash
     buildCommand: npm ci --include=dev && npm run build:web
     staticPublishPath: apps/web/dist
+    domains:
+      - papertrade.club
     autoDeployTrigger: "off"
     envVars:
       - key: NODE_VERSION
@@ -24,6 +26,10 @@ services:
           name: paperdash-api
           type: web
           envVarKey: RENDER_EXTERNAL_URL
+      - key: VITE_SITE_URL
+        value: https://papertrade.club
+      - key: VITE_CF_WEB_ANALYTICS_TOKEN
+        sync: false
     headers:
       - path: /assets/*
         name: Cache-Control
@@ -73,10 +79,7 @@ services:
           type: keyvalue
           property: connectionString
       - key: CORS_ORIGIN
-        fromService:
-          name: paperdash-web
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL
+        value: https://papertrade.club,https://www.papertrade.club,https://paperdash-web.onrender.com
       - key: UPSTREAM_ORIGIN
         value: https://exchange.papertrade.xyz
       - key: UPSTREAM_REQUEST_SPACING_MS

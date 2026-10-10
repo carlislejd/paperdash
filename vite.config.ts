@@ -24,21 +24,47 @@ function shareMetadata(siteUrl: string, usingLocalOrigin: boolean): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), ["VITE_SITE_URL", "RENDER_EXTERNAL_URL"]);
-  const configuredOrigin = env.VITE_SITE_URL?.trim() || env.RENDER_EXTERNAL_URL?.trim();
+  const env = loadEnv(mode, process.cwd(), [
+    "VITE_SITE_URL",
+    "RENDER_EXTERNAL_URL",
+    "VITE_CF_WEB_ANALYTICS_TOKEN",
+  ]);
+  const configuredOrigin =
+    env.VITE_SITE_URL?.trim() || env.RENDER_EXTERNAL_URL?.trim();
   const origin = new URL(configuredOrigin || "http://localhost:5173");
   if (
     !["https:", "http:"].includes(origin.protocol) ||
-    origin.username || origin.password || origin.search || origin.hash ||
+    origin.username ||
+    origin.password ||
+    origin.search ||
+    origin.hash ||
     origin.pathname !== "/"
   ) {
-    throw new Error("VITE_SITE_URL or RENDER_EXTERNAL_URL must be an absolute HTTP(S) origin without credentials, path, query, or fragment.");
+    throw new Error(
+      "VITE_SITE_URL or RENDER_EXTERNAL_URL must be an absolute HTTP(S) origin without credentials, path, query, or fragment.",
+    );
+  }
+  const analyticsToken = env.VITE_CF_WEB_ANALYTICS_TOKEN?.trim() ?? "";
+  if (analyticsToken && !/^[a-f0-9]{32}$/i.test(analyticsToken)) {
+    throw new Error(
+      "VITE_CF_WEB_ANALYTICS_TOKEN must be the 32-character public token from Cloudflare Web Analytics.",
+    );
+  }
+  if (analyticsToken && origin.protocol !== "https:") {
+    throw new Error(
+      "Cloudflare Web Analytics requires an explicitly configured HTTPS site origin.",
+    );
   }
 
   return {
     root: "apps/web",
     envDir: process.cwd(),
     plugins: [react(), shareMetadata(`${origin.origin}/`, !configuredOrigin)],
+    define: {
+      "import.meta.env.VITE_SITE_URL": JSON.stringify(`${origin.origin}/`),
+      "import.meta.env.VITE_CF_WEB_ANALYTICS_TOKEN":
+        JSON.stringify(analyticsToken),
+    },
     build: { outDir: "dist", sourcemap: false },
     server: {
       port: 5173,
