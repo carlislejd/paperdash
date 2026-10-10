@@ -1564,3 +1564,75 @@ button svg {
     display: inline;
   }
 }
+
+/* Keep all primary views visible without squeezing wallet search. */
+.header-inner {
+  gap: 32px;
+}
+.header-inner nav {
+  gap: 22px;
+  margin-left: 0;
+}
+.header-inner nav button {
+  flex: 0 0 auto;
+}
+.header-search {
+  min-width: 210px;
+  max-width: 270px;
+}
+.header-about {
+  margin-left: -15px;
+}
+@media (max-width: 1100px) {
+  .header-inner {
+    flex-wrap: wrap;
+    height: auto;
+    padding-top: 16px;
+    gap: 12px 25px;
+  }
+  .header-inner nav {
+    order: 3;
+    height: 44px;
+    width: 100%;
+    gap: 30px;
+  }
+  .header-search {
+    margin-left: auto;
+    width: 260px;
+  }
+}
+@media (max-width: 650px) {
+  .header-inner {
+    gap: 12px;
+    padding-top: 17px;
+  }
+  .header-inner nav {
+    gap: clamp(10px, 3.3vw, 22px);
+    height: 44px;
+    justify-content: space-between;
+  }
+  .header-inner nav button {
+    font-size: 11px;
+  }
+  .header-search {
+    min-width: 100px;
+    width: auto;
+  }
+  .nav-count {
+    padding: 1px 3px;
+    margin-left: 3px;
+    font-size: 9px;
+  }
+}
+@media (max-width: 370px) {
+  .header-inner,
+  .page-shell {
+    padding-inline: 14px;
+  }
+  .wordmark {
+    font-size: 24px;
+  }
+  .header-inner nav {
+    gap: 8px;
+  }
+}

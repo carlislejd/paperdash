@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   AccountsResponse,
+  LeaderboardResponse,
   Cashflow,
   ClosedTrade,
   HistoryPage,
@@ -11,6 +12,7 @@ import type {
 import { config, errorMessage } from "./config.js";
 import { accountsSchema, addressSchema, walletSchema } from "./schemas.js";
 import type { Store } from "./store.js";
+import { activityDelayed } from "./activity-health.js";
 import {
   CoordinationError,
   LocalCoordinator,
@@ -376,6 +378,90 @@ export class Upstream {
       receivedAt: r.receivedAt,
       stale: r.stale,
       ...(r.error ? { error: r.error } : {}),
+    };
+  }
+  async leaderboard(
+    metric: "pnl" | "volume" | "trades" = "pnl",
+    page = 0,
+    q = "",
+  ): Promise<LeaderboardResponse> {
+    if (metric === "pnl") {
+      const path = canonicalPath("/state/leaderboard/accounts", {
+        window: "24h",
+        sortKey: "totalWindowedPnl",
+        sortDir: "desc",
+        page,
+        pageSize: 25,
+        q,
+      });
+      const result = await this.cached(path, 20000, () =>
+        this.request(path, accountsSchema),
+      );
+      return {
+        window: "24h",
+        metric,
+        rows: result.value.accounts.map((account, index) => ({
+          address: account.address,
+          leaderboardName: account.leaderboardName,
+          rank: page * 25 + index + 1,
+          pnlRaw: account.totalWindowedPnl,
+          volumeUsd: null,
+          tradeCount: null,
+        })),
+        count: result.value.count,
+        pageInfo: result.value.pageInfo,
+        receivedAt: result.receivedAt,
+        stale: result.stale,
+        ...(result.error ? { error: result.error } : {}),
+        coverage: {
+          source: "papertrade-leaderboard",
+          observedFrom: null,
+          projectionBackfillComplete: true,
+          identityAmbiguous: false,
+        },
+      };
+    }
+    // The observed ranking is derived from materialized minute aggregates, never
+    // a fresh upstream scan or a download of every wallet's trade history.
+    const result = await this.cached(
+      `observed-leaderboard:${metric}:${page}:${q}`,
+      20000,
+      () => this.store.analytics.walletActivity(metric, page, q),
+    );
+    const collectorStale = await activityDelayed(this.store);
+    return {
+      window: "24h",
+      metric,
+      rows: result.value.rows.map((row, index) => ({
+        address: row.address,
+        leaderboardName: null,
+        rank: page * 25 + index + 1,
+        pnlRaw: null,
+        volumeUsd: row.notionalUsd,
+        tradeCount: row.count,
+      })),
+      count: result.value.count,
+      pageInfo: {
+        page,
+        totalPages: Math.max(1, Math.ceil(result.value.count / 25)),
+      },
+      receivedAt: result.receivedAt,
+      stale: result.stale || collectorStale,
+      ...(result.error
+        ? { error: result.error }
+        : collectorStale
+          ? {
+              error:
+                "Live collection is delayed; ranking retained observations.",
+            }
+          : {}),
+      coverage: {
+        source: "retained-public-observations",
+        observedFrom: result.value.coverage.observedFrom,
+        projectionBackfillComplete:
+          result.value.coverage.projectionBackfillComplete,
+        identityAmbiguous: true,
+      },
     };
   }
   async history<T extends Cashflow | ClosedTrade>(

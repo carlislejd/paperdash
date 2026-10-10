@@ -7,7 +7,15 @@ import type {
   TradeEvent,
 } from "../../../packages/shared/src/types.js";
 import { config } from "./config.js";
-import { digest } from "./schemas.js";
+import {
+  analyticsSchemaSql,
+  createLocalAnalytics,
+  createPgAnalytics,
+  economicFingerprint,
+  projectTradePg,
+  projectTradeSqlite,
+  type AnalyticsStore,
+} from "./analytics-store.js";
 import {
   createHistoryStore,
   historySchemaSql,
@@ -25,6 +33,7 @@ export interface StreamRecord {
 export interface Store {
   kind: "postgres" | "local";
   history: HistoryStore;
+  analytics: AnalyticsStore;
   get<T>(key: string): Promise<Saved<T> | null>;
   put(key: string, value: unknown, receivedAt?: number): Promise<void>;
   trade(value: TradeEvent): Promise<boolean>;
@@ -54,6 +63,7 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query("SELECT pg_advisory_xact_lock(74481231, 0)");
     await client.query(PG_SCHEMA);
     await client.query(historySchemaSql("paperdash_", true));
+    await client.query(analyticsSchemaSql("paperdash_", true));
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -88,7 +98,7 @@ export async function createStore(
     else
       await pool
         .query(
-          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0",
+          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0",
         )
         .catch(() => {
           throw new Error(
@@ -143,6 +153,7 @@ export async function createStore(
     return {
       kind: "postgres",
       history,
+      analytics: createPgAnalytics(pool),
       async get<T>(key: string) {
         const r = await pool.query(
           "SELECT payload,received_at FROM paperdash_snapshots WHERE key=$1",
@@ -162,11 +173,22 @@ export async function createStore(
         );
       },
       async trade(value) {
-        const r = await pool.query(
-          "INSERT INTO paperdash_trade_observations VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING",
-          [value.id, JSON.stringify(value), value.ts, Date.now()],
-        );
-        return r.rowCount === 1;
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const r = await client.query(
+            "INSERT INTO paperdash_trade_observations VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+            [value.id, JSON.stringify(value), value.ts, Date.now()],
+          );
+          if (r.rowCount === 1) await projectTradePg(client, value);
+          await client.query("COMMIT");
+          return r.rowCount === 1;
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
       },
       async recordTrade(value) {
         const client = await pool.connect();
@@ -180,6 +202,7 @@ export async function createStore(
             await client.query("COMMIT");
             return false;
           }
+          await projectTradePg(client, value);
           const event = await client.query(
             "INSERT INTO paperdash_stream_events(payload) VALUES($1) RETURNING id",
             [JSON.stringify({ type: "trade", data: value })],
@@ -309,6 +332,7 @@ export async function createStore(
     CREATE TABLE IF NOT EXISTS collector_lease(id INTEGER PRIMARY KEY,pid INTEGER NOT NULL);
   `);
   db.exec(historySchemaSql("", false));
+  db.exec(analyticsSchemaSql("", false));
   const maxBytes = options.maxBytes ?? config.localMaxBytes;
   let checkAt = 0;
   async function writable() {
@@ -330,6 +354,7 @@ export async function createStore(
   }
   return {
     kind: "local",
+    analytics: createLocalAnalytics(db, writable),
     history: createHistoryStore({
       prefix: "",
       async rows<T>(sql: string, params: unknown[] = []) {
@@ -376,12 +401,20 @@ export async function createStore(
     },
     async trade(value) {
       await writable();
-      return (
-        db
-          .prepare("INSERT OR IGNORE INTO trade_observations VALUES(?,?,?,?)")
-          .run(value.id, JSON.stringify(value), value.ts, Date.now())
-          .changes === 1
-      );
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const inserted =
+          db
+            .prepare("INSERT OR IGNORE INTO trade_observations VALUES(?,?,?,?)")
+            .run(value.id, JSON.stringify(value), value.ts, Date.now())
+            .changes === 1;
+        if (inserted) projectTradeSqlite(db, value);
+        db.exec("COMMIT");
+        return inserted;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
     },
     async recordTrade(value) {
       await writable();
@@ -394,6 +427,7 @@ export async function createStore(
           db.exec("COMMIT");
           return false;
         }
+        projectTradeSqlite(db, value);
         const event = db
           .prepare("INSERT INTO stream_events(payload) VALUES(?)")
           .run(JSON.stringify({ type: "trade", data: value }));
@@ -509,17 +543,25 @@ export async function createStore(
 }
 
 export function tradeFingerprint(t: TradeEvent): string {
-  const { id: _id, provenance: _provenance, ...fields } = t;
-  return digest(fields);
+  return economicFingerprint(t);
 }
 export function visibleTrades(trades: TradeEvent[]): TradeEvent[] {
-  const recent = new Set(
-    trades.filter((t) => t.provenance === "recent-api").map(tradeFingerprint),
-  );
+  const recent = new Map<string, number>();
+  for (const trade of trades)
+    if (trade.provenance === "recent-api") {
+      const fingerprint = tradeFingerprint(trade);
+      recent.set(fingerprint, (recent.get(fingerprint) ?? 0) + 1);
+    }
   return trades
-    .filter(
-      (t) =>
-        t.provenance !== "public-stream" || !recent.has(tradeFingerprint(t)),
-    )
+    .filter((trade) => {
+      if (trade.provenance !== "public-stream") return true;
+      const fingerprint = tradeFingerprint(trade),
+        matches = recent.get(fingerprint) ?? 0;
+      if (matches > 0) {
+        recent.set(fingerprint, matches - 1);
+        return false;
+      }
+      return true;
+    })
     .slice(0, 50);
 }

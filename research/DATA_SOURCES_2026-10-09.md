@@ -146,3 +146,67 @@ Paperplay supplies cream/charcoal styling, large tabular numerals, restrained ri
 The official exchange's [theme module](https://exchange.papertrade.xyz/assets/theme-CHBWm7vo.js) stores light/dark preference and forces light mode for mobile routes. [AccountViewControl](https://exchange.papertrade.xyz/assets/AccountViewControl-Ch5-QX1u.js) labels the dark-theme switch **UwU Mode**. The [desktop shell](https://exchange.papertrade.xyz/assets/_desktop-CaJam4Fm.js) uses a lowercase papertrade wordmark with blinking underscore.
 
 The [gates module](https://exchange.papertrade.xyz/assets/gates-DsIJPrST.js) renders optional controls and character settings only in dark/UwU mode. It lazily imports `uwu-controls-CLAOVKkq.js` (including `CharacterSetting`) and `uwu-chart-CT35KXfS.js`; dependency references include `uwu-audio-CaBXV1Fz.js`, `uwu-stars-v1-DV4eWU76.js`, and associated CSS. This directly establishes optional character/chart/audio/stars features and deferred loading. Exact character artwork was not inspected in those downstream assets. A manga editorial direction is a new design interpretation of the user's requested playfulness, not recovered artwork from the analyzed files.
+
+## Asset analytics and rolling 24-hour leaderboard follow-up
+
+Additional unauthenticated reads succeeded using the normal public site with a browser User-Agent. The results below are schema and UI evidence, not a commitment from the operator to maintain an external API. The current deployment had zero observed open positions and zero leaderboard P&L/volume, so nonzero behavioral comparisons remain unverified.
+
+### Current entry-notional open interest
+
+`GET /state/house/current` returns one coherent publication:
+
+```text
+{
+  ok: true,
+  historyGeneration: nonempty string,
+  historyRevision: nonempty string,
+  sourceAsOfMs: nonnegative safe integer,
+  head: [timeMs, lpUsd, traderOpenPnlUsd, queueUsd,
+         btcTraderLongEntryUsd, btcTraderShortEntryUsd,
+         ethTraderLongEntryUsd, ethTraderShortEntryUsd],
+  heads: optional compressed history series by interval
+}
+```
+
+`head` has exactly eight elements. Its timestamp must equal `sourceAsOfMs`. Monetary elements are **already USD numbers**, not raw 18-decimal strings. All must be finite; indices 3–7 must also be nonnegative. The official decoder names indices 4–7 `bl`, `bs`, `el`, `es`. The House Exposure legend calls `bs` house-long and `bl` house-short, and explicitly describes this chart as the opposite side of user positions. Therefore **trader BTC long is `head[4]`/`bl` and trader BTC short is `head[5]`/`bs`**, with the analogous ETH mapping. Do not swap these raw columns when presenting trader sides. This mapping follows the official tooltip and legend together. [House UI and calculations](https://exchange.papertrade.xyz/assets/PaperSummaryCard-DhkJzzzL.js), [frame decoder `Ch`/`wh`](https://exchange.papertrade.xyz/assets/index-CvChIo_I.js).
+
+The official Open Interest history chart adds `bl+bs` for BTC and `el+es` for ETH, describing the result as entry notional. This is a reliable, efficient definition for the dashboard: per-asset OI is the sum of both entry notionals; long/short percentages are shares of that total, **not shares of position or wallet counts**. When the total is zero, percentages are undefined and should display unavailable rather than 50/50. Label the definition as entry notional. This API represents BTC and ETH explicitly; a newly listed market must remain unavailable until a corresponding source is established. [OI chart implementation](https://exchange.papertrade.xyz/assets/StatsSummary-CciyrF_a.js).
+
+The successful probe had `sourceAsOfMs: 1791611517199` and an all-zero monetary head. An extra top-level `revision` is present but ignored by the official decoder. Treat `historyRevision` as opaque, not a numeric sequence. Preserve source time and generation, reject a backwards timestamp within a publication epoch, and invalidate retained history appropriately when generation changes. `heads` uses optional interval keys `1000`, `60000`, `3600000`, and `86400000`; individual series have `baseTimeMs`, increasing aligned `timeOffsetsMs`, `gapIndices`, and equal-length `lp,pnl,q,bl,bs,el,es` columns. The public frame has no explicit complete-history guarantee. [Current endpoint](https://exchange.papertrade.xyz/state/house/current), [official decoder](https://exchange.papertrade.xyz/assets/index-CvChIo_I.js).
+
+### Trading state and current marked notional
+
+`GET /state/trading` also succeeded. The official application subscribes to the public Centrifuge channel `trading:current`, with HTTP refresh/recovery. A version-1 frame contains `indexedThroughBlock`, `tradingPaused`, `minimumTradeSizeRaw`, `minimumOpenNotionalRaw`, `accRewardPerShareRaw`, and instrument tuples in this exact order:
+
+```text
+0 id                     8 closeOnly             16 bustBufferRaw
+1 symbol                 9 frozenBidRaw          17 baseRateRaw
+2 assetIndex            10 frozenAskRaw          18 referenceNotionalRaw
+3 priceScaleRaw         11 pausedAtMs            19 longOiRaw
+4 active                12 rateMultiplierRaw     20 shortOiRaw
+5 paused                13 positionMultiplierRaw 21 longCapRaw
+6 terminal              14 maxLeverage           22 shortCapRaw
+7 retired               15 maxPositionNotionalRaw
+```
+
+Optional `intake` is `[revision, minimumPaperStakeRaw, maximumNetOpenInterestRaw, disabledActionNames]`. Its revision is independent of the trading block; the official merger preserves the newer component separately. A trading block can remain unchanged between configuration/exposure changes, so a block gap alone does not establish that the read is stale. [Trading wire decoder](https://exchange.papertrade.xyz/assets/account-wire-oK7wgoTe.js), [subscription and merger](https://exchange.papertrade.xyz/assets/index-CvChIo_I.js).
+
+`longOiRaw` and `shortOiRaw` are asset quantities with 18 decimals. The official live User Positions table values them as `quantityRaw * midpointRaw / priceScaleRaw`, producing **USD with 18 decimals**. Terminal markets use the frozen bid/ask midpoint. A nonzero quantity without a valid quote is unavailable; both quantities zero can be valued at zero without a quote. This current-mark definition differs from the entry-notional history above. The official app gets BBO quotes from Hyperliquid's public WebSocket, not a verified Papertrade price channel; it requires each decimal quote to map exactly to the instrument scale and uses integer `(bidRaw+askRaw)/2`. No additional price connection is required when using entry-notional analytics. [Live OI implementation](https://exchange.papertrade.xyz/assets/PaperSummaryCard-DhkJzzzL.js), [quote decoder](https://exchange.papertrade.xyz/assets/focus-DkFX2CTr.js), [network configuration](https://exchange.papertrade.xyz/assets/deployment-C3VOxZVa.js).
+
+### Leaderboard window and counting limits
+
+The following request succeeded, returning 25 rows, 6,142 total directory accounts, and 246 pages:
+
+```text
+GET /state/leaderboard/accounts?page=0&pageSize=25&sortDir=desc&sortKey=totalWindowedPnl&window=24h
+```
+
+Supported frontend windows are `24h`, `7d`, `30d`, and `all`. The chosen product window is rolling 24 hours. Rows include `address`, nullable `leaderboardName`, signed raw `totalWindowedPnl`, signed raw `realizedPnl`, unsigned raw `totalVolume`, `lastActiveTs` in seconds, current balance/queued/open-notional/unrealized-P&L/PAPER fields, open-position count, and `_leaderboardRank`. These money fields use 18 decimals. Pagination is page-based and can shift as rankings update; it does not supply a consistent snapshot token. Old funded accounts remain in the 24-hour response, so `count` is **not a count of active 24-hour traders**. [Account endpoint](https://exchange.papertrade.xyz/state/leaderboard/accounts?page=0&pageSize=25&sortDir=desc&sortKey=totalWindowedPnl&window=24h), [query/response schemas](https://exchange.papertrade.xyz/assets/index-CvChIo_I.js).
+
+The official UI explicitly changes the `totalWindowedPnl` heading with the selected window. It does not do so for `realizedPnl` or `totalVolume`, and no inspected documentation establishes their window semantics. All live values were zero, preventing empirical verification. **Use `totalWindowedPnl` for the source-backed 24-hour ranking; do not advertise the other two fields as 24-hour realized P&L or 24-hour volume without further evidence.** The exact construction of windowed P&L, including unrealized-P&L treatment, is also undocumented in the inspected public frontend. [Leaderboard display](https://exchange.papertrade.xyz/assets/LeaderboardPage-CHX3hohX.js).
+
+No inspected source offers a verified complete per-asset 24-hour trade-count aggregate. Wallet trade history records closed/liquidated outcomes, and the official protocol Trades chart uses that same definition. Calculate retained 24-hour outcome counts by `instrumentId` and close `timestampMs`, with explicit collection coverage. Do not count recent ticker opens plus closes as equivalent trades or use the positive-P&L positions leaderboard as a complete ledger. [Trade schema and endpoints](https://exchange.papertrade.xyz/assets/index-CvChIo_I.js), [protocol metric definitions](https://exchange.papertrade.xyz/assets/StatsSummary-CciyrF_a.js).
+
+Implementation choice: the asset view and volume/trade-count rankings use **observed executions** from the retained public ticker, including opens, closes and liquidations. They are explicitly labeled with this definition and partial collection coverage, and do not claim equivalence to the protocol's completed-outcome trade count. A separate closed-outcome count would need a distinct label and projection from wallet trade history.
+
+The liquidation-map endpoint was also verified: 150 buckets plus `below` and `above`, each with two raw money strings followed by two nonnegative integers. Its UI establishes only the combined first-two-field entry notional. The individual side order and the meanings/completeness of the last two integers were not established; do not use them as authoritative long/short counts. `/state/house/delta?coin=BTC|ETH` has an explicit total `positionCount` in its public schema, but fetching a 401-point risk curve only to obtain a count is unnecessary for notional-share analytics. [Liquidation/curve schemas](https://exchange.papertrade.xyz/assets/index-CvChIo_I.js), [liquidation UI](https://exchange.papertrade.xyz/assets/PaperSummaryCard-DhkJzzzL.js).

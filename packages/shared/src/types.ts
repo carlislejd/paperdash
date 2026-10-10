@@ -61,6 +61,75 @@ export interface ChartPoint {
   time: number;
   value: number;
 }
+export interface AssetActivity {
+  instrument: number;
+  windowFrom: number;
+  windowTo: number;
+  counts: { total: number; long: number; short: number };
+  notionalUsd: { total: number; long: number; short: number };
+  recent: TradeEvent[];
+  coverage: {
+    observedFrom: number | null;
+    latestObservedAt: number | null;
+    projectionBackfillComplete: boolean;
+    identityAmbiguous: true;
+    source: "retained-public-observations";
+  };
+}
+export interface AssetOiSample {
+  instrument: number;
+  time: number;
+  longRaw: Raw;
+  shortRaw: Raw;
+  sourceBlock: string | null;
+  sourceAt: number;
+  receivedAt: number;
+}
+export interface AssetSummary {
+  instrument: number;
+  symbol: string;
+  openInterest: {
+    longRaw: Raw;
+    shortRaw: Raw;
+    totalRaw: Raw;
+    longSharePct: number | null;
+    shortSharePct: number | null;
+  };
+  activity: AssetActivity | null;
+  history: AssetOiSample[];
+}
+export interface AssetsResponse {
+  assets: AssetSummary[];
+  sourceAt: number | null;
+  indexedBlock: string | null;
+  receivedAt: number | null;
+  activityReceivedAt: number | null;
+  stale: boolean;
+  error?: string;
+}
+export interface LeaderboardResponse {
+  window: "24h";
+  metric: "pnl" | "volume" | "trades";
+  rows: {
+    address: string;
+    leaderboardName: string | null;
+    rank: number;
+    pnlRaw: Raw | null;
+    volumeUsd: number | null;
+    tradeCount: number | null;
+  }[];
+  count: number;
+  pageInfo: { page: number; totalPages: number };
+  receivedAt: number;
+  stale: boolean;
+  error?: string;
+  coverage: {
+    source: "papertrade-leaderboard" | "retained-public-observations";
+    observedFrom: number | null;
+    projectionBackfillComplete: boolean;
+    identityAmbiguous: boolean;
+  };
+}
 export interface Overview {
   summary: ProtocolSummary | null;
   accountCount: number | null;

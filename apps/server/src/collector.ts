@@ -20,6 +20,11 @@ import { type Store, visibleTrades } from "./store.js";
 import { canonicalPath, Upstream } from "./upstream.js";
 import { ChangeBus } from "./bus.js";
 import { HistoryIndexer } from "./history.js";
+import {
+  houseSchema,
+  retainAssetSource,
+  refreshAssetAnalytics,
+} from "./assets.js";
 
 export function emptyOverview(kind: Store["kind"]): Overview {
   return {
@@ -143,6 +148,17 @@ export class Collector {
   async start(): Promise<boolean> {
     this.release = await this.store.lease();
     if (!this.release) return false;
+    this.loop("asset-market", 5000, async () => {
+      const source = await this.upstream.request(
+        "/state/house/current",
+        houseSchema,
+      );
+      await retainAssetSource(this.store, source);
+    });
+    this.loop("asset-activity", 10000, async () => {
+      await this.store.analytics.backfill(500);
+      await refreshAssetAnalytics(this.store);
+    });
     this.loop("summary", config.summaryInterval, async () => {
       const summary = await this.upstream.request(
         "/query/protocol/summary",

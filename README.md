@@ -1,6 +1,6 @@
 # Paperdash
 
-A public, read-only dashboard for the Papertrade community. React renders protocol metrics, TVL history, observed trading activity and a searchable wallet directory. Opening a wallet shows credited deposits, available balances, portfolio coverage and paginated cashflow/trade history. Following a wallet saves it in the current browser.
+A public, read-only dashboard for the Papertrade community. React renders protocol metrics, TVL history, observed trading activity, asset analytics, a rolling 24-hour leaderboard and a searchable wallet directory. Opening a wallet shows credited deposits, available balances, portfolio coverage and paginated cashflow/trade history. Following a wallet saves it in the current browser.
 
 The [live beta](https://paperdash-web.onrender.com) uses real public Papertrade sources and a continuously running collector backed by Postgres. Demo fixtures exist only in browser tests. It does not connect signing wallets, submit trades, move funds or require a blockchain node.
 
@@ -35,7 +35,7 @@ npm run test:e2e
 python3 -m unittest discover -s tests
 ```
 
-The browser suite runs desktop and mobile flows against isolated synthetic API responses, including wallet navigation, deposit pagination through refreshes, partial-history labels, unavailable data, keyboard focus and local following. It does not establish live upstream correctness or production capacity. The Python tests cover the retained research CLI.
+The browser suite runs desktop and mobile flows against isolated synthetic API responses, including wallet navigation, asset selection, leaderboard sorting/pagination, deposit pagination through refreshes, partial-history labels, unavailable data, keyboard focus and local following. It does not establish live upstream correctness or production capacity. The Python tests cover the retained research CLI.
 
 After building, `npm run start:api` and `npm run start:ingest` run the compiled backend processes. Serve `apps/web/dist` through a static host. In production, configure the public `VITE_API_URL` at frontend build time and the exact frontend `CORS_ORIGIN` on the API.
 
@@ -69,6 +69,10 @@ Wallet history pagination reads local tables. Opening a wallet can prioritize it
 
 Source money values remain integer decimal strings. UI amounts are formatted from those strings; chart coordinates and source-provided approximate trade displays are not an independent accounting ledger.
 
+Assets show BTC/ETH entry-notional open interest, long/short notional shares, retained OI history and observed executions in the last 24 hours. The collector polls one shared current-market publication every five seconds and saves minute samples; browsing assets never downloads upstream history. Activity projections are committed with observations and backfilled once with a durable cursor. Minute aggregates plus exact time-boundary records answer rolling-window queries. API snapshots use compression and conditional browser revalidation.
+
+The leaderboard defaults to the protocol's `totalWindowedPnl` for `window=24h`. Volume and execution-count rankings use our retained observations over a rolling 24 hours; all three can open a wallet. The asset and leaderboard tabs are directly linkable with `?view=assets` and `?view=leaderboard`.
+
 ## Data boundaries
 
 TVL, wallet counts and lifetime amounts are reported by Papertrade. They are not independently reconciled against custody. We retain available wallet history and expose indexing progress, source coverage and ambiguous source identities. Reaching the end of the source's pagination means that available backfill finished; it does not establish a complete lifetime ledger. Missing data remains unavailable rather than becoming zero. Cached data retains freshness information.
@@ -76,6 +80,8 @@ TVL, wallet counts and lifetime amounts are reported by Papertrade. They are not
 Use `npm run ingest:status` from an environment with the database settings to inspect the collector heartbeat and queue. Add `--` followed by a full wallet address to inspect its checkpoints. `/api/indexing` provides a read-only, periodically saved aggregate without scanning the queue on each browser request.
 
 The public stream lacks canonical transaction/event identifiers and the recent REST trade feed has limited retention. We retain observed activity, but cannot guarantee every execution during downtime or complete lifetime global history. This version does not have a verified-ABI blockchain backfill adapter. Canonical accounting, independent long-term backups and production load/failover drills remain launch work; the operations guide spells out those gates.
+
+Observed execution counts include opens, closes and liquidations; they are not completed-position counts. Approximate execution volume is distinct from open interest. Long/short percentages divide each side's entry notional by both sides combined, not by the number of wallets or positions. At zero OI, the shares are unavailable. The upstream PnL calculation is not documented well enough to call it realized PnL, and source leaderboard account counts include inactive funded accounts. Feed outages retain saved data with delayed status.
 
 Read the [current source evidence](research/DATA_SOURCES_2026-10-09.md) and [original dashboard plan](research/DASHBOARD_PLAN.md) for the investigation. The planning document's earlier $100–300 scenario is historical; the implementation's current $300–500 budget is below.
 

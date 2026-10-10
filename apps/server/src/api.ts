@@ -13,6 +13,8 @@ import { readOverview, readOverviewSnapshot } from "./collector.js";
 import { type Store, type StreamRecord } from "./store.js";
 import { ChangeBus } from "./bus.js";
 import { Upstream, UpstreamError } from "./upstream.js";
+import { readAssets } from "./assets.js";
+import { analyticsResponse } from "./analytics-response.js";
 import { HistoryCursorError } from "./history-store.js";
 
 interface Client {
@@ -278,6 +280,35 @@ export async function buildApi(
     const q = accountsQuerySchema.parse(req.query);
     reply.header("Cache-Control", "no-store");
     return upstream.accounts(q.q, q.sort, q.page);
+  });
+  app.get("/api/assets", async (req, reply) => {
+    return analyticsResponse(req, reply, await readAssets(store));
+  });
+  app.get("/api/leaderboard", async (req, reply) => {
+    const query = z
+      .object({
+        metric: z.enum(["pnl", "volume", "trades"]).default("pnl"),
+        page: z.coerce.number().int().min(0).max(1000000).default(0),
+        q: z
+          .string()
+          .max(42)
+          .default("")
+          .transform((value) => value.trim().toLowerCase()),
+      })
+      .refine(
+        (value) =>
+          value.metric === "pnl" || /^(?:0x)?[a-f0-9]{0,40}$/.test(value.q),
+        {
+          path: ["q"],
+          message: "Observed activity search requires a wallet address prefix",
+        },
+      )
+      .parse(req.query);
+    return analyticsResponse(
+      req,
+      reply,
+      await upstream.leaderboard(query.metric, query.page, query.q),
+    );
   });
   app.get("/api/wallets/:address", async (req, reply) => {
     const { address } = z.object({ address: addressSchema }).parse(req.params);

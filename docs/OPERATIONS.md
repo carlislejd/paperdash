@@ -94,7 +94,7 @@ Favicons and link-preview metadata are included in the initial HTML, so crawlers
 
 The initial Blueprint injects the managed database owner's connection into both services. This makes schema bootstrap runnable, but grants more permission than a public API should retain. **It is not a least-privilege production setup.** The API writes current account/directory caches and prioritizes wallet indexing, so a strictly read-only role would break those operations.
 
-Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables and eight history tables; the `\password` commands prompt without putting passwords in shell history:
+Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables, eight history tables and seven analytics tables; the `\password` commands prompt without putting passwords in shell history:
 
 ```sql
 CREATE ROLE paperdash_api LOGIN;
@@ -107,7 +107,11 @@ GRANT SELECT ON paperdash_snapshots, paperdash_trade_observations,
   paperdash_samples, paperdash_stream_events,
   paperdash_history_wallets, paperdash_history_jobs, paperdash_history_records,
   paperdash_history_pages, paperdash_history_visits, paperdash_history_points,
-  paperdash_history_portfolio_batches, paperdash_history_corrections
+  paperdash_history_portfolio_batches, paperdash_history_corrections,
+  paperdash_analytics_members, paperdash_analytics_fingerprints,
+  paperdash_analytics_minutes, paperdash_analytics_oi_samples,
+  paperdash_analytics_wallet_fingerprints, paperdash_analytics_wallet_minutes,
+  paperdash_analytics_state
   TO paperdash_api, paperdash_ingest;
 GRANT INSERT, UPDATE ON paperdash_snapshots,
   paperdash_history_wallets, paperdash_history_jobs TO paperdash_api;
@@ -123,6 +127,11 @@ GRANT INSERT ON paperdash_history_pages, paperdash_history_portfolio_batches
   TO paperdash_ingest;
 GRANT DELETE ON paperdash_history_visits, paperdash_history_corrections,
   paperdash_history_points TO paperdash_ingest;
+GRANT INSERT, UPDATE ON paperdash_analytics_members,
+  paperdash_analytics_fingerprints, paperdash_analytics_minutes,
+  paperdash_analytics_oi_samples, paperdash_analytics_wallet_fingerprints,
+  paperdash_analytics_wallet_minutes, paperdash_analytics_state
+  TO paperdash_ingest;
 ```
 
 Neither runtime role needs `CREATE`, `ALTER`, `DROP`, ownership or access to unrelated schemas. New tables/sequences require explicit reviewed grants. Store the two role URLs separately in Render, replace the two `fromDatabase` entries with `sync: false`, and set `AUTO_MIGRATE=false` in both services. Keep the database's internal host/database name; only the URL-encoded username/password change.
@@ -142,6 +151,18 @@ Portfolio history begins with an available full-range fetch, then refreshes supp
 Wallet history endpoints use local keyset cursors, not expiring upstream cursors. Current account snapshots and directory results can still refresh through the shared source cache. There is no per-visitor upstream wallet-history download. TVL history is reconciled hourly by default and extended with continuously recorded minute samples. Global public trade observations are kept separately from wallet trade history; they are not merged into a falsely exact global execution ledger.
 
 From a worker shell with its existing environment, run `npm run ingest:status` for heartbeat, queue counts and the oldest due job. Add `--` followed by a full wallet address for that wallet's checkpoints. The command exits nonzero if the saved collector heartbeat is older than 30 seconds. `/api/indexing` reads the worker's periodically saved aggregate and reports its timestamp; it does not perform a full queue scan for every caller. A healthy heartbeat alone does not establish that every history job is progressing: watch pending/failed counts, oldest due time, per-wallet last success and retained counts together. Full backfill time depends on source limits, wallet count and history depth.
+
+## Assets and rolling 24-hour rankings
+
+`GET /api/assets` serves saved BTC/ETH entry-notional open interest, notional long/short shares, at most 300 retained chart samples per asset, and observed activity for the last 24 hours. One collector request to `/state/house/current` every five seconds serves all viewers through the shared request budget. The source reports approximate USD entry notionals; its publication has a timestamp but no verified indexed block. The parser strips the optional full-history series. OI samples are retained by minute, and a source-time regression cannot replace a newer saved publication. This view does not open another price feed or fetch upstream history for each viewer.
+
+The `asset-activity` loop resumes up to 500 retained observations per tick and refreshes asset aggregates every ten seconds. Live observations, idempotent analytics membership, minute buckets and SSE events commit together. Cross-source matching uses economic fingerprints and the greater occurrence count from either source; identical executions within one source retain their multiplicity. This remains provisional without canonical execution IDs. The durable v2 projection cursor advances with each projected record, allowing restarts and upgrades to resume without rescanning all history. The completed flag describes the local projection backfill only.
+
+`GET /api/leaderboard?metric=pnl|volume|trades&page=0` returns 25 rows. PnL uses the source's `window=24h` and `totalWindowedPnl`; its other money fields do not have verified rolling-window semantics. Volume and trade-count modes query retained per-wallet minute aggregates plus exact boundary observations, cached for 20 seconds across replicas. Their coverage remains partial. Observed counts include opens, closes and liquidations, not just completed positions. The optional `q` accepts an address prefix for observed rankings and names/addresses for source PnL. Invalid observed-name filters return 400. Leaderboard pagination can move as rankings change.
+
+Both endpoints support gzip and ETag revalidation. Visible tabs poll every five seconds; hidden tabs pause. Saved snapshots remain readable during outages. Asset freshness combines market publication age, activity snapshot age, collector heartbeat, stream connection and recent/stream/projection errors; observed rankings use the same feed-health checks. A fresh heartbeat from another loop cannot make failed trade transports appear live. A protocol PnL request has its own source-cache freshness.
+
+The analytics migration is additive (seven tables, no sequences). Deploy compatible worker/API code before the new frontend; with restricted runtime roles, migrate and apply the explicit grants above first. Existing raw observations and wallet history remain retained. This release adds no Render resources or plan changes. Independent accounting and load-capacity claims still require the launch checks below.
 
 ## Freshness, incidents and recovery
 

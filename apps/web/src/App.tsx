@@ -17,6 +17,10 @@ import {
 } from "./lib/format";
 import { WalletDrawer, prefetchWallet } from "./components/WalletDrawer";
 import { DataInfoDialog } from "./components/DataInfoDialog";
+import { Avatar } from "./components/Avatar";
+import { AssetsView } from "./components/AssetsView";
+import { LeaderboardView } from "./components/LeaderboardView";
+import { readDashboardRoute, type DashboardView } from "./lib/navigation";
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
@@ -69,37 +73,6 @@ function PaperMark({ size = 30 }: { size?: number }) {
       <path d="m3 14 33-9-13 29-5-14z" fill="currentColor" />
       <path d="M18 20 36 5" stroke="var(--paper)" strokeWidth="1.5" />
     </svg>
-  );
-}
-export function Avatar({ address }: { address: string }) {
-  const seed = parseInt(address.slice(2, 8), 16) || 17;
-  const colors = ["#d8d2ed", "#dce4cb", "#efd4c0", "#cbdedc", "#e8d1dc"];
-  return (
-    <span
-      className="avatar"
-      style={{ background: colors[seed % colors.length] }}
-      aria-hidden="true"
-    >
-      <svg viewBox="0 0 36 36">
-        <path
-          d={
-            seed % 2
-              ? "M8 29V14l5-6 5 4 5-4 5 6v15z"
-              : "M7 28V16l5-8 6 3 6-3 5 8v12z"
-          }
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
-        <path
-          d="M12 19h2m8 0h2m-9 5q3 3 6 0"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          fill="none"
-        />
-        <path d="m7 23 5 1m17-1-5 1" stroke="currentColor" opacity=".45" />
-      </svg>
-    </span>
   );
 }
 function readFollowing(): Account[] {
@@ -514,8 +487,11 @@ function TradeFeed({
 
 function App() {
   const { data, error, transport } = useOverview();
-  const [section, setSection] = useState<"overview" | "wallets" | "following">(
-    "overview",
+  const [section, setSection] = useState<DashboardView>(
+    () => readDashboardRoute(location.search).view,
+  );
+  const [asset, setAsset] = useState(
+    () => readDashboardRoute(location.search).asset,
   );
   const [accounts, setAccounts] = useState<AccountsResponse | null>(null);
   const [accountsError, setAccountsError] = useState("");
@@ -534,7 +510,6 @@ function App() {
   const [clock, setClock] = useState(Date.now());
   const search = useRef<HTMLInputElement>(null);
   const cancelPrefetch = useRef<(() => void) | undefined>(undefined);
-  const walletsRef = useRef<HTMLElement>(null);
   const summary = data?.summary;
   const tvl = rawToNumber(summary?.balances.tvl);
   const sourceOld =
@@ -564,7 +539,12 @@ function App() {
       page: String(page),
     });
     const refresh = async (foreground = false) => {
-      if (pending || document.hidden || section === "following") return;
+      if (
+        pending ||
+        document.hidden ||
+        (section !== "overview" && section !== "wallets")
+      )
+        return;
       pending = true;
       if (foreground) {
         setLoadingAccounts(true);
@@ -601,6 +581,9 @@ function App() {
       if (e.key === "Escape") setInfo(false);
     };
     const pop = () => {
+      const route = readDashboardRoute(location.search);
+      setSection(route.view);
+      setAsset(route.asset);
       const a = new URLSearchParams(location.search).get("wallet");
       setWallet(a && /^0x[a-fA-F0-9]{40}$/.test(a) ? a : null);
     };
@@ -623,16 +606,16 @@ function App() {
     url.searchParams.delete("wallet");
     history.replaceState(null, "", url);
   }, []);
-  const navigate = (next: typeof section) => {
+  const navigate = (next: DashboardView, nextAsset = asset) => {
     setSection(next);
-    if (next === "overview") window.scrollTo({ top: 0, behavior: "smooth" });
-    else
-      requestAnimationFrame(() =>
-        walletsRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        }),
-      );
+    setAsset(nextAsset);
+    const url = new URL(location.href);
+    if (next === "overview") url.searchParams.delete("view");
+    else url.searchParams.set("view", next);
+    if (next === "assets") url.searchParams.set("asset", String(nextAsset));
+    else url.searchParams.delete("asset");
+    if (url.href !== location.href) history.pushState(null, "", url);
+    window.scrollTo({ top: 0, behavior: "instant" });
   };
   const toggleFollow = (account: Account) =>
     setFollowing((old) => {
@@ -680,10 +663,19 @@ function App() {
             </span>
           </button>
           <nav aria-label="Main navigation">
-            {(["overview", "wallets", "following"] as const).map((item) => (
+            {(
+              [
+                "overview",
+                "wallets",
+                "assets",
+                "leaderboard",
+                "following",
+              ] as const
+            ).map((item) => (
               <button
                 key={item}
                 className={section === item ? "active" : ""}
+                aria-current={section === item ? "page" : undefined}
                 onClick={() => navigate(item)}
               >
                 {item[0].toUpperCase() + item.slice(1)}
@@ -702,7 +694,8 @@ function App() {
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
-                if (section === "overview") setSection("wallets");
+                if (section !== "wallets" && section !== "following")
+                  navigate("wallets");
               }}
               onKeyDown={(e) => {
                 if (
@@ -725,64 +718,66 @@ function App() {
       </header>
       <main id="main" className="page-shell">
         <h1 className="sr-only">Papertrade analytics</h1>
-        <section className="overview-board" aria-label="Protocol overview">
-          <div className="metrics-row">
-            <div className="metric metric-primary">
-              <span className="metric-label">
-                TVL{" "}
-                <button
-                  aria-label="How TVL is sourced"
-                  onClick={() => setInfo(true)}
-                >
-                  <Icon name="circle" size={13} />
-                </button>
+        {section !== "assets" && section !== "leaderboard" && (
+          <section className="overview-board" aria-label="Protocol overview">
+            <div className="metrics-row">
+              <div className="metric metric-primary">
+                <span className="metric-label">
+                  TVL{" "}
+                  <button
+                    aria-label="How TVL is sourced"
+                    onClick={() => setInfo(true)}
+                  >
+                    <Icon name="circle" size={13} />
+                  </button>
+                </span>
+                <strong className={!summary ? "skeleton-text" : ""}>
+                  {formatUsd(tvl, true)}
+                </strong>
+                <span className="metric-note">USDC · protocol-reported</span>
+              </div>
+              <div className="metric metric-primary">
+                <span className="metric-label">Wallets</span>
+                <strong>
+                  {data?.accountCount?.toLocaleString("en-US") ?? "—"}
+                </strong>
+                <span className="metric-note">Public accounts</span>
+              </div>
+              <div className="metric">
+                <span className="metric-label">Trading volume</span>
+                <strong>{formatRawUsd(summary?.activity.volume, true)}</strong>
+                <span className="metric-note">Lifetime notional</span>
+              </div>
+              <div className="metric">
+                <span className="metric-label">Open positions</span>
+                <strong>
+                  {summary?.activity.open.toLocaleString("en-US") ?? "—"}
+                </strong>
+                <span className="metric-note">Across BTC & ETH</span>
+              </div>
+            </div>
+            <div className="board-status">
+              <span className={`freshness ${sourceOld ? "stale" : ""}`}>
+                <i />
+                {!data
+                  ? "Connecting"
+                  : sourceOld
+                    ? "Last known snapshot"
+                    : "Updating"}
+                <span className="freshness-time">
+                  {" "}
+                  · {relativeTime(data?.status.sourceAt)}
+                </span>
               </span>
-              <strong className={!summary ? "skeleton-text" : ""}>
-                {formatUsd(tvl, true)}
-              </strong>
-              <span className="metric-note">USDC · protocol-reported</span>
             </div>
-            <div className="metric metric-primary">
-              <span className="metric-label">Wallets</span>
-              <strong>
-                {data?.accountCount?.toLocaleString("en-US") ?? "—"}
-              </strong>
-              <span className="metric-note">Public accounts</span>
-            </div>
-            <div className="metric">
-              <span className="metric-label">Trading volume</span>
-              <strong>{formatRawUsd(summary?.activity.volume, true)}</strong>
-              <span className="metric-note">Lifetime notional</span>
-            </div>
-            <div className="metric">
-              <span className="metric-label">Open positions</span>
-              <strong>
-                {summary?.activity.open.toLocaleString("en-US") ?? "—"}
-              </strong>
-              <span className="metric-note">Across BTC & ETH</span>
-            </div>
-          </div>
-          <div className="board-status">
-            <span className={`freshness ${sourceOld ? "stale" : ""}`}>
-              <i />
-              {!data
-                ? "Connecting"
-                : sourceOld
-                  ? "Last known snapshot"
-                  : "Updating"}
-              <span className="freshness-time">
-                {" "}
-                · {relativeTime(data?.status.sourceAt)}
-              </span>
-            </span>
-          </div>
-          {error && (
-            <p className="inline-notice" role="status">
-              {data ? "Showing the last available snapshot. " : ""}
-              {error}
-            </p>
-          )}
-        </section>
+            {error && (
+              <p className="inline-notice" role="status">
+                {data ? "Showing the last available snapshot. " : ""}
+                {error}
+              </p>
+            )}
+          </section>
+        )}
 
         {section === "overview" && (
           <div className="story-grid">
@@ -810,251 +805,266 @@ function App() {
           </div>
         )}
 
-        <section className="community-section" id="wallets" ref={walletsRef}>
-          <div className="community-heading">
-            <div>
-              <h2>
-                {section === "following" ? "Following" : "Wallets"}
-                <span className="heading-count">
-                  {section === "following"
-                    ? following.length
-                    : (accounts?.summary.uniqueAccounts?.toLocaleString() ??
-                      "—")}
-                </span>
-              </h2>
-              {section === "following" && (
-                <p>Saved on this device · balances at time of saving</p>
-              )}
-            </div>
-            <div className="community-controls">
-              <label htmlFor="sort-wallets">Sort by</label>
-              <select
-                id="sort-wallets"
-                value={sort}
-                disabled={section === "following"}
-                onChange={(e) => {
-                  setSort(e.target.value);
-                  setPage(0);
-                }}
-              >
-                <option value="currentBalance">Balance</option>
-                <option value="lastActiveTs">Recent activity</option>
-                <option value="totalVolume">Volume</option>
-                <option value="realizedPnl">Realized PnL</option>
-              </select>
-            </div>
-          </div>
-          {query && (
-            <div className="search-summary">
-              <span>
-                Results for <strong>{query}</strong>
-              </span>
-              <button className="text-button" onClick={() => setQuery("")}>
-                Clear <Icon name="close" size={13} />
-              </button>
-            </div>
-          )}
-          {accountsError && section !== "following" ? (
-            <div className="table-empty">
-              <h3>Unable to load wallets</h3>
-              <p>{accountsError}</p>
-              <button
-                className="outline-button"
-                onClick={() => setRetry((x) => x + 1)}
-              >
-                Try again
-              </button>
-            </div>
-          ) : (
-            <>
-              <div
-                className={`table-scroll ${loadingAccounts && section !== "following" ? "table-loading" : ""}`}
-                aria-busy={loadingAccounts && section !== "following"}
-              >
-                <table className="wallet-table">
-                  <thead>
-                    <tr>
-                      <th className="rank-cell">NO.</th>
-                      <th>WALLET</th>
-                      <th className="numeric">
-                        {section === "following" ? "SAVED BALANCE" : "BALANCE"}
-                      </th>
-                      <th className="numeric">REALIZED PNL</th>
-                      <th className="numeric volume-cell">VOLUME</th>
-                      <th className="last-seen">LAST ACTIVE</th>
-                      <th>
-                        <span className="sr-only">Follow wallet</span>
-                      </th>
-                      <th>
-                        <span className="sr-only">Open wallet</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loadingAccounts && !accounts && section !== "following"
-                      ? Array.from({ length: 5 }, (_, i) => (
-                          <tr key={i} className="skeleton-row">
-                            <td>{String(i + 1).padStart(2, "0")}</td>
-                            <td>
-                              <span className="skeleton-line" />
-                            </td>
-                            <td colSpan={6}>
-                              <span className="skeleton-line short" />
-                            </td>
-                          </tr>
-                        ))
-                      : displayAccounts.map((account, i) => {
-                          const pnl = rawToNumber(account.realizedPnl) ?? 0;
-                          const saved = following.some(
-                            (a) =>
-                              a.address.toLowerCase() ===
-                              account.address.toLowerCase(),
-                          );
-                          return (
-                            <tr key={account.address}>
-                              <td className="rank-cell">
-                                {String(
-                                  (section === "following" ? 0 : page * 25) +
-                                    i +
-                                    1,
-                                ).padStart(2, "0")}
-                              </td>
-                              <td>
-                                <button
-                                  className="wallet-identity"
-                                  onMouseEnter={() => {
-                                    cancelPrefetch.current?.();
-                                    cancelPrefetch.current = prefetchWallet(
-                                      account.address,
-                                    );
-                                  }}
-                                  onMouseLeave={() =>
-                                    cancelPrefetch.current?.()
-                                  }
-                                  onFocus={() => {
-                                    cancelPrefetch.current?.();
-                                    cancelPrefetch.current = prefetchWallet(
-                                      account.address,
-                                    );
-                                  }}
-                                  onBlur={() => cancelPrefetch.current?.()}
-                                  onClick={() => openWallet(account.address)}
-                                >
-                                  <Avatar address={account.address} />
-                                  <span>
-                                    <strong>
-                                      {account.leaderboardName ||
-                                        shortAddress(account.address)}
-                                    </strong>
-                                    <span>
-                                      {account.leaderboardName
-                                        ? shortAddress(account.address)
-                                        : "Papertrade wallet"}
-                                    </span>
-                                  </span>
-                                </button>
-                              </td>
-                              <td className="numeric table-balance">
-                                {formatRawUsd(account.currentBalance)}
-                              </td>
-                              <td
-                                className={`numeric ${pnl > 0 ? "positive" : pnl < 0 ? "negative" : "muted"}`}
-                              >
-                                {pnl > 0 ? "+" : ""}
-                                {formatRawUsd(account.realizedPnl)}
-                              </td>
-                              <td className="numeric volume-cell">
-                                {formatRawUsd(account.totalVolume, true)}
-                              </td>
-                              <td className="last-seen muted">
-                                {relativeTime(account.lastActiveTs)}
-                              </td>
-                              <td>
-                                <button
-                                  className={`star-button ${saved ? "saved" : ""}`}
-                                  aria-label={`${saved ? "Unfollow" : "Follow"} ${account.leaderboardName || shortAddress(account.address)}`}
-                                  aria-pressed={saved}
-                                  onClick={() => toggleFollow(account)}
-                                >
-                                  <Icon name="star" size={17} />
-                                </button>
-                              </td>
-                              <td>
-                                <button
-                                  className="row-arrow"
-                                  onClick={() => openWallet(account.address)}
-                                  aria-label={`Explore ${shortAddress(account.address)}`}
-                                >
-                                  <Icon name="northeast" size={17} />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                  </tbody>
-                </table>
-              </div>
-              {!loadingAccounts && !displayAccounts.length && (
-                <div className="table-empty">
-                  <PaperMark size={30} />
-                  <h3>
+        {section === "assets" && (
+          <AssetsView
+            instrument={asset}
+            onSelect={(instrument) => navigate("assets", instrument)}
+            onWallet={openWallet}
+          />
+        )}
+        {section === "leaderboard" && <LeaderboardView onWallet={openWallet} />}
+
+        {(section === "overview" ||
+          section === "wallets" ||
+          section === "following") && (
+          <section className="community-section" id="wallets">
+            <div className="community-heading">
+              <div>
+                <h2>
+                  {section === "following" ? "Following" : "Wallets"}
+                  <span className="heading-count">
                     {section === "following"
-                      ? "No followed wallets"
-                      : "No wallets found"}
-                  </h3>
-                  <p>
-                    {section === "following"
-                      ? "Tap the star beside a wallet to keep it here."
-                      : "Try a full wallet address or a different public name."}
-                  </p>
-                  {section === "following" && (
-                    <button
-                      className="outline-button"
-                      onClick={() => navigate("wallets")}
-                    >
-                      Browse wallets <Icon name="arrow" size={15} />
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-          <div className="table-footer">
-            <span>
-              {section === "following"
-                ? "Following is private to this browser."
-                : `${accounts?.count?.toLocaleString() ?? "—"} public accounts${accounts?.stale ? " · cached directory" : ""}`}
-            </span>
-            {section !== "following" && (
-              <div className="pagination">
-                <button
-                  aria-label="Previous page"
-                  disabled={page === 0 || loadingAccounts}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  <Icon name="left" size={15} />
-                </button>
-                <span>
-                  {page + 1}{" "}
-                  <span className="muted">
-                    / {accounts?.pageInfo.totalPages ?? "—"}
+                      ? following.length
+                      : (accounts?.summary.uniqueAccounts?.toLocaleString() ??
+                        "—")}
                   </span>
-                </span>
-                <button
-                  aria-label="Next page"
-                  disabled={
-                    !accounts ||
-                    page + 1 >= accounts.pageInfo.totalPages ||
-                    loadingAccounts
-                  }
-                  onClick={() => setPage((p) => p + 1)}
+                </h2>
+                {section === "following" && (
+                  <p>Saved on this device · balances at time of saving</p>
+                )}
+              </div>
+              <div className="community-controls">
+                <label htmlFor="sort-wallets">Sort by</label>
+                <select
+                  id="sort-wallets"
+                  value={sort}
+                  disabled={section === "following"}
+                  onChange={(e) => {
+                    setSort(e.target.value);
+                    setPage(0);
+                  }}
                 >
-                  <Icon name="right" size={15} />
+                  <option value="currentBalance">Balance</option>
+                  <option value="lastActiveTs">Recent activity</option>
+                  <option value="totalVolume">Volume</option>
+                  <option value="realizedPnl">Realized PnL</option>
+                </select>
+              </div>
+            </div>
+            {query && (
+              <div className="search-summary">
+                <span>
+                  Results for <strong>{query}</strong>
+                </span>
+                <button className="text-button" onClick={() => setQuery("")}>
+                  Clear <Icon name="close" size={13} />
                 </button>
               </div>
             )}
-          </div>
-        </section>
+            {accountsError && section !== "following" ? (
+              <div className="table-empty">
+                <h3>Unable to load wallets</h3>
+                <p>{accountsError}</p>
+                <button
+                  className="outline-button"
+                  onClick={() => setRetry((x) => x + 1)}
+                >
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <>
+                <div
+                  className={`table-scroll ${loadingAccounts && section !== "following" ? "table-loading" : ""}`}
+                  aria-busy={loadingAccounts && section !== "following"}
+                >
+                  <table className="wallet-table">
+                    <thead>
+                      <tr>
+                        <th className="rank-cell">NO.</th>
+                        <th>WALLET</th>
+                        <th className="numeric">
+                          {section === "following"
+                            ? "SAVED BALANCE"
+                            : "BALANCE"}
+                        </th>
+                        <th className="numeric">REALIZED PNL</th>
+                        <th className="numeric volume-cell">VOLUME</th>
+                        <th className="last-seen">LAST ACTIVE</th>
+                        <th>
+                          <span className="sr-only">Follow wallet</span>
+                        </th>
+                        <th>
+                          <span className="sr-only">Open wallet</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingAccounts && !accounts && section !== "following"
+                        ? Array.from({ length: 5 }, (_, i) => (
+                            <tr key={i} className="skeleton-row">
+                              <td>{String(i + 1).padStart(2, "0")}</td>
+                              <td>
+                                <span className="skeleton-line" />
+                              </td>
+                              <td colSpan={6}>
+                                <span className="skeleton-line short" />
+                              </td>
+                            </tr>
+                          ))
+                        : displayAccounts.map((account, i) => {
+                            const pnl = rawToNumber(account.realizedPnl) ?? 0;
+                            const saved = following.some(
+                              (a) =>
+                                a.address.toLowerCase() ===
+                                account.address.toLowerCase(),
+                            );
+                            return (
+                              <tr key={account.address}>
+                                <td className="rank-cell">
+                                  {String(
+                                    (section === "following" ? 0 : page * 25) +
+                                      i +
+                                      1,
+                                  ).padStart(2, "0")}
+                                </td>
+                                <td>
+                                  <button
+                                    className="wallet-identity"
+                                    onMouseEnter={() => {
+                                      cancelPrefetch.current?.();
+                                      cancelPrefetch.current = prefetchWallet(
+                                        account.address,
+                                      );
+                                    }}
+                                    onMouseLeave={() =>
+                                      cancelPrefetch.current?.()
+                                    }
+                                    onFocus={() => {
+                                      cancelPrefetch.current?.();
+                                      cancelPrefetch.current = prefetchWallet(
+                                        account.address,
+                                      );
+                                    }}
+                                    onBlur={() => cancelPrefetch.current?.()}
+                                    onClick={() => openWallet(account.address)}
+                                  >
+                                    <Avatar address={account.address} />
+                                    <span>
+                                      <strong>
+                                        {account.leaderboardName ||
+                                          shortAddress(account.address)}
+                                      </strong>
+                                      <span>
+                                        {account.leaderboardName
+                                          ? shortAddress(account.address)
+                                          : "Papertrade wallet"}
+                                      </span>
+                                    </span>
+                                  </button>
+                                </td>
+                                <td className="numeric table-balance">
+                                  {formatRawUsd(account.currentBalance)}
+                                </td>
+                                <td
+                                  className={`numeric ${pnl > 0 ? "positive" : pnl < 0 ? "negative" : "muted"}`}
+                                >
+                                  {pnl > 0 ? "+" : ""}
+                                  {formatRawUsd(account.realizedPnl)}
+                                </td>
+                                <td className="numeric volume-cell">
+                                  {formatRawUsd(account.totalVolume, true)}
+                                </td>
+                                <td className="last-seen muted">
+                                  {relativeTime(account.lastActiveTs)}
+                                </td>
+                                <td>
+                                  <button
+                                    className={`star-button ${saved ? "saved" : ""}`}
+                                    aria-label={`${saved ? "Unfollow" : "Follow"} ${account.leaderboardName || shortAddress(account.address)}`}
+                                    aria-pressed={saved}
+                                    onClick={() => toggleFollow(account)}
+                                  >
+                                    <Icon name="star" size={17} />
+                                  </button>
+                                </td>
+                                <td>
+                                  <button
+                                    className="row-arrow"
+                                    onClick={() => openWallet(account.address)}
+                                    aria-label={`Explore ${shortAddress(account.address)}`}
+                                  >
+                                    <Icon name="northeast" size={17} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                    </tbody>
+                  </table>
+                </div>
+                {!loadingAccounts && !displayAccounts.length && (
+                  <div className="table-empty">
+                    <PaperMark size={30} />
+                    <h3>
+                      {section === "following"
+                        ? "No followed wallets"
+                        : "No wallets found"}
+                    </h3>
+                    <p>
+                      {section === "following"
+                        ? "Tap the star beside a wallet to keep it here."
+                        : "Try a full wallet address or a different public name."}
+                    </p>
+                    {section === "following" && (
+                      <button
+                        className="outline-button"
+                        onClick={() => navigate("wallets")}
+                      >
+                        Browse wallets <Icon name="arrow" size={15} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+            <div className="table-footer">
+              <span>
+                {section === "following"
+                  ? "Following is private to this browser."
+                  : `${accounts?.count?.toLocaleString() ?? "—"} public accounts${accounts?.stale ? " · cached directory" : ""}`}
+              </span>
+              {section !== "following" && (
+                <div className="pagination">
+                  <button
+                    aria-label="Previous page"
+                    disabled={page === 0 || loadingAccounts}
+                    onClick={() => setPage((p) => p - 1)}
+                  >
+                    <Icon name="left" size={15} />
+                  </button>
+                  <span>
+                    {page + 1}{" "}
+                    <span className="muted">
+                      / {accounts?.pageInfo.totalPages ?? "—"}
+                    </span>
+                  </span>
+                  <button
+                    aria-label="Next page"
+                    disabled={
+                      !accounts ||
+                      page + 1 >= accounts.pageInfo.totalPages ||
+                      loadingAccounts
+                    }
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    <Icon name="right" size={15} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         <footer className="site-footer">
           <span className="footer-brand">paperdash.</span>
