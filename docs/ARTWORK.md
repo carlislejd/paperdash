@@ -8,11 +8,11 @@ Use case: illustration-story. Asset type: original editorial banner artwork for 
 
 ## Display
 
-The artwork is decorative context for the community, never a depiction of a real wallet owner. Financial content remains live HTML, with no values baked into the image. The original banner is retained as a source asset. The active decorative cutout has an empty alternative so it does not interrupt screen-reader navigation, and neither image uses continuous animation.
+The artwork is decorative context for the community, never a depiction of a real wallet owner. Financial content remains live HTML, with no values baked into the image. The original banner is retained as a source asset. The decorative cutout used an empty alternative so it did not interrupt screen-reader navigation. Neither retained image is currently rendered by the interface.
 
 ## Divider character
 
-The current interface uses `apps/web/public/art/observer-cutout.webp` (640 × 662, about 120 KB, preserved alpha), created with the built-in image-generation tool using the original banner as its edit target. The character rests on the first data divider; narrative banner copy and the scenery were removed at the user’s request.
+An earlier interface iteration used `apps/web/public/art/observer-cutout.webp` (640 × 662, about 120 KB, preserved alpha), created with the built-in image-generation tool using the original banner as its edit target. That iteration placed the character on the first data divider. The current interface leads with TVL and wallet metrics and does not render the character; the asset is retained for future use.
 
 ### Final edit prompt
 

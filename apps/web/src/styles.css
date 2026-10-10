@@ -984,34 +984,6 @@ button svg {
 .table-scroll {
   position: relative;
 }
-.dashboard-masthead {
-  height: 216px;
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  padding: 0 0 24px;
-}
-.dashboard-masthead h1 {
-  font-family: "DM Serif Display", Georgia, serif;
-  font-size: 43px;
-  font-weight: 400;
-  letter-spacing: -1px;
-  line-height: 1.15;
-  margin: 0 0 11px;
-}
-.dashboard-masthead.compact {
-  height: 128px;
-}
-.divider-character {
-  position: absolute;
-  bottom: -2px;
-  right: 28px;
-  width: 200px;
-  height: auto;
-  pointer-events: none;
-  user-select: none;
-  z-index: 1;
-}
 .overview-board {
   padding-top: 0;
 }
@@ -1434,13 +1406,6 @@ button svg {
   }
 }
 @media (max-width: 850px) {
-  .dashboard-masthead {
-    height: 193px;
-  }
-  .divider-character {
-    width: 179px;
-    right: 15px;
-  }
   .metric-label {
     font-size: 10px;
   }
@@ -1477,22 +1442,6 @@ button svg {
   }
   .wordmark {
     flex-shrink: 0;
-  }
-  .dashboard-masthead {
-    height: 155px;
-    padding-bottom: 19px;
-  }
-  .dashboard-masthead h1 {
-    font-size: 35px;
-    margin-bottom: 9px;
-  }
-  .dashboard-masthead.compact {
-    height: 111px;
-  }
-  .divider-character {
-    width: 144px;
-    right: 0;
-    bottom: -1px;
   }
   .freshness {
     font-size: 10px;
@@ -1537,5 +1486,81 @@ button svg {
   }
   .info-modal {
     padding: 30px;
+  }
+}
+
+/* Lead with useful data directly beneath the navigation. */
+.overview-board {
+  border-top: 0;
+  border-bottom: 1px solid var(--ink);
+  padding: 31px 0 20px;
+}
+.overview-board .metrics-row {
+  grid-template-columns: 1.5fr 1.2fr 1fr 0.85fr;
+  padding-top: 0;
+  align-items: center;
+}
+.overview-board .metric {
+  min-width: 0;
+  gap: 9px;
+}
+.overview-board .metric-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.overview-board .metric strong {
+  font-size: 32px;
+  line-height: 1.15;
+  margin: 0;
+}
+.overview-board .metric-primary strong {
+  font-size: clamp(42px, 4.2vw, 60px);
+  letter-spacing: -2.5px;
+}
+.board-status {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+  min-height: 14px;
+}
+@media (max-width: 850px) {
+  .overview-board .metric-primary strong {
+    font-size: 42px;
+    letter-spacing: -1.9px;
+  }
+  .overview-board .metric strong {
+    font-variant-numeric: tabular-nums;
+  }
+  .overview-board .metric:not(.metric-primary) strong {
+    font-size: 28px;
+  }
+  .overview-board .metric-label {
+    font-size: 11px;
+  }
+}
+@media (max-width: 650px) {
+  .overview-board {
+    padding: 25px 0 16px;
+  }
+  .overview-board .metrics-row {
+    grid-template-columns: 1fr 1fr;
+    row-gap: 20px;
+  }
+  .overview-board .metric-primary strong {
+    font-size: clamp(35px, 9.6vw, 48px);
+  }
+  .overview-board .metric:not(.metric-primary) strong {
+    font-size: 26px;
+    letter-spacing: -1px;
+  }
+  .overview-board .metric:nth-child(n + 3) {
+    padding-top: 16px;
+  }
+  .board-status {
+    justify-content: flex-start;
+    margin-top: 18px;
+  }
+  .board-status .freshness-time {
+    display: inline;
   }
 }

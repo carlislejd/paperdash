@@ -724,17 +724,45 @@ function App() {
         </div>
       </header>
       <main id="main" className="page-shell">
-        <div
-          className={`dashboard-masthead ${section !== "overview" ? "compact" : ""}`}
-        >
-          <div>
-            <h1>
-              {section === "overview"
-                ? "Overview"
-                : section === "following"
-                  ? "Following"
-                  : "Wallets"}
-            </h1>
+        <h1 className="sr-only">Papertrade analytics</h1>
+        <section className="overview-board" aria-label="Protocol overview">
+          <div className="metrics-row">
+            <div className="metric metric-primary">
+              <span className="metric-label">
+                TVL{" "}
+                <button
+                  aria-label="How TVL is sourced"
+                  onClick={() => setInfo(true)}
+                >
+                  <Icon name="circle" size={13} />
+                </button>
+              </span>
+              <strong className={!summary ? "skeleton-text" : ""}>
+                {formatUsd(tvl, true)}
+              </strong>
+              <span className="metric-note">USDC · protocol-reported</span>
+            </div>
+            <div className="metric metric-primary">
+              <span className="metric-label">Wallets</span>
+              <strong>
+                {data?.accountCount?.toLocaleString("en-US") ?? "—"}
+              </strong>
+              <span className="metric-note">Public accounts</span>
+            </div>
+            <div className="metric">
+              <span className="metric-label">Trading volume</span>
+              <strong>{formatRawUsd(summary?.activity.volume, true)}</strong>
+              <span className="metric-note">Lifetime notional</span>
+            </div>
+            <div className="metric">
+              <span className="metric-label">Open positions</span>
+              <strong>
+                {summary?.activity.open.toLocaleString("en-US") ?? "—"}
+              </strong>
+              <span className="metric-note">Across BTC & ETH</span>
+            </div>
+          </div>
+          <div className="board-status">
             <span className={`freshness ${sourceOld ? "stale" : ""}`}>
               <i />
               {!data
@@ -747,57 +775,6 @@ function App() {
                 · {relativeTime(data?.status.sourceAt)}
               </span>
             </span>
-          </div>
-          {section === "overview" && (
-            <img
-              className="divider-character"
-              src="/art/observer-cutout.webp"
-              alt=""
-              width="640"
-              height="662"
-              fetchPriority="high"
-            />
-          )}
-        </div>
-
-        <section className="overview-board" aria-label="Protocol overview">
-          <div className="metrics-row">
-            <div className="metric metric-primary">
-              <span className="metric-label">
-                Protocol-reported TVL{" "}
-                <button
-                  aria-label="How TVL is sourced"
-                  onClick={() => setInfo(true)}
-                >
-                  <Icon name="circle" size={13} />
-                </button>
-              </span>
-              <strong className={!summary ? "skeleton-text" : ""}>
-                {formatUsd(tvl, true)}
-              </strong>
-              <span className="metric-note">USDC reported by Papertrade</span>
-            </div>
-            <div className="metric">
-              <span className="metric-label">Community wallets</span>
-              <strong>
-                {data?.accountCount?.toLocaleString("en-US") ?? "—"}
-              </strong>
-              <span className="metric-note">
-                Accounts in the public directory
-              </span>
-            </div>
-            <div className="metric">
-              <span className="metric-label">Trading volume</span>
-              <strong>{formatRawUsd(summary?.activity.volume, true)}</strong>
-              <span className="metric-note">Lifetime reported notional</span>
-            </div>
-            <div className="metric">
-              <span className="metric-label">Open positions</span>
-              <strong>
-                {summary?.activity.open.toLocaleString("en-US") ?? "—"}
-              </strong>
-              <span className="metric-note">Across BTC & ETH</span>
-            </div>
           </div>
           {error && (
             <p className="inline-notice" role="status">
