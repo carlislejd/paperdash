@@ -1,0 +1,253 @@
+.house-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin: 26px 0 32px;
+}
+.house-funds {
+  padding: 24px 30px 18px 0;
+  min-width: 0;
+}
+.house-funds .section-heading {
+  margin-bottom: 12px;
+}
+.house-value {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.house-value strong {
+  font-size: clamp(28px, 3vw, 40px);
+  letter-spacing: -0.05em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.house-value > span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.house-chart {
+  height: 150px;
+  margin-top: 6px;
+}
+.house-chart svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.house-chart-empty {
+  padding-top: 50px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.house-chart-caption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+}
+.house-breakdown {
+  padding: 24px 0 18px 30px;
+  border-left: 1px solid var(--line);
+}
+.house-breakdown h3 {
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  margin: 22px 0 12px;
+  color: var(--muted);
+}
+.house-details,
+.paper-details {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.house-details > div,
+.paper-details > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+}
+.house-details dt,
+.paper-details dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.house-details dd,
+.paper-details dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.paper-details small {
+  font-size: 10px;
+}
+.protocol-method {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 12px 0 0;
+}
+.liquidation-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  padding: 0;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: left;
+}
+.liquidation-summary strong {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 14px;
+}
+.liquidation-summary:hover strong {
+  color: #9576b2;
+}
+.overview-board .board-status {
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.liquidations-view {
+  padding-top: 32px;
+}
+.liquidations-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+.liquidations-heading h2 {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 600;
+  line-height: 1.1;
+  font-family: inherit;
+  letter-spacing: -0.05em;
+  margin: 0 0 8px;
+}
+.liquidations-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.liquidation-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin: 0 0 26px;
+}
+.liquidation-metrics > div {
+  padding: 20px;
+  border-right: 1px solid var(--line);
+}
+.liquidation-metrics > div:first-child {
+  padding-left: 0;
+}
+.liquidation-metrics > div:last-child {
+  border-right: 0;
+}
+.liquidation-metrics dt {
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+.liquidation-metrics dd {
+  margin: 0;
+  font-size: clamp(21px, 2.6vw, 32px);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+.liquidation-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.liquidation-toolbar .feed-filters {
+  margin: 0;
+}
+.liquidation-table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+.liquidation-table th {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  text-align: left;
+  padding: 18px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.liquidation-table td {
+  font-size: 12px;
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.liquidation-table th:first-child,
+.liquidation-table td:first-child {
+  padding-left: 0;
+}
+.liquidation-table .numeric {
+  text-align: right;
+}
+.liquidation-wallet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.liquidation-wallet:hover {
+  text-decoration: underline;
+}
+.liquidation-table time {
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 720px) {
+  .house-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .house-funds {
+    padding-right: 0;
+  }
+  .house-breakdown {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 20px 0;
+  }
+  .liquidation-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .liquidation-metrics > div {
+    padding: 16px;
+  }
+  .liquidation-metrics > div:nth-child(3) {
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .liquidation-metrics > div:nth-child(4) {
+    border-top: 1px solid var(--line);
+  }
+  .liquidation-metrics > div:nth-child(2) {
+    border-right: 0;
+  }
+  .liquidations-heading {
+    align-items: flex-start;
+  }
+}

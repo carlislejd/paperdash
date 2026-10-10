@@ -248,7 +248,11 @@ export class Upstream {
     key: string,
     ttl: number,
     loader: () => Promise<T>,
-    options: { wait?: boolean; staleAfter?: number } = {},
+    options: {
+      wait?: boolean;
+      staleAfter?: number;
+      waitForInitial?: boolean;
+    } = {},
   ): Promise<Cached<T>> {
     // Read the shared cache on every lookup. A local entry must not hide a newer
     // refresh performed by another API instance or by the collector.
@@ -269,6 +273,14 @@ export class Upstream {
     }
     let promise = this.inflight.get(key) as Promise<Cached<T>> | undefined;
     if (!promise) {
+      // Distinct cold searches/wallets must not create an unbounded set of Redis
+      // locks or waiting promises. Existing cache reads and same-key joins remain available.
+      if (this.inflight.size >= 32) {
+        const message =
+          "Live refresh capacity is busy; showing saved observations when available.";
+        if (saved) return { ...saved, stale: true, error: message };
+        throw new UpstreamError(message, 503, Date.now() + 5000);
+      }
       promise = (async () => {
         const deadline = Date.now() + 14000;
         do {
@@ -339,6 +351,14 @@ export class Upstream {
         .finally(() => this.inflight.delete(key));
       this.inflight.set(key, promise as Promise<Cached<unknown>>);
     }
+    if (!saved && options.waitForInitial === false) {
+      void promise.catch(() => {});
+      throw new UpstreamError(
+        "Live account snapshot is being collected. Retained history remains available.",
+        503,
+        Date.now() + 5000,
+      );
+    }
     if (saved && !options.wait) {
       void promise.catch(() => {});
       return {
@@ -361,13 +381,14 @@ export class Upstream {
     q = "",
     sort = "currentBalance",
     page = 0,
+    pageSize: 10 | 25 = 25,
   ): Promise<AccountsResponse> {
     const path = canonicalPath("/state/leaderboard/accounts", {
       window: "all",
       sortKey: sort,
       sortDir: "desc",
       page,
-      pageSize: 25,
+      pageSize,
       q,
     });
     const r = await this.cached(path, 15000, () =>
@@ -480,60 +501,68 @@ export class Upstream {
       ...(page.coverage.error ? { error: page.coverage.error } : {}),
     };
   }
-  async snapshot(address: string): Promise<Cached<WalletSnapshot>> {
+  async snapshot(
+    address: string,
+    waitForInitial = true,
+  ): Promise<Cached<WalletSnapshot>> {
     address = addressSchema.parse(address);
-    return this.cached(`wallet:${address}`, 5000, () =>
-      this.limited(async () => {
-        const controller = new AbortController();
-        try {
-          const response = await this.fetcher(
-            new URL(
-              canonicalPath("/state/user/live", { wallet: address }),
-              this.origin,
-            ),
-            {
-              headers: { Accept: "text/event-stream" },
-              signal: AbortSignal.any([
-                controller.signal,
-                AbortSignal.timeout(12000),
-              ]),
-              redirect: "error",
-            },
-          );
-          if (response.status === 429) {
-            return this.rateLimited(response, "Wallet stream rate limited.");
+    return this.cached(
+      `wallet:${address}`,
+      config.walletSnapshotTtl,
+      () =>
+        this.limited(async () => {
+          const controller = new AbortController();
+          try {
+            const response = await this.fetcher(
+              new URL(
+                canonicalPath("/state/user/live", { wallet: address }),
+                this.origin,
+              ),
+              {
+                headers: { Accept: "text/event-stream" },
+                signal: AbortSignal.any([
+                  controller.signal,
+                  AbortSignal.timeout(12000),
+                ]),
+                redirect: "error",
+              },
+            );
+            if (response.status === 429) {
+              return this.rateLimited(response, "Wallet stream rate limited.");
+            }
+            if (!response.ok || !response.body)
+              throw new UpstreamError(
+                `Wallet stream returned HTTP ${response.status}.`,
+                response.status,
+              );
+            const value = await firstWalletEvent(response.body, address);
+            const previous = await this.store.get<WalletSnapshot>(
+              `cache:wallet:${address}`,
+            );
+            if (
+              previous &&
+              (value.accountRevision < previous.value.accountRevision ||
+                value.indexedThroughBlock <
+                  previous.value.indexedThroughBlock ||
+                value.indexedThroughTimestamp <
+                  previous.value.indexedThroughTimestamp)
+            )
+              throw new UpstreamError(
+                "Papertrade returned an older account revision; retaining the saved snapshot.",
+              );
+            return value;
+          } finally {
+            controller.abort();
           }
-          if (!response.ok || !response.body)
-            throw new UpstreamError(
-              `Wallet stream returned HTTP ${response.status}.`,
-              response.status,
-            );
-          const value = await firstWalletEvent(response.body, address);
-          const previous = await this.store.get<WalletSnapshot>(
-            `cache:wallet:${address}`,
-          );
-          if (
-            previous &&
-            (value.accountRevision < previous.value.accountRevision ||
-              value.indexedThroughBlock < previous.value.indexedThroughBlock ||
-              value.indexedThroughTimestamp <
-                previous.value.indexedThroughTimestamp)
-          )
-            throw new UpstreamError(
-              "Papertrade returned an older account revision; retaining the saved snapshot.",
-            );
-          return value;
-        } finally {
-          controller.abort();
-        }
-      }),
+        }),
+      { waitForInitial },
     );
   }
   async wallet(address: string): Promise<WalletResponse> {
     address = addressSchema.parse(address);
     await this.store.history.ensureWallet(address, 10);
     const results = await Promise.allSettled([
-      this.snapshot(address),
+      this.snapshot(address, false),
       this.history<Cashflow>(address, "cashflows", undefined, false),
       this.history<ClosedTrade>(address, "trades", undefined, false),
       (async (): Promise<Cached<PortfolioHistory>> => {

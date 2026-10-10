@@ -35,6 +35,21 @@ import {
   type MarketStore,
 } from "./market-store.js";
 
+import {
+  createPgHouse,
+  createLocalHouse,
+  houseSchemaSql,
+  type HouseStore,
+} from "./house-store.js";
+import {
+  createPgLiquidations,
+  createLocalLiquidations,
+  liquidationsSchemaSql,
+  projectLiquidationPg,
+  projectLiquidationSqlite,
+  type LiquidationsStore,
+} from "./liquidations-store.js";
+
 export interface Saved<T> {
   value: T;
   receivedAt: number;
@@ -49,6 +64,8 @@ export interface Store {
   analytics: AnalyticsStore;
   positionMetrics: PositionMetricsStore;
   market: MarketStore;
+  house: HouseStore;
+  liquidations: LiquidationsStore;
   get<T>(key: string): Promise<Saved<T> | null>;
   put(key: string, value: unknown, receivedAt?: number): Promise<void>;
   trade(value: TradeEvent): Promise<boolean>;
@@ -81,6 +98,8 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query(analyticsSchemaSql("paperdash_", true));
     await client.query(positionMetricsSchemaSql("paperdash_", true));
     await client.query(marketSchemaSql("paperdash_", true));
+    await client.query(houseSchemaSql("paperdash_", true));
+    await client.query(liquidationsSchemaSql("paperdash_", true));
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -115,7 +134,7 @@ export async function createStore(
     else
       await pool
         .query(
-          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0",
+          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0; SELECT 1 FROM paperdash_house_samples LIMIT 0; SELECT 1 FROM paperdash_liquidation_state LIMIT 0",
         )
         .catch(() => {
           throw new Error(
@@ -173,6 +192,8 @@ export async function createStore(
       analytics: createPgAnalytics(pool),
       positionMetrics: createPgPositionMetrics(pool),
       market: createPgMarket(pool),
+      house: createPgHouse(pool),
+      liquidations: createPgLiquidations(pool),
       async get<T>(key: string) {
         const r = await pool.query(
           "SELECT payload,received_at FROM paperdash_snapshots WHERE key=$1",
@@ -199,7 +220,10 @@ export async function createStore(
             "INSERT INTO paperdash_trade_observations VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING",
             [value.id, JSON.stringify(value), value.ts, Date.now()],
           );
-          if (r.rowCount === 1) await projectTradePg(client, value);
+          if (r.rowCount === 1) {
+            await projectTradePg(client, value);
+            await projectLiquidationPg(client, value);
+          }
           await client.query("COMMIT");
           return r.rowCount === 1;
         } catch (error) {
@@ -222,6 +246,7 @@ export async function createStore(
             return false;
           }
           await projectTradePg(client, value);
+          await projectLiquidationPg(client, value);
           const event = await client.query(
             "INSERT INTO paperdash_stream_events(payload) VALUES($1) RETURNING id",
             [JSON.stringify({ type: "trade", data: value })],
@@ -354,6 +379,8 @@ export async function createStore(
   db.exec(analyticsSchemaSql("", false));
   db.exec(positionMetricsSchemaSql("", false));
   migrateLocalMarket(db);
+  db.exec(houseSchemaSql("", false));
+  db.exec(liquidationsSchemaSql("", false));
   const maxBytes = options.maxBytes ?? config.localMaxBytes;
   let checkAt = 0;
   async function writable() {
@@ -378,6 +405,8 @@ export async function createStore(
     analytics: createLocalAnalytics(db, writable),
     positionMetrics: createLocalPositionMetrics(db, writable),
     market: createLocalMarket(db, writable),
+    house: createLocalHouse(db, writable),
+    liquidations: createLocalLiquidations(db, writable),
     history: createHistoryStore({
       prefix: "",
       async rows<T>(sql: string, params: unknown[] = []) {
@@ -431,7 +460,10 @@ export async function createStore(
             .prepare("INSERT OR IGNORE INTO trade_observations VALUES(?,?,?,?)")
             .run(value.id, JSON.stringify(value), value.ts, Date.now())
             .changes === 1;
-        if (inserted) projectTradeSqlite(db, value);
+        if (inserted) {
+          projectTradeSqlite(db, value);
+          projectLiquidationSqlite(db, value);
+        }
         db.exec("COMMIT");
         return inserted;
       } catch (error) {
@@ -451,6 +483,7 @@ export async function createStore(
           return false;
         }
         projectTradeSqlite(db, value);
+        projectLiquidationSqlite(db, value);
         const event = db
           .prepare("INSERT INTO stream_events(payload) VALUES(?)")
           .run(JSON.stringify({ type: "trade", data: value }));

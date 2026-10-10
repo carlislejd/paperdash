@@ -273,4 +273,8 @@ export const accountsQuerySchema = z.object({
   q: z.string().max(42).default(""),
   sort: z.enum(sorts).default("currentBalance"),
   page: z.coerce.number().int().min(0).max(1000000).default(0),
+  pageSize: z.coerce
+    .number()
+    .pipe(z.union([z.literal(10), z.literal(25)]))
+    .default(25),
 });

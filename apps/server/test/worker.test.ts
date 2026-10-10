@@ -80,8 +80,8 @@ beforeEach(() => {
       close = mocks.busClose;
     },
   }));
-  const originalOnce = process.once.bind(process);
-  vi.spyOn(process, "once").mockImplementation(((
+  const originalOnce = process.on.bind(process);
+  vi.spyOn(process, "on").mockImplementation(((
     event: string,
     listener: () => void,
   ) => {
@@ -90,7 +90,7 @@ beforeEach(() => {
       return process;
     }
     return originalOnce(event, listener);
-  }) as typeof process.once);
+  }) as typeof process.on);
   exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as typeof process.exit);
@@ -163,6 +163,7 @@ describe("worker module shutdown sequencing", () => {
     expect(await imported).toEqual({ ok: true });
     signals.get("SIGTERM")!();
     await vi.waitFor(() => expect(mocks.stop).toHaveBeenCalledTimes(1));
+    signals.get("SIGTERM")!();
     signals.get("SIGINT")!();
     await Promise.resolve();
     await Promise.resolve();
@@ -184,6 +185,7 @@ describe("worker module shutdown sequencing", () => {
     const failure = new Error("database lease acquisition failed");
     acquire.reject(failure);
     await vi.waitFor(() => expect(mocks.stop).toHaveBeenCalledTimes(1));
+    signals.get("SIGTERM")!();
     signals.get("SIGINT")!();
     await Promise.resolve();
     expect(importSettled).toBe(false);

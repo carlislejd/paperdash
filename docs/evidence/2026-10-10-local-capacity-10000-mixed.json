@@ -1,0 +1,38 @@
+{
+  "synthetic": true,
+  "providerLoad": false,
+  "profile": "mixed",
+  "requestedClients": 10000,
+  "attemptedClients": 10000,
+  "connectedClients": 10000,
+  "seconds": 20,
+  "connectedInMs": 1250.893292,
+  "firstByteP95Ms": 5.365709000000038,
+  "bootstrapBytes": 176780000,
+  "steadyBytes": 160634772,
+  "steadyBytesPerClientPerSecond": 803.17386,
+  "steadyEvents": 473000,
+  "sourceToClientP95Ms": 24,
+  "sourceToClientP99Ms": 67,
+  "restRequests": 1269,
+  "restStatuses": {
+    "200": 1269
+  },
+  "restP95Ms": 5.655332999998791,
+  "restP99Ms": 16.968707999998514,
+  "failures": 0,
+  "server": {
+    "elapsedMs": 21331.609208,
+    "peakRssMiB": 416.21875,
+    "finalRssMiB": 419.0625,
+    "eventLoopP99Ms": 13.328383,
+    "eventLoopMaxMs": 72.089599,
+    "cpuCorePercent": 30.49006259481256,
+    "databaseCalls": {
+      "snapshots": 62,
+      "tailReads": 170,
+      "getReads": 222
+    },
+    "fakeProfileLoads": 654
+  }
+}

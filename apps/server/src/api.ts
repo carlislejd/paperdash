@@ -2,15 +2,14 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
-import type { ServerResponse } from "node:http";
 import type {
   Cashflow,
   ClosedTrade,
 } from "../../../packages/shared/src/types.js";
 import { config, errorMessage } from "./config.js";
 import { addressSchema, accountsQuerySchema, cursorSchema } from "./schemas.js";
-import { readOverview, readOverviewSnapshot } from "./collector.js";
-import { type Store, type StreamRecord } from "./store.js";
+import { readOverview } from "./collector.js";
+import { type Store } from "./store.js";
 import { ChangeBus } from "./bus.js";
 import { Upstream, UpstreamError } from "./upstream.js";
 import { readAssets } from "./assets.js";
@@ -18,155 +17,22 @@ import { analyticsResponse } from "./analytics-response.js";
 import { HistoryCursorError } from "./history-store.js";
 import { readPositionMetrics } from "./position-metrics.js";
 import { readMarket } from "./market.js";
-
-interface Client {
-  response: ServerResponse;
-  lastId: string;
-  ready: boolean;
-}
-export class EventHub {
-  private clients = new Set<Client>();
-  private cursor = "0";
-  private busy = false;
-  private again = false;
-  private timer: ReturnType<typeof setInterval>;
-  private unsubscribe: () => void;
-  constructor(
-    private store: Store,
-    bus: ChangeBus,
-  ) {
-    this.timer = setInterval(() => {
-      void this.pump();
-    }, 1000);
-    this.timer.unref();
-    this.unsubscribe = bus.subscribe(() => {
-      void this.pump();
-    });
-  }
-  get size() {
-    return this.clients.size;
-  }
-  private send(client: Client, record: StreamRecord, bootstrap = false) {
-    if (
-      (!client.ready && !bootstrap) ||
-      BigInt(record.id) <= BigInt(client.lastId)
-    )
-      return;
-    if (client.response.destroyed) {
-      this.clients.delete(client);
-      return;
-    }
-    // Bound slow browsers; reconnect gets a snapshot/replay instead of unbounded RAM.
-    if (client.response.writableLength > 256 * 1024) {
-      client.response.destroy();
-      this.clients.delete(client);
-      return;
-    }
-    client.lastId = record.id;
-    client.response.write(
-      `id: ${record.id}\ndata: ${JSON.stringify(record.message)}\n\n`,
-    );
-  }
-  async add(response: ServerResponse, lastId?: string) {
-    const client: Client = { response, lastId: lastId ?? "0", ready: false };
-    this.clients.add(client);
-    const heartbeat = setInterval(() => {
-      if (!response.destroyed) response.write(": heartbeat\n\n");
-    }, 15000);
-    response.on("close", () => {
-      clearInterval(heartbeat);
-      this.clients.delete(client);
-    });
-    try {
-      // A full snapshot supersedes older client state, including Last-Event-ID.
-      // Its own watermark is the safe place to resume durable deltas.
-      await this.resync(client);
-    } catch (error) {
-      response.write(
-        `data: ${JSON.stringify({ type: "status", data: { receivedAt: null, sourceAt: null, indexedBlock: null, stale: true, persistence: this.store.kind, stream: "disconnected", message: "Live updates are temporarily unavailable. Reconnecting." } })}\n\n`,
-      );
-      response.end();
-    }
-  }
-  private async resync(client: Client) {
-    client.ready = false;
-    const { overview, cursor } = await readOverviewSnapshot(this.store);
-    const bounds = await this.store.eventBounds();
-    const gap =
-      bounds.oldest !== null && BigInt(cursor) < BigInt(bounds.oldest) - 1n;
-    client.lastId = gap ? String(BigInt(bounds.oldest!) - 1n) : cursor;
-    if (gap)
-      overview.status = {
-        ...overview.status,
-        message: [
-          overview.status.message,
-          "Live notification replay expired; resuming from the saved snapshot.",
-        ]
-          .filter(Boolean)
-          .join(" "),
-      };
-    client.response.write(
-      `id: ${client.lastId}\ndata: ${JSON.stringify({ type: "overview", data: overview })}\n\n`,
-    );
-    for (let pass = 0; pass < 20; pass++) {
-      const records = await this.store.events(client.lastId);
-      for (const record of records) this.send(client, record, true);
-      // Stay out of fanout until caught up to everything it already scanned.
-      if (
-        records.length < 1000 &&
-        BigInt(client.lastId) >= BigInt(this.cursor)
-      ) {
-        client.ready = true;
-        return;
-      }
-    }
-    client.response.end();
-  }
-  private async pump() {
-    if (!this.clients.size) return;
-    if (this.busy) {
-      this.again = true;
-      return;
-    }
-    this.busy = true;
-    try {
-      const bounds = await this.store.eventBounds();
-      if (bounds.oldest && BigInt(this.cursor) < BigInt(bounds.oldest) - 1n) {
-        this.cursor = bounds.latest!;
-        await Promise.all(
-          [...this.clients]
-            .filter((client) => client.ready)
-            .map((client) => this.resync(client)),
-        );
-      } else {
-        for (const record of await this.store.events(this.cursor)) {
-          for (const client of this.clients) this.send(client, record);
-          this.cursor = record.id;
-        }
-      }
-    } catch {
-      /* Cached REST remains available; next tick retries the durable notification log. */
-    } finally {
-      this.busy = false;
-      if (this.again) {
-        this.again = false;
-        void this.pump();
-      }
-    }
-  }
-  close() {
-    clearInterval(this.timer);
-    this.unsubscribe();
-    for (const c of this.clients) c.response.end();
-    this.clients.clear();
-  }
-}
+import { readHouse } from "./house.js";
+import { readLiquidations } from "./liquidations.js";
+import { EventHub, type StreamTopic } from "./event-hub.js";
+import { PublicReadCache, ReadCapacityError } from "./public-read-cache.js";
+export { EventHub } from "./event-hub.js";
 
 export async function buildApi(
   store: Store,
   upstream = new Upstream(store),
   bus = new ChangeBus(),
-  options: { logger?: boolean } = {},
+  options: {
+    logger?: boolean;
+    readCacheMs?: number;
+    maxStreams?: number;
+    rateLimit?: number;
+  } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: options.logger ?? true,
@@ -181,7 +47,7 @@ export async function buildApi(
     credentials: false,
   });
   await app.register(rateLimit, {
-    max: 120,
+    max: options.rateLimit ?? config.apiRateLimit,
     timeWindow: "1 minute",
     errorResponseBuilder: () => ({
       statusCode: 429,
@@ -189,7 +55,32 @@ export async function buildApi(
     }),
   });
   const hub = new EventHub(store, bus);
+  const profileLimit = {
+    config: {
+      rateLimit: {
+        max: options.rateLimit ?? config.apiProfileRateLimit,
+        timeWindow: "1 minute",
+      },
+    },
+  };
+  const reads = new PublicReadCache({
+    ttl: options.readCacheMs ?? config.apiReadCacheMs,
+    maxEntries: 2048,
+    maxBytes: 64 * 1024 * 1024,
+    maxPending: 64,
+  });
+  const profileReads = new PublicReadCache({
+    ttl: options.readCacheMs ?? config.apiReadCacheMs,
+    maxEntries: 2048,
+    maxBytes: 64 * 1024 * 1024,
+    maxPending: 32,
+  });
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof ReadCapacityError)
+      return reply
+        .header("Retry-After", "2")
+        .code(503)
+        .send({ error: error.message });
     if (error instanceof HistoryCursorError)
       return reply
         .code(400)
@@ -239,11 +130,11 @@ export async function buildApi(
     "/health/ready",
     { config: { rateLimit: false } },
     async (_req, reply) => {
-      if (!(await store.health()))
+      if (!(await reads.read("health", () => store.health())))
         return reply
           .code(503)
           .send({ ready: false, reason: "storage_unavailable" });
-      const overview = await readOverview(store);
+      const overview = await reads.read("overview", () => readOverview(store));
       if (!overview.summary)
         return reply.code(503).send({
           ready: false,
@@ -257,53 +148,127 @@ export async function buildApi(
       };
     },
   );
-  app.get("/api/overview", async (_req, reply) => {
-    reply.header("Cache-Control", "no-store");
-    return readOverview(store);
-  });
-  app.get("/api/indexing", async (_req, reply) => {
-    reply.header("Cache-Control", "no-store");
-    const [indexing, heartbeat] = await Promise.all([
-      store.get("indexing-status"),
-      store.get<{ at: number; errors: Record<string, string> }>(
-        "collector-heartbeat",
-      ),
-    ]);
-    return {
-      indexing: indexing?.value ?? null,
-      receivedAt: indexing?.receivedAt ?? null,
-      collectorAt: heartbeat?.value.at ?? null,
-      stale: !heartbeat || Date.now() - heartbeat.value.at > 30000,
-      // The source does not promise a complete global execution archive.
-      coverage: "available-source-history-and-retained-observations",
-    };
-  });
-  app.get("/api/accounts", async (req, reply) => {
+  app.get("/api/overview", async (req, reply) =>
+    analyticsResponse(
+      req,
+      reply,
+      await reads.read("overview", () => readOverview(store)),
+    ),
+  );
+  app.get("/api/indexing", async (req, reply) =>
+    analyticsResponse(
+      req,
+      reply,
+      await reads.read("indexing", async () => {
+        const [indexing, heartbeat] = await Promise.all([
+          store.get("indexing-status"),
+          store.get<{ at: number; errors: Record<string, string> }>(
+            "collector-heartbeat",
+          ),
+        ]);
+        return {
+          indexing: indexing?.value ?? null,
+          receivedAt: indexing?.receivedAt ?? null,
+          collectorAt: heartbeat?.value.at ?? null,
+          stale: !heartbeat || Date.now() - heartbeat.value.at > 30000,
+          // The source does not promise a complete global execution archive.
+          coverage: "available-source-history-and-retained-observations",
+        };
+      }),
+    ),
+  );
+  app.get("/api/accounts", profileLimit, async (req, reply) => {
     const q = accountsQuerySchema.parse(req.query);
-    reply.header("Cache-Control", "no-store");
-    return upstream.accounts(q.q, q.sort, q.page);
+    return analyticsResponse(
+      req,
+      reply,
+      await profileReads.read(
+        `accounts:${q.sort}:${q.page}:${q.pageSize}:${q.q}`,
+        () => upstream.accounts(q.q, q.sort, q.page, q.pageSize),
+      ),
+    );
+  });
+  app.get("/api/house", async (req, reply) =>
+    analyticsResponse(
+      req,
+      reply,
+      await reads.read("house", () => readHouse(store)),
+    ),
+  );
+  app.get("/api/liquidations/stats", async (req, reply) =>
+    analyticsResponse(
+      req,
+      reply,
+      await reads.read("liquidation-stats", async () => {
+        const {
+          items: _items,
+          nextCursor: _cursor,
+          ...summary
+        } = await readLiquidations(store);
+        return summary;
+      }),
+    ),
+  );
+  app.get("/api/liquidations", async (req, reply) => {
+    const query = z
+      .object({
+        instrument: z.enum(["0", "1"]).transform(Number).optional(),
+        cursor: z.string().min(1).max(1024).optional(),
+      })
+      .parse(req.query);
+    const cache = query.cursor ? profileReads : reads;
+    return analyticsResponse(
+      req,
+      reply,
+      await cache.read(
+        `liquidations:${query.instrument ?? "all"}:${query.cursor ?? ""}`,
+        () => readLiquidations(store, query.instrument, query.cursor),
+      ),
+    );
   });
   app.get("/api/assets", async (req, reply) => {
-    return analyticsResponse(req, reply, await readAssets(store));
+    return analyticsResponse(
+      req,
+      reply,
+      await reads.read("assets", () => readAssets(store)),
+    );
   });
   app.get("/api/assets/:instrument/market", async (req, reply) => {
     const { instrument } = z
       .object({ instrument: z.enum(["0", "1"]).transform(Number) })
       .parse(req.params);
-    return analyticsResponse(req, reply, await readMarket(store, instrument));
-  });
-  app.get("/api/position-metrics", async (req, reply) => {
-    return analyticsResponse(req, reply, await readPositionMetrics(store));
-  });
-  app.get("/api/wallets/:address/position-metrics", async (req, reply) => {
-    const { address } = z.object({ address: addressSchema }).parse(req.params);
     return analyticsResponse(
       req,
       reply,
-      await readPositionMetrics(store, address),
+      await reads.read(`market:${instrument}`, () =>
+        readMarket(store, instrument),
+      ),
     );
   });
-  app.get("/api/leaderboard", async (req, reply) => {
+  app.get("/api/position-metrics", async (req, reply) => {
+    return analyticsResponse(
+      req,
+      reply,
+      await reads.read("position-metrics", () => readPositionMetrics(store)),
+    );
+  });
+  app.get(
+    "/api/wallets/:address/position-metrics",
+    profileLimit,
+    async (req, reply) => {
+      const { address } = z
+        .object({ address: addressSchema })
+        .parse(req.params);
+      return analyticsResponse(
+        req,
+        reply,
+        await profileReads.read(`position-metrics:${address}`, () =>
+          readPositionMetrics(store, address),
+        ),
+      );
+    },
+  );
+  app.get("/api/leaderboard", profileLimit, async (req, reply) => {
     const query = z
       .object({
         metric: z.enum(["pnl", "volume", "trades"]).default("pnl"),
@@ -326,44 +291,92 @@ export async function buildApi(
     return analyticsResponse(
       req,
       reply,
-      await upstream.leaderboard(query.metric, query.page, query.q),
+      await profileReads.read(
+        `leaderboard:${query.metric}:${query.page}:${query.q}`,
+        () => upstream.leaderboard(query.metric, query.page, query.q),
+      ),
     );
   });
-  app.get("/api/wallets/:address", async (req, reply) => {
+  app.get("/api/wallets/:address", profileLimit, async (req, reply) => {
     const { address } = z.object({ address: addressSchema }).parse(req.params);
-    reply.header("Cache-Control", "no-store");
-    return upstream.wallet(address);
+    return analyticsResponse(
+      req,
+      reply,
+      await profileReads.read(`wallet:${address}`, () =>
+        upstream.wallet(address),
+      ),
+    );
   });
   for (const kind of ["cashflows", "trades"] as const) {
-    app.get(`/api/wallets/:address/${kind}`, async (req, reply) => {
-      const { address } = z
-        .object({ address: addressSchema })
-        .parse(req.params);
-      const { cursor } = z
-        .object({ cursor: cursorSchema.optional() })
-        .parse(req.query);
-      const result = await upstream.history<Cashflow | ClosedTrade>(
-        address,
-        kind,
-        cursor,
-      );
-      reply.header("Cache-Control", "no-store");
-      return {
-        ...result.value,
-        receivedAt: result.receivedAt,
-        stale: result.stale,
-        ...(result.error ? { error: result.error } : {}),
-      };
-    });
+    app.get(
+      `/api/wallets/:address/${kind}`,
+      profileLimit,
+      async (req, reply) => {
+        const { address } = z
+          .object({ address: addressSchema })
+          .parse(req.params);
+        const { cursor } = z
+          .object({ cursor: cursorSchema.optional() })
+          .parse(req.query);
+        return analyticsResponse(
+          req,
+          reply,
+          await profileReads.read(
+            `history:${address}:${kind}:${cursor ?? ""}`,
+            async () => {
+              const result = await upstream.history<Cashflow | ClosedTrade>(
+                address,
+                kind,
+                cursor,
+              );
+              return {
+                ...result.value,
+                receivedAt: result.receivedAt,
+                stale: result.stale,
+                ...(result.error ? { error: result.error } : {}),
+              };
+            },
+          ),
+        );
+      },
+    );
   }
   app.get(
     "/api/events",
-    { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+    {
+      config: {
+        rateLimit: {
+          max: options.rateLimit ?? config.sseConnectRateLimit,
+          timeWindow: "1 minute",
+        },
+      },
+    },
     async (req, reply) => {
-      if (hub.size >= 500)
-        return reply.code(503).send({
+      if (hub.size >= (options.maxStreams ?? config.maxStreams))
+        return reply.header("Retry-After", "15").code(503).send({
           error: "Live stream capacity reached. Please reconnect shortly.",
         });
+      const { topics } = z
+        .object({ topics: z.string().max(80).optional() })
+        .parse(req.query);
+      const selected =
+        topics === undefined
+          ? undefined
+          : (new Set(
+              topics
+                .split(",")
+                .map((topic) =>
+                  z
+                    .enum([
+                      "overview",
+                      "trades",
+                      "asset:0",
+                      "asset:1",
+                      "liquidations",
+                    ])
+                    .parse(topic),
+                ),
+            ) as Set<StreamTopic>);
       const rawId = req.headers["last-event-id"];
       const id =
         typeof rawId === "string" && /^\d{1,18}$/.test(rawId)
@@ -381,14 +394,18 @@ export async function buildApi(
         "X-Accel-Buffering": "no",
       });
       reply.raw.write(": connected\nretry: 3000\n\n");
-      await hub.add(reply.raw, id);
+      await hub.add(reply.raw, id, selected);
     },
   );
   app.addHook("onClose", async () => {
     hub.close();
+    reads.clear();
+    profileReads.clear();
   });
   app.addHook("preClose", async () => {
     hub.close();
+    reads.clear();
+    profileReads.clear();
   });
   return app;
 }

@@ -377,7 +377,11 @@ describe("HTTP contracts", () => {
     const store = await memory();
     const upstream = new Upstream(store);
     const spy = vi.spyOn(upstream, "wallet");
-    const app = await buildApi(store, upstream, undefined, { logger: false });
+    const app = await buildApi(store, upstream, undefined, {
+      logger: false,
+      readCacheMs: 0,
+      rateLimit: 120,
+    });
     try {
       expect((await app.inject("/api/wallets/not-an-address")).statusCode).toBe(
         400,
@@ -413,7 +417,11 @@ describe("HTTP contracts", () => {
   });
   it("returns 429, rather than 500, when the local request limit is exceeded", async () => {
     const store = await memory();
-    const app = await buildApi(store, undefined, undefined, { logger: false });
+    const app = await buildApi(store, undefined, undefined, {
+      logger: false,
+      readCacheMs: 0,
+      rateLimit: 120,
+    });
     try {
       let last;
       for (let i = 0; i < 121; i++) last = await app.inject("/api/overview");

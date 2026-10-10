@@ -1,5 +1,10 @@
 export type DashboardView =
-  "overview" | "wallets" | "assets" | "leaderboard" | "following";
+  | "overview"
+  | "wallets"
+  | "assets"
+  | "leaderboard"
+  | "following"
+  | "liquidations";
 
 export function readDashboardRoute(search: string) {
   const params = new URLSearchParams(search);
@@ -8,6 +13,7 @@ export function readDashboardRoute(search: string) {
     requested === "wallets" ||
     requested === "assets" ||
     requested === "leaderboard" ||
+    requested === "liquidations" ||
     requested === "following"
       ? requested
       : "overview";

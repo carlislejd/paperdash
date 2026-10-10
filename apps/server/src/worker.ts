@@ -24,13 +24,13 @@ function close(): Promise<void> {
   })();
   return closing;
 }
-process.once("SIGTERM", () => {
+process.on("SIGTERM", () => {
   void close().then(
     () => process.exit(0),
     () => process.exit(1),
   );
 });
-process.once("SIGINT", () => {
+process.on("SIGINT", () => {
   void close().then(
     () => process.exit(0),
     () => process.exit(1),

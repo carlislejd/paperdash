@@ -114,6 +114,7 @@ test("overview and wallet means use the closed cohort and separate open-position
 test("empty means stay unknown and cached means survive a refresh failure", async ({
   page,
 }) => {
+  await page.clock.install();
   await mockSources(page);
   let fail = false;
   let empty = true;
@@ -150,6 +151,8 @@ test("empty means stay unknown and cached means survive a refresh failure", asyn
   await expect(means.locator("dd")).toHaveText(["1m", "8×"]);
   await expect(means).toContainText("Last available");
   fail = false;
+  // Honor the temporary source cooldown before retrying; repeated clicks must not bypass it.
+  await page.clock.fastForward(30000);
   await means
     .getByRole("button", { name: "Refresh global position averages" })
     .click();

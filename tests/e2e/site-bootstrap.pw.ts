@@ -158,8 +158,11 @@ test("production bootstrap redirects before data/tracking and initializes one ca
   await expect
     .poll(
       () =>
-        requests.filter((request) => request.url === `${api}/api/events`)
-          .length,
+        requests.filter(
+          (request) =>
+            new URL(request.url).origin === api &&
+            new URL(request.url).pathname === "/api/events",
+        ).length,
     )
     .toBeGreaterThan(0);
 

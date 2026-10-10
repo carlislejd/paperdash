@@ -4,10 +4,9 @@ import type {
   AccountsResponse,
   ChartPoint,
   Overview,
-  StreamMessage,
   TradeEvent,
 } from "../../../packages/shared/src/types";
-import { API_BASE, fetchJson } from "./lib/api";
+import { fetchJson } from "./lib/api";
 import {
   formatRawUsd,
   formatUsd,
@@ -20,9 +19,14 @@ import { DataInfoDialog } from "./components/DataInfoDialog";
 import { Avatar } from "./components/Avatar";
 import { AssetsView } from "./components/AssetsView";
 import { LeaderboardView } from "./components/LeaderboardView";
+import { HouseStats } from "./components/HouseStats";
+import {
+  LiquidationSummary,
+  LiquidationsView,
+} from "./components/LiquidationsView";
 import { PositionMetrics } from "./components/PositionMetrics";
 import { readDashboardRoute, type DashboardView } from "./lib/navigation";
-import { publishLiveEvent } from "./lib/live-events";
+import { useOverview } from "./lib/use-overview";
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
@@ -131,80 +135,6 @@ function readFollowing(): Account[] {
   } catch {
     return [];
   }
-}
-function useOverview() {
-  const [data, setData] = useState<Overview | null>(null);
-  const [error, setError] = useState("");
-  const [transport, setTransport] = useState(false);
-  useEffect(() => {
-    let source: EventSource | null = null;
-    const controller = new AbortController();
-    let requestPending = false;
-    const refresh = async () => {
-      if (document.hidden || requestPending) return;
-      requestPending = true;
-      try {
-        const next = await fetchJson<Overview>("/api/overview", {
-          signal: controller.signal,
-        });
-        setData(next);
-        setError("");
-      } catch (e) {
-        if (!controller.signal.aborted) setError((e as Error).message);
-      } finally {
-        requestPending = false;
-      }
-    };
-    const connect = () => {
-      source?.close();
-      if (document.hidden) {
-        setTransport(false);
-        return;
-      }
-      source = new EventSource(`${API_BASE}/api/events`);
-      source.onopen = () => setTransport(true);
-      source.onerror = () => setTransport(false);
-      source.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data) as StreamMessage;
-          publishLiveEvent(message);
-          if (message.type === "overview") {
-            setData(message.data);
-            setError("");
-          }
-          if (message.type === "metrics" || message.type === "history")
-            setData((old) => (old ? { ...old, ...message.data } : old));
-          if (message.type === "trade")
-            setData((old) =>
-              old
-                ? {
-                    ...old,
-                    trades: [
-                      message.data,
-                      ...old.trades.filter((t) => t.id !== message.data.id),
-                    ].slice(0, 50),
-                  }
-                : old,
-            );
-          if (message.type === "status")
-            setData((old) => (old ? { ...old, status: message.data } : old));
-        } catch {
-          /* a malformed event cannot replace a good snapshot */
-        }
-      };
-      void refresh();
-    };
-    connect();
-    const interval = setInterval(refresh, 15000);
-    document.addEventListener("visibilitychange", connect);
-    return () => {
-      controller.abort();
-      source?.close();
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", connect);
-    };
-  }, []);
-  return { data, error, transport };
 }
 
 const TvlChart = memo(function TvlChart({
@@ -448,7 +378,11 @@ function TradeFeed({
                     : trade.kind === "close"
                       ? "Closed"
                       : "Opened"}{" "}
-                  {trade.instrument === 0 ? "BTC" : "ETH"}{" "}
+                  {trade.instrument === 0
+                    ? "BTC"
+                    : trade.instrument === 1
+                      ? "ETH"
+                      : `Asset ${trade.instrument}`}{" "}
                   <span
                     className={trade.side === "long" ? "positive" : "negative"}
                   >
@@ -489,20 +423,40 @@ function TradeFeed({
 }
 
 function App() {
-  const { data, error, transport } = useOverview();
   const [section, setSection] = useState<DashboardView>(
     () => readDashboardRoute(location.search).view,
   );
   const [asset, setAsset] = useState(
     () => readDashboardRoute(location.search).asset,
   );
-  const [accounts, setAccounts] = useState<AccountsResponse | null>(null);
+  const topics =
+    section === "assets"
+      ? `overview,asset:${asset}`
+      : section === "liquidations"
+        ? "overview,liquidations"
+        : section === "overview"
+          ? "overview,trades"
+          : "overview";
+  const { data, error, transport } = useOverview(topics);
+  const [accountsState, setAccountsState] = useState<{
+    key: string;
+    data: AccountsResponse;
+  } | null>(null);
   const [accountsError, setAccountsError] = useState("");
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState("currentBalance");
   const [page, setPage] = useState(0);
+  const walletPageSize = section === "overview" ? 10 : 25;
+  const accountsKey = JSON.stringify([
+    debouncedQuery,
+    sort,
+    page,
+    walletPageSize,
+  ]);
+  const accounts =
+    accountsState?.key === accountsKey ? accountsState.data : null;
   const [retry, setRetry] = useState(0);
   const [following, setFollowing] = useState<Account[]>(readFollowing);
   const [wallet, setWallet] = useState<string | null>(() => {
@@ -540,6 +494,7 @@ function App() {
       q: debouncedQuery,
       sort,
       page: String(page),
+      pageSize: String(walletPageSize),
     });
     const refresh = async (foreground = false) => {
       if (
@@ -558,11 +513,11 @@ function App() {
           `/api/accounts?${params}`,
           { signal: controller.signal },
         );
-        setAccounts(response);
+        if (!controller.signal.aborted)
+          setAccountsState({ key: accountsKey, data: response });
         setAccountsError("");
       } catch (e) {
-        if (!controller.signal.aborted && foreground)
-          setAccountsError((e as Error).message);
+        if (!controller.signal.aborted) setAccountsError((e as Error).message);
       } finally {
         pending = false;
         if (!controller.signal.aborted) setLoadingAccounts(false);
@@ -574,7 +529,7 @@ function App() {
       controller.abort();
       clearInterval(timer);
     };
-  }, [debouncedQuery, sort, page, retry, section]);
+  }, [debouncedQuery, sort, page, retry, section, walletPageSize, accountsKey]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -610,6 +565,7 @@ function App() {
     history.replaceState(null, "", url);
   }, []);
   const navigate = (next: DashboardView, nextAsset = asset) => {
+    if (next !== section) setPage(0);
     setSection(next);
     setAsset(nextAsset);
     const url = new URL(location.href);
@@ -643,7 +599,7 @@ function App() {
             .toLowerCase()
             .includes(debouncedQuery.toLowerCase()),
         )
-      : (accounts?.accounts ?? []);
+      : (accounts?.accounts ?? []).slice(0, walletPageSize);
   const selectedAccount = [...(accounts?.accounts ?? []), ...following].find(
     (a) => a.address.toLowerCase() === wallet?.toLowerCase(),
   );
@@ -672,6 +628,7 @@ function App() {
                 "wallets",
                 "assets",
                 "leaderboard",
+                "liquidations",
                 "following",
               ] as const
             ).map((item) => (
@@ -721,7 +678,9 @@ function App() {
       </header>
       <main id="main" className="page-shell">
         <h1 className="sr-only">Papertrade analytics</h1>
-        {section !== "assets" && section !== "leaderboard" && (
+        {(section === "overview" ||
+          section === "wallets" ||
+          section === "following") && (
           <section className="overview-board" aria-label="Protocol overview">
             <div className="metrics-row">
               <div className="metric metric-primary">
@@ -760,6 +719,9 @@ function App() {
               </div>
             </div>
             <div className="board-status">
+              {section === "overview" && (
+                <LiquidationSummary onOpen={() => navigate("liquidations")} />
+              )}
               <span className={`freshness ${sourceOld ? "stale" : ""}`}>
                 <i />
                 {!data
@@ -782,6 +744,7 @@ function App() {
           </section>
         )}
 
+        {section === "overview" && <HouseStats />}
         {section === "overview" && <PositionMetrics />}
         {section === "overview" && (
           <div className="story-grid">
@@ -818,6 +781,12 @@ function App() {
           />
         )}
         {section === "leaderboard" && <LeaderboardView onWallet={openWallet} />}
+        {section === "liquidations" && (
+          <LiquidationsView
+            onWallet={openWallet}
+            connected={Boolean(streamLive)}
+          />
+        )}
 
         {(section === "overview" ||
           section === "wallets" ||
@@ -866,7 +835,12 @@ function App() {
                 </button>
               </div>
             )}
-            {accountsError && section !== "following" ? (
+            {accountsError && accounts && section !== "following" && (
+              <p className="inline-notice" role="status">
+                Showing the saved directory. {accountsError}
+              </p>
+            )}
+            {accountsError && !accounts && section !== "following" ? (
               <div className="table-empty">
                 <h3>Unable to load wallets</h3>
                 <p>{accountsError}</p>
@@ -928,7 +902,9 @@ function App() {
                               <tr key={account.address}>
                                 <td className="rank-cell">
                                   {String(
-                                    (section === "following" ? 0 : page * 25) +
+                                    (section === "following"
+                                      ? 0
+                                      : page * walletPageSize) +
                                       i +
                                       1,
                                   ).padStart(2, "0")}

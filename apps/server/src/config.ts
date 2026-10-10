@@ -12,6 +12,22 @@ function integer(
   return value;
 }
 export const config = {
+  apiReadCacheMs: integer("API_READ_CACHE_MS", 1000, 0, 10000),
+  maxStreams: integer("MAX_SSE_CLIENTS", 6000, 100, 20000),
+  apiRateLimit: integer("API_RATE_LIMIT_PER_MINUTE", 12000, 120, 100000),
+  apiProfileRateLimit: integer(
+    "API_PROFILE_RATE_LIMIT_PER_MINUTE",
+    3000,
+    120,
+    100000,
+  ),
+  sseConnectRateLimit: integer(
+    "SSE_CONNECT_RATE_LIMIT_PER_MINUTE",
+    2000,
+    60,
+    100000,
+  ),
+  walletSnapshotTtl: integer("WALLET_SNAPSHOT_TTL_MS", 30000, 5000, 300000),
   host: process.env.HOST ?? "127.0.0.1",
   port: integer("PORT", 8787, 1, 65535),
   databaseUrl: process.env.DATABASE_URL,

@@ -142,6 +142,9 @@ button svg {
 .wordmark-dot {
   color: #92957f;
 }
+.wordmark > svg {
+  color: #b39ace;
+}
 .header-inner nav {
   display: flex;
   align-items: stretch;

@@ -27,6 +27,8 @@ import {
 } from "./assets.js";
 import { MarketFeed } from "./market-feed.js";
 import { refreshMarkets } from "./market.js";
+import { retainHouseSource, refreshHouse } from "./house.js";
+import { refreshLiquidations } from "./liquidations.js";
 
 export interface StreamDiagnostics {
   at: number;
@@ -209,7 +211,13 @@ export class Collector {
         houseSchema,
       );
       await retainAssetSource(this.store, source);
+      await retainHouseSource(this.store, source);
     });
+    this.loop("house", 5000, () => refreshHouse(this.store));
+    this.loop("liquidations-backfill", 10000, async () => {
+      await this.store.liquidations.backfill(100);
+    });
+    this.loop("liquidations", 5000, () => refreshLiquidations(this.store));
     this.loop("asset-activity", 10000, async () => {
       await this.store.analytics.backfill(500);
       await refreshAssetAnalytics(this.store);

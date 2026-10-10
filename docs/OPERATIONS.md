@@ -105,6 +105,8 @@ Favicons and link-preview metadata are included in the initial HTML, so crawlers
 
 ## Custom domain and visitor analytics
 
+Release verification (October 10, 2026): frontend `ab37a4421ccaefbc28625dd33002cfb6a743c2cd` deployed successfully as `dep-db559mss728c73btg44g` after [CI passed](https://github.com/carlislejd/paperdash/actions/runs/38061774683). API environment deployment `dep-db5581rrjlhs73cfj4hg` retained code `fb243da` and completed on both instances. Public requests from the apex, `www` and legacy origins each returned the exact corresponding CORS origin. Both custom names had trusted HTTPS; `www` redirected to the apex. Reloading `paperdash-web.onrender.com/?view=assets&asset=1` opened the same ETH view at `papertrade.club`, and live API/stream data loaded. The page contained exactly one manual analytics beacon, with canonical and social URLs set to the apex. Cloudflare's [metrics dashboard](https://dash.cloudflare.com/81dd286622c0ba4b30c8fed52001c832/web-analytics/overview?siteTag~in=72996b79428e4b6c82023f06826ed3a9&excludeBots=Yes) recorded two validation visits/pageviews; those are test visits, not an audience estimate. Desktop and 412 px mobile views were checked. Worker, stored data, checkpoints and compute plans were unchanged; the mistakenly purchased domain was not configured.
+
 The configured public origin is `https://papertrade.club`. Render binds the apex and automatically redirects `www` to it. Cloudflare DNS points both names to `paperdash-web.onrender.com` with DNS-only records; Render handles the website's TLS certificate. Keep the default Render hostname enabled. The application forwards that exact legacy hostname in the browser before mounting React or initializing analytics, preserving path, query and fragment. This is a JavaScript redirect, not a server-side 301; Render static redirect rules cannot match a request's hostname. Canonical and social-preview URLs use the custom origin. The API allows the apex, `www`, and legacy origin during migration. [Render domain behavior](https://render.com/docs/custom-domains), [static routing limits](https://render.com/docs/redirects-rewrites).
 
 Cloudflare Web Analytics uses **Enable with JS Snippet installation**, with automatic injection disabled. Set the dashboard-provided public token in the static site's `VITE_CF_WEB_ANALYTICS_TOKEN` and rebuild; it is not an account API credential. One nonblocking module beacon initializes outside React only on the exact canonical production origin. Local development, unrelated previews and the legacy redirect page do not report; analytics failures never prevent the dashboard from rendering. Keep one installation method to avoid duplicates. [Manual setup](https://developers.cloudflare.com/web-analytics/get-started/).
@@ -115,7 +117,7 @@ Use the Cloudflare metrics as **visits and pageviews**, not exact unique people.
 
 The initial Blueprint injects the managed database owner's connection into both services. This makes schema bootstrap runnable, but grants more permission than a public API should retain. **It is not a least-privilege production setup.** The API writes current account/directory caches and prioritizes wallet indexing, so a strictly read-only role would break those operations.
 
-Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables, eight history tables, seven activity tables, four position-metric tables and the market-price table; the `\password` commands prompt without putting passwords in shell history:
+Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables, eight history tables, seven activity tables, four position-metric tables the market-price table, house observations and liquidation projections; the `\password` commands prompt without putting passwords in shell history:
 
 ```sql
 CREATE ROLE paperdash_api LOGIN;
@@ -134,7 +136,10 @@ GRANT SELECT ON paperdash_snapshots, paperdash_trade_observations,
   paperdash_analytics_wallet_fingerprints, paperdash_analytics_wallet_minutes,
   paperdash_analytics_state, paperdash_position_metrics_queue,
   paperdash_position_metrics_rollups, paperdash_position_metrics_state,
-  paperdash_market_prices
+  paperdash_market_prices, paperdash_house_samples,
+  paperdash_liquidation_members, paperdash_liquidation_fingerprints,
+  paperdash_liquidation_minutes, paperdash_liquidation_events,
+  paperdash_liquidation_state
   TO paperdash_api, paperdash_ingest;
 GRANT SELECT ON paperdash_position_metrics_facts TO paperdash_ingest;
 GRANT INSERT, UPDATE ON paperdash_snapshots,
@@ -161,7 +166,10 @@ GRANT INSERT, UPDATE ON paperdash_position_metrics_queue,
   paperdash_position_metrics_state TO paperdash_ingest;
 GRANT DELETE ON paperdash_position_metrics_queue,
   paperdash_position_metrics_facts TO paperdash_ingest;
-GRANT INSERT, UPDATE ON paperdash_market_prices TO paperdash_ingest;
+GRANT INSERT, UPDATE ON paperdash_market_prices, paperdash_house_samples,
+  paperdash_liquidation_members, paperdash_liquidation_fingerprints,
+  paperdash_liquidation_minutes, paperdash_liquidation_events,
+  paperdash_liquidation_state TO paperdash_ingest;
 ```
 
 Neither runtime role needs `CREATE`, `ALTER`, `DROP`, ownership or access to unrelated schemas. New tables/sequences require explicit reviewed grants. Store the two role URLs separately in Render, replace the two `fromDatabase` entries with `sync: false`, and set `AUTO_MIGRATE=false` in both services. Keep the database's internal host/database name; only the URL-encoded username/password change.
@@ -232,7 +240,7 @@ PITR and the HA standby are not independent long-term backups. Before public lau
 
 Database storage autoscaling is disabled for predictable billing. Alert at **70% and 85% disk utilization**, compute days remaining from recent growth, and expand before a backfill or projected week of ingestion exhausts space. Never silently delete wallet history to meet a limit. Render can suspend a full database. Storage increases are permanent and HA adds storage to both copies. [Render storage](https://render.com/docs/postgresql-creating-connecting#adding-storage).
 
-Track API p95 latency, slow queries, pool waits, CPU/RAM, live connections, slow consumers, collector heartbeat/source age, history queue age and failures, upstream 429/5xx responses, stream reconnects, observation ingestion rate, database growth and egress per active viewer. Raw page/batch variants also consume storage; measure their growth during backfill. Alert on projected monthly spend at $350 and $450 against the current $500 ceiling. These thresholds are operating requirements; external alert delivery is not wired up by the app or Blueprint.
+Track API p95 latency, slow queries, pool waits, CPU/RAM, live connections, slow consumers, collector heartbeat/source age, history queue age and failures, upstream 429/5xx responses, stream reconnects, observation ingestion rate, database growth and egress per active viewer. Raw page/batch variants also consume storage; measure their growth during backfill. The October 10 launch budget is $1,000/month for a 5,000–10,000-viewer peak lasting a few hours. Proposed cost alerts are $700/$850, escalating at $950; external alert delivery is not wired up by the app or Blueprint. See [launch sizing, traffic costs and release gates](LAUNCH_CAPACITY.md); its $505 fixed topology is a recommendation, not an applied upgrade or proven capacity.
 
 Before claiming launch capacity, test at least 500 browser streams, 10 million realistic observation rows and the greater of 100 representative incoming events/second or 10 times measured peak. Include history/backfill traffic while live traffic continues. Profile before increasing plans. The frontend targets a responsive shell and efficient batched updates; publish measured browser/device/network results rather than presenting these targets as achieved guarantees.
 

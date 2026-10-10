@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchJson } from "./api";
+import { fetchJson, pollDelay } from "./api";
+import { subscribeLiveEvents } from "./live-events";
 
 // Keep recent panels ready when navigating back; polling still refreshes them.
 const snapshots = new Map<string, unknown>();
 
-export function useAnalytics<T>(path: string) {
+export function useAnalytics<T>(
+  path: string,
+  options: { liveLiquidations?: boolean; instrument?: number } = {},
+) {
+  const { liveLiquidations = false, instrument } = options;
   const [state, setState] = useState<{
     path: string;
     data: T | null;
@@ -22,6 +27,9 @@ export function useAnalytics<T>(path: string) {
   useEffect(() => {
     const controller = new AbortController();
     let pending = false;
+    let failures = 0;
+    let lastReadAt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     setState({
       path,
       data: (snapshots.get(path) as T | undefined) ?? null,
@@ -31,6 +39,9 @@ export function useAnalytics<T>(path: string) {
     const read = async () => {
       if (pending || document.hidden || controller.signal.aborted) return;
       pending = true;
+      lastReadAt = Date.now();
+      clearTimeout(timer);
+      let nextDelay = pollDelay(null, 0);
       try {
         const data = await fetchJson<T>(path, { signal: controller.signal });
         if (controller.signal.aborted) return;
@@ -39,8 +50,10 @@ export function useAnalytics<T>(path: string) {
         // A long session with many search queries must not grow without bound.
         if (snapshots.size > 24)
           snapshots.delete(snapshots.keys().next().value!);
+        failures = 0;
         setState({ path, data, error: "", loading: false });
       } catch (error) {
+        nextDelay = pollDelay(error, ++failures);
         if (!controller.signal.aborted)
           setState((previous) => ({
             ...previous,
@@ -49,20 +62,44 @@ export function useAnalytics<T>(path: string) {
           }));
       } finally {
         pending = false;
+        if (!controller.signal.aborted)
+          timer = setTimeout(() => void read(), nextDelay);
       }
     };
     void read();
-    const timer = window.setInterval(() => void read(), 5_000);
+    const unsubscribe = liveLiquidations
+      ? subscribeLiveEvents((message) => {
+          if (
+            message.type !== "trade" ||
+            message.data.kind !== "liq" ||
+            (instrument !== undefined &&
+              message.data.instrument !== instrument) ||
+            document.hidden ||
+            controller.signal.aborted ||
+            pending ||
+            failures > 0
+          )
+            return;
+          // Coalesce notifications with the existing poll, leaving at least five
+          // seconds between reads. Failed requests keep their normal backoff timer.
+          clearTimeout(timer);
+          timer = setTimeout(
+            () => void read(),
+            Math.max(0, lastReadAt + 5000 - Date.now()),
+          );
+        })
+      : undefined;
     const visible = () => {
       if (!document.hidden) void read();
     };
     document.addEventListener("visibilitychange", visible);
     return () => {
       controller.abort();
-      clearInterval(timer);
+      unsubscribe?.();
+      clearTimeout(timer);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [path, retry]);
+  }, [path, retry, liveLiquidations, instrument]);
 
   // A different page/sort must never show the previous query's rows or rank.
   return {

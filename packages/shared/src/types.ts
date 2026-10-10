@@ -246,3 +246,57 @@ export type StreamMessage =
       data: { instrument: number; point: AssetPricePoint; receivedAt: number };
     }
   | { type: "status"; data: DataStatus };
+
+export interface HouseResponse {
+  sourceAt: number | null;
+  receivedAt: number | null;
+  stale: boolean;
+  house: {
+    fundsRaw: Raw;
+    lpRaw: Raw;
+    openPnlRaw: Raw;
+    queueDebtRaw: Raw;
+  } | null;
+  paper: {
+    supplyRaw: Raw | null;
+    stakedRaw: Raw | null;
+    stakerRewardsRaw: Raw | null;
+    pendingRewardsRaw: Raw | null;
+  };
+  /** This block belongs to the independent protocol summary, not the house valuation. */
+  sourceBlock: string | null;
+  summarySourceAt: number | null;
+  history: { time: number; fundsRaw: Raw; gapBefore?: boolean }[];
+  coverage: {
+    source: "retained-house-observations";
+    approximate: true;
+    observedFrom: number | null;
+    partial: true;
+  };
+  error?: string;
+}
+
+export interface LiquidationTotals {
+  count: number;
+  longCount: number;
+  shortCount: number;
+  /** Approximate USD execution notional, not lost collateral or realized PnL. */
+  notionalUsd: number;
+}
+export interface LiquidationsResponse {
+  items: TradeEvent[];
+  nextCursor: string | null;
+  stats: { hour: LiquidationTotals; day: LiquidationTotals };
+  windowTo: number;
+  receivedAt: number | null;
+  stale: boolean;
+  coverage: {
+    source: "retained-public-observations";
+    partial: true;
+    identityAmbiguous: true;
+    projectionBackfillComplete: boolean;
+    observedFrom: number | null;
+    latestObservedAt: number | null;
+  };
+  error?: string;
+}

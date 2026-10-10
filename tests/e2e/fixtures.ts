@@ -313,7 +313,7 @@ export async function mockSources(
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
-        body: ": deterministic test stream\n\n",
+        body: `data: ${JSON.stringify({ type: "overview", data: overview(options.stale) })}\n\n`,
       });
       return;
     }
