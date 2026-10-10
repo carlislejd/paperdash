@@ -1,4 +1,4 @@
-import { Centrifuge } from "centrifuge";
+import { Centrifuge, type Subscription } from "centrifuge";
 import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 import { z } from "zod";
@@ -25,6 +25,37 @@ import {
   retainAssetSource,
   refreshAssetAnalytics,
 } from "./assets.js";
+
+export interface StreamDiagnostics {
+  at: number;
+  event: string;
+  clientState: string;
+  subscriptionState: string;
+  code: number | null;
+  reason: string;
+  lastSubscribedAt: number | null;
+}
+
+// Reasons are untrusted transport text. Keep diagnostics useful without logging
+// control characters, credentials embedded in a message, or whole SDK contexts.
+function streamReason(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .slice(0, 2000)
+    .replace(
+      /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g,
+      " ",
+    )
+    .replace(/\bBearer\s+[a-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/\beyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+/gi, "[redacted]")
+    .replace(
+      /(\b(?:token|secret|password|api[_-]?key|session[_-]?key|authorization)["']?\s*[:=]\s*["']?)[^"'\s,;&]+/gi,
+      "$1[redacted]",
+    )
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
+}
 
 export function emptyOverview(kind: Store["kind"]): Overview {
   return {
@@ -133,6 +164,11 @@ export class Collector {
   private tasks = new Set<Promise<unknown>>();
   private stopped = false;
   private client: Centrifuge | null = null;
+  private subscription: Subscription | null = null;
+  private streamSafetyBlocked = false;
+  private streamFailureRevision = 0;
+  private lastSubscribedAt: number | null = null;
+  private statusPersistence: Promise<void> = Promise.resolve();
   private release: (() => Promise<void>) | null = null;
   private stream: Overview["status"]["stream"] = "connecting";
   private errors = new Map<string, string>();
@@ -251,51 +287,161 @@ export class Collector {
       maxReconnectDelay: 15000,
       timeout: 10000,
     });
-    this.client.on("error", () => {
-      this.errors.set("stream", "Public trade stream temporarily unavailable.");
+    this.client.on("error", (context) => {
+      this.streamLifecycle(
+        "error",
+        context.error.code,
+        context.error.message,
+        "Trade connection is temporarily unavailable.",
+      );
     });
-    this.client.on("disconnected", () => {
-      this.stream = "disconnected";
-      void this.publish().catch(() => {});
+    this.client.on("disconnected", (context) => {
+      this.streamLifecycle(
+        "disconnected",
+        context.code,
+        context.reason,
+        "Trade connection is disconnected.",
+      );
     });
-    this.client.on("connecting", () => {
-      this.stream = "connecting";
+    this.client.on("connecting", (context) => {
+      this.streamLifecycle("connecting", context.code, context.reason);
     });
-    const subscription = this.client.newSubscription("public:trades");
+    this.client.on("connected", () => {
+      this.streamLifecycle("connected");
+    });
+    const subscription = (this.subscription =
+      this.client.newSubscription("public:trades"));
     subscription.on("subscribed", (context) => {
+      if (this.stopped || this.streamSafetyBlocked) return;
       if (context.recoverable || context.wasRecovering) {
-        this.errors.set("stream", "Unexpected trade stream recovery contract.");
+        this.streamSafetyBlocked = true;
         subscription.unsubscribe();
+        this.streamLifecycle(
+          "recovery-rejected",
+          null,
+          "Unexpected trade stream recovery contract.",
+          "Trade connection is unavailable.",
+        );
         return;
       }
-      this.stream = "connected";
+      this.lastSubscribedAt = Date.now();
       this.errors.delete("stream");
-      void this.publish().catch(() => {});
+      this.streamLifecycle("subscribed");
     });
-    subscription.on("subscribing", () => {
-      this.stream = "connecting";
+    subscription.on("subscribing", (context) => {
+      this.streamLifecycle("subscribing", context.code, context.reason);
     });
-    subscription.on("error", () => {
-      this.stream = "disconnected";
-      this.errors.set("stream", "Trade stream subscription is unavailable.");
+    subscription.on("unsubscribed", (context) => {
+      this.streamLifecycle(
+        "unsubscribed",
+        context.code,
+        context.reason,
+        "Trade connection is unavailable.",
+      );
+    });
+    subscription.on("error", (context) => {
+      this.streamLifecycle(
+        "subscription-error",
+        context.error.code,
+        context.error.message,
+        "Trade connection is temporarily unavailable.",
+      );
     });
     subscription.on("publication", (context) => {
+      if (this.stopped || this.streamSafetyBlocked) return;
+      const failureRevision = this.streamFailureRevision;
       const task = (async () => {
         const batch = z.array(z.unknown()).min(1).max(20).parse(context.data);
         for (const item of batch)
           await this.accept(
             normalizeTrade(item, "public-stream", randomUUID()),
           );
+        if (
+          !this.stopped &&
+          !this.streamSafetyBlocked &&
+          failureRevision === this.streamFailureRevision &&
+          this.errors.has("stream") &&
+          this.client?.state === "connected" &&
+          subscription.state === "subscribed"
+        ) {
+          this.errors.delete("stream");
+          this.streamLifecycle("publication-recovered");
+        }
         await this.publish();
       })().catch((error) => {
-        this.errors.set("stream", errorMessage(error));
-        console.error("Trade collection:", errorMessage(error));
+        this.streamLifecycle(
+          "publication-error",
+          null,
+          errorMessage(error),
+          "Trade collection is temporarily unavailable.",
+        );
       });
       this.track(task);
     });
     subscription.subscribe();
     this.client.connect();
     return true;
+  }
+  private streamLifecycle(
+    event: string,
+    code: unknown = null,
+    reason: unknown = "",
+    failure?: string,
+  ) {
+    if (
+      this.stopped ||
+      (this.streamSafetyBlocked && event !== "recovery-rejected")
+    )
+      return;
+    const clientState = this.client?.state ?? "disconnected";
+    const subscriptionState = this.subscription?.state ?? "unsubscribed";
+    this.stream =
+      this.streamSafetyBlocked ||
+      clientState === "disconnected" ||
+      subscriptionState === "unsubscribed"
+        ? "disconnected"
+        : clientState === "connected" && subscriptionState === "subscribed"
+          ? "connected"
+          : "connecting";
+    if (failure) {
+      this.streamFailureRevision++;
+      this.errors.set("stream", failure);
+    }
+    const diagnostic: StreamDiagnostics = {
+      at: Date.now(),
+      event,
+      clientState,
+      subscriptionState,
+      code:
+        typeof code === "number" && Number.isSafeInteger(code) ? code : null,
+      reason: streamReason(reason),
+      lastSubscribedAt: this.lastSubscribedAt,
+    };
+    console.info(`Trade stream ${event}:`, {
+      code: diagnostic.code,
+      reason: diagnostic.reason,
+    });
+    // Terminal server refusals remain stopped; Centrifuge owns automatic
+    // reconnection for temporary failures. Persist arrival order, not DB timing.
+    this.track(
+      this.persistStatus(diagnostic)
+        .then(() => this.publish())
+        .catch(() => {
+          console.error("Trade stream status persistence failed.");
+        }),
+    );
+  }
+  private persistStatus(diagnostic?: StreamDiagnostics): Promise<void> {
+    const run = this.statusPersistence.then(async () => {
+      if (diagnostic)
+        await this.store.put("stream-diagnostics", diagnostic, diagnostic.at);
+      await this.store.put("collector-heartbeat", {
+        at: Date.now(),
+        errors: Object.fromEntries(this.errors),
+      });
+    });
+    this.statusPersistence = run.catch(() => {});
+    return run;
   }
   private track(task: Promise<unknown>) {
     this.tasks.add(task);
@@ -344,10 +490,7 @@ export class Collector {
         console.error(`Collector ${name}:`, errorMessage(error));
       }
       try {
-        await this.store.put("collector-heartbeat", {
-          at: Date.now(),
-          errors: Object.fromEntries(this.errors),
-        });
+        await this.persistStatus();
         await this.publish();
       } catch (error) {
         failed = true;
@@ -466,6 +609,7 @@ export class Collector {
     this.client?.disconnect();
     await Promise.allSettled([...this.tasks]);
     await this.ingestion;
+    await this.statusPersistence;
     await this.chain;
     await this.release?.();
     this.release = null;

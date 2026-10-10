@@ -4,10 +4,11 @@ import { addressSchema } from "./schemas.js";
 const store = await createStore({ autoMigrate: false });
 try {
   const address = process.argv[2] ? addressSchema.parse(process.argv[2]) : null;
-  const [heartbeat, stats, jobs] = await Promise.all([
+  const [heartbeat, stream, stats, jobs] = await Promise.all([
     store.get<{ at: number; errors: Record<string, string> }>(
       "collector-heartbeat",
     ),
+    store.get("stream-diagnostics"),
     store.history.stats(),
     address ? store.history.getStatus(address) : null,
   ]);
@@ -18,6 +19,7 @@ try {
         persistence: store.kind,
         collectorHealthy: healthy,
         heartbeat: heartbeat?.value ?? null,
+        stream: stream?.value ?? null,
         stats,
         ...(address ? { address, jobs } : {}),
       },
