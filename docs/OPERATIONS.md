@@ -45,7 +45,7 @@ Deploy steps:
 2. Connect the repository and review the Blueprint cost in the selected Pro workspace. The definition keeps automatic deployment and preview environments off. Do not turn on automatic deployments until CI passes on the production branch.
 3. Deploy the Blueprint. Database connections and Redis URLs are internal references; their public IP allowlists are empty. The API runs the migration as a pre-deploy command. Initial API/worker startup also runs the idempotent migration so first-deploy ordering does not leave the worker behind.
 4. Confirm `/health/ready`, the first stored protocol snapshot, collector status, wallet lookup and a browser stream connection. No upstream trade activity is a valid empty state, not an excuse to insert fixtures into production.
-5. If custom domains are used, update the API's `CORS_ORIGIN` to the exact frontend origin, set the static site's `VITE_API_URL` to the public API origin, and rebuild the static site. Multiple allowed origins are comma separated. Blueprint URL references initially use Render's `onrender.com` URLs. Keep these changes in the Blueprint so a future sync does not replace them.
+5. If custom domains are used, update the API's `CORS_ORIGIN` to the exact frontend origin, set the static site's `VITE_API_URL` to the public API origin and `VITE_SITE_URL` to the public frontend origin, then rebuild the static site. Multiple allowed origins are comma separated. Blueprint URL references initially use Render's `onrender.com` URLs. Keep these changes in the Blueprint so a future sync does not replace them.
 6. Complete the role hardening and recovery checks below before a broad public launch. Confirm the upstream operator's allowance for sustained polling of these undocumented public endpoints.
 
 The API binds `HOST=0.0.0.0` and Render's provided `PORT`. `EMBEDDED_COLLECTOR=false` keeps upstream polling in the dedicated worker. The collector's database advisory lock prevents parallel active collectors during overlapping deploys. It needs a direct Postgres connection; do not move that session onto a transaction pool.
@@ -60,6 +60,7 @@ The API binds `HOST=0.0.0.0` and Render's provided `PORT`. `EMBEDDED_COLLECTOR=f
 | `HOST`, `PORT` | API bind address and port; local port 8787 |
 | `CORS_ORIGIN` | Exact, comma-separated allowed frontend origins |
 | `VITE_API_URL` | Public API origin compiled into frontend; empty uses same-origin requests |
+| `VITE_SITE_URL` | Public frontend origin for canonical and link-preview URLs; overrides Render's `RENDER_EXTERNAL_URL` |
 | `EMBEDDED_COLLECTOR` | Override local API collector; `false` for production API |
 | `UPSTREAM_ORIGIN` | Official HTTP source, default `https://exchange.papertrade.xyz` |
 | `STREAM_URL` | Official Centrifuge source, default `wss://stream.papertrade.xyz/connection/websocket` |
@@ -71,6 +72,8 @@ The API binds `HOST=0.0.0.0` and Render's provided `PORT`. `EMBEDDED_COLLECTOR=f
 | `LOCAL_MAX_BYTES` | Local collection limit; default 536870912 bytes |
 
 Polling values are configuration, not permission to exceed upstream rate limits. Increase intervals when upstream requests throttle or operator guidance requires it; verify that any app freshness thresholds remain appropriate. Chain RPC URLs, contract manifests and archive credentials are deliberately absent from the runtime configuration because the current collector does not implement those adapters.
+
+Favicons and link-preview metadata are included in the initial HTML, so crawlers do not need to run React. Builds use `VITE_SITE_URL`, then Render's automatic `RENDER_EXTERNAL_URL`, for absolute page/image URLs. Outside Render, an unset origin falls back to `http://localhost:5173` with a build warning; configure the real public origin before publishing. Supply an HTTP(S) origin without a path, query, credentials or fragment. The public preview image is `/art/paperdash-social.jpg` (1200 × 630). Social platforms cache previews; after changing it, use the platform's preview refresh tooling when available.
 
 ## Runtime database roles
 

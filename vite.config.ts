@@ -1,16 +1,51 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig({
-  root: "apps/web",
-  envDir: process.cwd(),
-  plugins: [react()],
-  build: { outDir: "dist", sourcemap: true },
-  server: {
-    port: 5173,
-    proxy: {
-      "/api": "http://127.0.0.1:8787",
-      "/health": "http://127.0.0.1:8787",
+function shareMetadata(siteUrl: string, usingLocalOrigin: boolean): Plugin {
+  return {
+    name: "paperdash-share-metadata",
+    configResolved(config) {
+      if (config.command === "build" && usingLocalOrigin) {
+        config.logger.warn(
+          "[paperdash] VITE_SITE_URL and RENDER_EXTERNAL_URL are unset; share URLs use http://localhost:5173. Set VITE_SITE_URL before publishing outside Render.",
+        );
+      }
     },
-  },
+    transformIndexHtml() {
+      const imageUrl = new URL("/art/paperdash-social.jpg", siteUrl).href;
+      return [
+        { tag: "link", attrs: { rel: "canonical", href: siteUrl } },
+        { tag: "meta", attrs: { property: "og:url", content: siteUrl } },
+        { tag: "meta", attrs: { property: "og:image", content: imageUrl } },
+        { tag: "meta", attrs: { name: "twitter:image", content: imageUrl } },
+      ];
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), ["VITE_SITE_URL", "RENDER_EXTERNAL_URL"]);
+  const configuredOrigin = env.VITE_SITE_URL?.trim() || env.RENDER_EXTERNAL_URL?.trim();
+  const origin = new URL(configuredOrigin || "http://localhost:5173");
+  if (
+    !["https:", "http:"].includes(origin.protocol) ||
+    origin.username || origin.password || origin.search || origin.hash ||
+    origin.pathname !== "/"
+  ) {
+    throw new Error("VITE_SITE_URL or RENDER_EXTERNAL_URL must be an absolute HTTP(S) origin without credentials, path, query, or fragment.");
+  }
+
+  return {
+    root: "apps/web",
+    envDir: process.cwd(),
+    plugins: [react(), shareMetadata(`${origin.origin}/`, !configuredOrigin)],
+    build: { outDir: "dist", sourcemap: true },
+    server: {
+      port: 5173,
+      proxy: {
+        "/api": "http://127.0.0.1:8787",
+        "/health": "http://127.0.0.1:8787",
+      },
+    },
+  };
 });
