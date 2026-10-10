@@ -1,6 +1,23 @@
 import { expect, test } from '@playwright/test';
 import { mockSources, WALLET } from './fixtures';
 
+test('narrow navigation stays contained and every view remains reachable', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await mockSources(page);
+  await page.goto('/');
+  const navigation = page.getByRole('navigation', { name: 'Main navigation' });
+  // Wider fallback metrics must scroll the navigation itself, never the page.
+  await page.addStyleTag({ content: '.header-inner nav button { font-family: monospace; font-size: 14px; }' });
+  expect(await navigation.evaluate(element => element.scrollWidth)).toBeGreaterThan(await navigation.evaluate(element => element.clientWidth));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await navigation.getByRole('button', { name: /^Following/ }).click();
+  await expect(page.getByText('No followed wallets')).toBeVisible();
+  await expect(navigation.getByRole('button', { name: /^Following/ })).toBeInViewport();
+  await navigation.getByRole('button', { name: 'Overview', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Protocol overview' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+});
+
 test('wallet details show exact deposits, partial coverage and older cashflows', async ({ page }) => {
   await mockSources(page);
   await page.goto('/');

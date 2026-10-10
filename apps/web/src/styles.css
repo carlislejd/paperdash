@@ -1568,6 +1568,9 @@ button svg {
 .header-inner nav {
   gap: 22px;
   margin-left: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
 }
 .header-inner nav button {
   flex: 0 0 auto;

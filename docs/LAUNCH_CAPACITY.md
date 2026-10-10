@@ -1,18 +1,18 @@
 # Launch capacity and budget
 
-Reviewed October 10, 2026. The target is **5,000–10,000 simultaneous viewers for a few hours around launch**, with a **$1,000 monthly infrastructure budget**. This document is a recommendation and a set of release gates, not evidence that the deployed system supports that load. No compute, database, cache or networking changes were made during this review.
+Reviewed October 10, 2026. The target is **5,000–10,000 simultaneous viewers for a few hours around launch**, with a **$1,000 monthly infrastructure budget**. This document records applied infrastructure and remaining release gates; it is not evidence that the deployed system supports that load. The authorized API scale operation completed on October 10 at 09:13 PDT. A separate recovery drill validated the copied records and checkpoints; production database connections remained unchanged.
 
-## Recommendation
+## Applied launch topology
 
-After the new shared stream/read-cache implementation passes representative tests, use **three `2c-4g` API instances**, retaining the existing collector, HA Postgres and Key Value. This brings fixed hosting from **$300 to $505/month** and leaves budget for a short launch spike. Pre-scale before announcing the launch; keep autoscaling off for the initial controlled event. Preserve the database and collector checkpoints. Neither a blockchain node nor additional upstream connections are needed merely because more people view the dashboard.
+The API now has **three `2c-4g` instances**, retaining the existing collector, HA Postgres and Key Value. This brings fixed hosting from **$300 to $505/month** and leaves budget for a short launch spike. Autoscaling remains off for the initial controlled event. The forthcoming shared stream/read-cache release still requires its own tested deployment. Preserve the database and collector checkpoints. Neither a blockchain node nor additional upstream connections are needed merely because more people view the dashboard.
 
 Three replicas provide a useful failure margin: the proposed application limit of 6,000 streams per process permits 18,000 admissions normally and 12,000 with one replica unavailable. Those are admission ceilings, **not measured throughput guarantees**. Two replicas would leave only 6,000 admissions during a restart, below the 10,000-viewer target. Measure actual distribution and hot-instance utilization; aggregate capacity alone is insufficient.
 
-## Observed deployment and proposed fixed cost
+## Observed deployment and fixed cost
 
-The authenticated Render console was inspected read-only. Backend resources are in Oregon, in the dedicated Paperdash Pro workspace. The static frontend is served globally. Service and Blueprint auto-deploy remain off.
+The authenticated Render console was inspected, and only the separately authorized API scaling and recovery-copy actions were applied. Backend resources are in Oregon, in the dedicated Paperdash Pro workspace. The static frontend is served globally. Service and Blueprint auto-deploy remain off.
 
-| Resource | Current configuration | Current monthly cost | Proposed launch configuration | Proposed monthly cost |
+| Resource | Previous configuration | Previous monthly cost | Applied launch configuration | Launch monthly cost |
 | --- | --- | ---: | --- | ---: |
 | Workspace | Pro | $25 | Keep Pro | $25 |
 | Frontend | Render static CDN | $0 compute | Unchanged | $0 compute |
@@ -23,6 +23,8 @@ The authenticated Render console was inspected read-only. Backend resources are 
 | Valkey 8 | `1g`, `noeviction` | $20 | Unchanged initially | $20 |
 | **Fixed total** | | **$300** | | **$505** |
 
+Scaling first added a third `1c-2g` replica, verified live, then upgraded all three to `2c-4g`. Render reported successful deployment `dep-db56852d0e5s73ebmg4g` at 09:13:08 PDT, trigger **Compute plan updated**, code `fb243da`, and **3 of 3 instances**. All three instance logs returned readiness HTTP 200. No environment or other production resource changes accompanied it. This observation does not establish uninterrupted availability at every instant or tested launch capacity.
+
 Compute prices above were visible in the account's plan selectors. The API selector also offers `2c-8g` at $135 and `4c-8g` at $175 per instance. Postgres `2c-8g` is $100 per copy, a $50/month increase with HA. Key Value `3g` is $60, a $40/month increase. Do not buy those upgrades without evidence of database/cache pressure. HA bills both compute and storage and does not expose its standby for read scaling. [Render pricing](https://render.com/pricing), [HA behavior and billing](https://render.com/docs/postgresql-high-availability).
 
 The sampled API dashboard showed only 2,135 requests in its preceding 12-hour view and 40 MB of monthly outbound traffic. Memory was visually around 5% and CPU mostly near zero, with small spikes. These low-load observations cannot establish launch capacity. Postgres showed a memory graph, but its other metrics/table widgets returned no data; that is missing telemetry, not an empty database or proof of spare capacity. The console showed a 100-connection Postgres limit and a 1,000-connection Key Value limit.
@@ -31,7 +33,7 @@ The sampled API dashboard showed only 2,135 requests in its preceding 12-hour vi
 
 | Budget line | Monthly allowance |
 | --- | ---: |
-| Proposed fixed hosting | $505 |
+| Applied fixed hosting | $505 |
 | External backups and temporary recovery-test compute | $25 |
 | Capacity, storage, build and tax contingency | $100 |
 | Remaining bandwidth allowance | $370 |
@@ -59,7 +61,7 @@ Keep Pro. Scale costs $499/month versus Pro's $25; its 1 TB inclusion is not wor
 
 ## Application and connection gates
 
-The following describes the launch work in progress, not the currently deployed `fb243da` API. Record the final tested commit and recheck the settings before changing infrastructure.
+The following describes the launch work in progress, not the currently deployed `fb243da` API. Record the final tested commit and recheck the runtime settings when deploying it.
 
 - **One shared tail per API process:** `EventHub` reads and encodes retained events once, maintains a bounded replay buffer, filters topics, and fans out to viewers. New sessions share a bounded bootstrap. Database work must scale with API replicas and event volume, rather than one database poll per viewer.
 - **Admission and slow clients:** `MAX_SSE_CLIENTS` defaults to 6,000 per process; reject excess admissions with retry guidance. The implementation bounds buffered writes and yields during large fan-out. Test slow consumers and reconnect storms rather than just idle sockets. One Node process may still bottleneck on one busy JavaScript thread even on a two-CPU plan.
@@ -73,7 +75,7 @@ Render automatically balances replicated services, but long-lived connections st
 
 There are two different shared-IP risks:
 
-1. **Visitors behind one NAT.** A campus, conference, VPN or carrier may put many viewers behind one public IP. The inspected launch branch uses an in-memory per-IP request limit of 600/minute per API and a separate `/api/events` limit of 60 connection requests/minute. Those defaults can reject legitimate shared-NAT viewers or a single-IP load generator far below the stream ceiling. They are not shared across replicas. Validate the trusted proxy chain; never trust an arbitrary client-supplied forwarding header. Use route-specific limits, capacity admission, reconnect jitter and bounded expensive queries; test shared-NAT access explicitly before choosing final thresholds. Removing all limits is not the remedy.
+1. **Visitors behind one NAT.** A campus, conference, VPN or carrier may put many viewers behind one public IP. The tested launch branch defaults to 12,000 general requests/minute/IP, 3,000 profile requests/minute/IP per protected route, and 2,000 SSE connection requests/minute/IP, alongside 6,000 active streams/process. Those request counters are in memory and are not shared across replicas. Large shared-NAT populations can still exhaust them; an active-stream ceiling and a connection-attempt rate are different limits. Validate the trusted proxy chain; never trust an arbitrary client-supplied forwarding header. Use route-specific limits, capacity admission, reconnect jitter and bounded expensive queries; test shared-NAT access explicitly before choosing final thresholds. Removing all limits is not the remedy.
 2. **Collector egress through Render's shared IP ranges.** These ranges are shared with other services in the region, so upstream IP-based throttling or reputation can affect the collector. Retain the shared upstream budget and obey `Retry-After`. Dedicated outbound IPs cost $100/month for three reserved IPv4 addresses per region; consider them only with an upstream allowlisting/reputation need. They do not solve browser NAT limits or grant permission to increase upstream requests. [Outbound IP ranges](https://render.com/docs/outbound-ip-addresses), [dedicated IP pricing](https://render.com/changelog/add-dedicated-outbound-ips-to-your-workspace).
 
 Render already provides Cloudflare-backed DDoS mitigation. Official documentation does not publish a numeric web-service per-IP ceiling; Render management REST API rate limits are unrelated. Application-level abuse and expensive requests remain our responsibility. [Render DDoS protection](https://render.com/docs/ddos-protection), [application defenses](https://render.com/articles/how-render-handles-ddos-attacks).
@@ -84,13 +86,21 @@ If traffic later becomes sustained, investigate **actual edge fan-out**: a small
 
 ## Recovery and backup readiness
 
-The existing database's Recovery page visibly offers **Point-in-Time Recovery for the past seven days**, **Restore database**, and **Create export**. No restore or export was started during this review, and no completed logical export appeared in the page. Actual history cannot precede database creation.
+The existing database's Recovery page visibly offers **Point-in-Time Recovery for the past seven days**, **Restore database**, and **Create export**. A logical export was created and completed at **October 10, 2026, 09:13 PDT (16:13 UTC)**. Its archive is `2026-10-10T16:13Z.dir.tar.gz`; the UI exposes the timestamp/file rather than a separate visible export ID. The completed row and API deployment were saved as verification screenshots. No export was downloaded or shared externally. Actual history cannot precede database creation.
+
+The isolated PITR drill used temporary database `dpg-db56a3h42hec73fsbcu0-a` (`paperdash-restore-drill-20261010`), restored to **16:08:20 UTC**. It inherited the production inbound IP restrictions; the console confirmed external traffic blocked. Its temporary `2c-4g`, 50 GB, non-HA plan cost $90/month prorated by the second (about $0.125/hour). No API or collector was pointed at it.
+
+A raw `pg` client in the existing private worker shell used read-only transactions, five-second query/connection limits and the existing credential without printing it. Only the destination hostname/database name changed for the copy. Immutable counts at the same cutoff exactly matched production: **28,692 trade observations, 21,640 raw history pages and 11,214 portfolio batches**. The restored database had **10,521 wallets, 31,563 jobs, 22,223 normalized history records and 18,476 chart points**. Completed cashflow/portfolio/trade checkpoints were 9,777/9,776/9,776. Latest trade checkpoint success was 16:08:19.741 UTC; the collector heartbeat was 16:08:19.871, 129 ms before the restore target. A known wallet's retained cashflow rows were present. The copy became Available in about two minutes; data validation completed within about four minutes of initiation. These are observed drill timings, not a guaranteed recovery SLA or a production cutover test. The disposable copy was deleted after validation; the workspace returned to its original five production services. The production export was retained. The drill lasted only a few minutes, with estimated prorated compute/storage cost below $0.02 (invoice not yet available).
 
 Paid Postgres on Pro has seven-day PITR. Restore creates a new database; the selected point must be at least ten minutes behind the present. Logical exports are retained for seven days and must be downloaded/copied for longer retention. These features do not prove a successful restore. Before launch, restore a separate database, validate counts/checkpoints and sample histories, and record elapsed recovery time. Preserve production throughout. [Recovery documentation](https://render.com/docs/postgresql-backups).
 
 Keep HA enabled, but do not treat it as a backup: asynchronous failover can lose recent writes, and the standby cannot serve read traffic. Add encrypted external logical exports with tested retention and restricted credentials. The $25 allowance requires validation against real compressed database size and restore duration; no external bucket or scheduler is currently configured. Follow the coordinated cutover procedure in [Operations](OPERATIONS.md#freshness-incidents-and-recovery) when a real restore is needed.
 
-## Evidence required before announcing capacity
+## Local test evidence and remaining production gates
+
+The release owner reported a clean **local** 10,000-client run: all clients connected in 1.25 seconds, zero failures, 1,269/1,269 REST requests succeeded, REST p99 17 ms, SSE p99 67 ms, API memory 416 MiB and about 30% of one local CPU core. These results validate that local test workload only. They exclude Render ingress, regional latency, public NAT/rate behavior, production database distribution, long-duration traffic and real-world failure modes. The exact tested release and retained test artifact must accompany the deployment record.
+
+### Evidence required before announcing capacity
 
 1. Build and run integration/browser tests on the exact release; preserve source-backed stale/coverage behavior under failures.
 2. Use a separate load environment with representative retained histories and continuing ingestion. Test 500, 2,000, 5,000 and 10,000 clients, a realistic overview/asset/wallet mix, paginated reads and cache misses. Retain test commands, commit, event rates, dataset sizes and timings.
@@ -99,4 +109,4 @@ Keep HA enabled, but do not treat it as a backup: asynchronous failover can lose
 5. Measure per-instance sockets, event-loop delay, queue/pool waits, reconnects, HTTP errors and total bytes/viewer-second. A brief synthetic test cannot establish several-hour stability; run a soak and a one-instance-loss drill. Measure incoming event bursts as well as idle clients.
 6. Wire alert delivery for readiness/source lag, queue failures, disk 70%/85%, and projected monthly cost at $700/$850, escalating at $950. These are proposed alerts, not currently installed automation. Reduce payload/cadence gracefully before spending exceeds the ceiling; retain records and display stale state honestly.
 
-The authoritative Blueprint remains unchanged until the approved scale operation. When it occurs, mirror the three-instance plan in both Blueprint files, record deployed commit/instance count and measured results here, and retain the old compatible release for rollback. Read-only plan inspection and a successful feature release are not launch load tests.
+Both Blueprint files now describe the authorized three-instance API plan. Service and Blueprint auto-deploy remain disabled, so code rollout still requires the separately tested release. Retain the old compatible release for rollback. Plan inspection, scaling and a successful feature release are not production launch load tests.
