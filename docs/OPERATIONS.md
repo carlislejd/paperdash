@@ -24,6 +24,8 @@ Production builds use `npm run build`; API and worker commands are `npm run star
 
 The authoritative deployment file is [render.yaml](../render.yaml); [infra/render.blueprint.yaml](../infra/render.blueprint.yaml) is an identical convenience copy. CI verifies both against the saved official Render schema. Use the dedicated Paperdash Pro workspace for database HA and separate billing from unrelated projects. All stateful/backend resources must stay in the same region; the Blueprint uses Oregon. Creating these files does not provision anything.
 
+The initial beta was deployed on October 9, 2026: [frontend](https://paperdash-web.onrender.com), [API readiness](https://paperdash-api.onrender.com/health/ready), and [indexing status](https://paperdash-api.onrender.com/api/indexing). The deployed database uses PostgreSQL 18 with HA enabled and 50 GB per copy; Key Value uses Valkey 8 with `noeviction`. Blueprint auto-sync and service auto-deploy are disabled. These public endpoints report the current state; a past successful deploy is not a guarantee of present freshness.
+
 | Resource | Configuration | Monthly fixed estimate |
 | --- | --- | ---: |
 | Workspace | Pro | $25 |
@@ -48,7 +50,9 @@ Deploy steps:
 5. If custom domains are used, update the API's `CORS_ORIGIN` to the exact frontend origin, set the static site's `VITE_API_URL` to the public API origin and `VITE_SITE_URL` to the public frontend origin, then rebuild the static site. Multiple allowed origins are comma separated. Blueprint URL references initially use Render's `onrender.com` URLs. Keep these changes in the Blueprint so a future sync does not replace them.
 6. Complete the role hardening and recovery checks below before a broad public launch. Confirm the upstream operator's allowance for sustained polling of these undocumented public endpoints.
 
-The API binds `HOST=0.0.0.0` and Render's provided `PORT`. `EMBEDDED_COLLECTOR=false` keeps upstream polling in the dedicated worker. The collector's database advisory lock prevents parallel active collectors during overlapping deploys. It needs a direct Postgres connection; do not move that session onto a transaction pool.
+The API binds `HOST=0.0.0.0` and Render's provided `PORT`. `EMBEDDED_COLLECTOR=false` keeps upstream polling in the dedicated worker. The collector's database advisory lock prevents parallel active collectors during overlapping deploys. A replacement worker stays alive in standby, checking the lease every two seconds until the previous worker finishes shutdown. SIGTERM also cancels standby safely. Losing an already-held database lease is a fatal condition: the process exits immediately because it can no longer guarantee exclusive ingestion. It needs a direct Postgres connection; do not move that session onto a transaction pool.
+
+Failed collector loops retry within 30 seconds (or their normally shorter interval), while respecting longer upstream retry deadlines. Successful reconciliation restores the normal schedule, including the hourly protocol-history refresh. Temporary cache provisioning or network errors should not leave that history loop idle for an entire hour after connectivity recovers.
 
 ## Environment contract
 

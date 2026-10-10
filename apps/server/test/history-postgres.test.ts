@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { createStore, type Store } from "../src/store.js";
 import type { HistoryJob } from "../src/history-store.js";
+import { waitForCollectorLease } from "../src/collector-lifecycle.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const address = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -10,6 +11,42 @@ afterEach(async () => {
   for (const store of stores.splice(0)) await store.close();
 });
 describe.skipIf(!databaseUrl)("PostgreSQL retained ledger integration", () => {
+  it("hands the collector lease to a waiting replacement without allowing concurrent owners", async () => {
+    const oldStore = await createStore({ databaseUrl, autoMigrate: true });
+    const newStore = await createStore({ databaseUrl, autoMigrate: false });
+    stores.push(oldStore, newStore);
+    const releaseOld = await oldStore.lease();
+    expect(releaseOld).not.toBeNull();
+    let releaseNew: (() => Promise<void>) | null = null;
+    const shutdown = new AbortController();
+    let notifyWaiting!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      notifyWaiting = resolve;
+    });
+    const startup = waitForCollectorLease(
+      {
+        start: async () => {
+          releaseNew = await newStore.lease();
+          return releaseNew !== null;
+        },
+      },
+      shutdown.signal,
+      { intervalMs: 5, onWaiting: notifyWaiting },
+    );
+    try {
+      await waiting;
+      expect(releaseNew).toBeNull();
+      await releaseOld!();
+      expect(await startup).toBe(true);
+      expect(await oldStore.lease()).toBeNull();
+    } finally {
+      shutdown.abort();
+      await startup;
+      // Store.close also releases the session if an assertion failed.
+      if (releaseNew) await (releaseNew as () => Promise<void>)();
+    }
+  });
+
   it("migrates, atomically fences claims, preserves copies and checkpoints across processes, and retains source portfolio batches", async () => {
     let first = await createStore({ databaseUrl, autoMigrate: true });
     stores.push(first);

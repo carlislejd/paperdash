@@ -96,6 +96,20 @@ export async function createStore(
           );
         });
     let leaseClient: PoolClient | null = null;
+    let leaseErrorListener: (() => void) | null = null;
+    function releaseCollectorLease() {
+      const client = leaseClient;
+      if (!client) return;
+      leaseClient = null;
+      if (leaseErrorListener) {
+        client.removeListener("error", leaseErrorListener);
+        leaseErrorListener = null;
+      }
+      // Closing this dedicated session releases its advisory lock. Do not
+      // return a possibly still-locked session to the pool after an unlock
+      // query failure, or retain an old owner's fatal listener on a pool client.
+      client.release(true);
+    }
     const sql = (text: string) => {
       let i = 0;
       return text.replace(/\?/g, () => `$${++i}`);
@@ -237,29 +251,35 @@ export async function createStore(
       },
       async lease() {
         const c = await pool.connect();
-        const r = await c.query(
-          "SELECT pg_try_advisory_lock(74481231,1) acquired",
-        );
-        if (!r.rows[0].acquired) {
+        let acquired: boolean;
+        try {
+          const r = await c.query(
+            "SELECT pg_try_advisory_lock(74481231,1) acquired",
+          );
+          acquired = r.rows[0].acquired === true;
+        } catch (error) {
+          // A failed query can still have acquired the server-side lock before
+          // its response was lost. Destroy the session and never leak checkout.
+          c.release(true);
+          throw error;
+        }
+        if (!acquired) {
           c.release();
           return null;
         }
         leaseClient = c;
-        c.on("error", () => {
+        leaseErrorListener = () => {
+          if (leaseClient !== c) return;
           console.error(
             "Collector database lease connection lost. Exiting to prevent concurrent ingestion.",
           );
-          process.exitCode = 1;
-          process.kill(process.pid, "SIGTERM");
-        });
+          // PostgreSQL has already released ownership. Graceful draining here
+          // would let old writes overlap a replacement collector's ingestion.
+          process.exit(1);
+        };
+        c.on("error", leaseErrorListener);
         return async () => {
-          if (leaseClient === c) {
-            leaseClient = null;
-            await c
-              .query("SELECT pg_advisory_unlock(74481231,1)")
-              .catch(() => {});
-            c.release();
-          }
+          if (leaseClient === c) releaseCollectorLease();
         };
       },
       async health() {
@@ -271,10 +291,7 @@ export async function createStore(
         }
       },
       async close() {
-        if (leaseClient) {
-          leaseClient.release(true);
-          leaseClient = null;
-        }
+        releaseCollectorLease();
         await pool.end();
       },
     };

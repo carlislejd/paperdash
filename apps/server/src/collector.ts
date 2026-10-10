@@ -286,12 +286,44 @@ export class Collector {
     void task.finally(() => this.tasks.delete(task)).catch(() => {});
   }
   private loop(name: string, interval: number, work: () => Promise<void>) {
+    let retryAt = 0;
+    const rememberDeadline = (error: unknown) => {
+      if (
+        error &&
+        typeof error === "object" &&
+        "retryAt" in error &&
+        typeof error.retryAt === "number" &&
+        Number.isFinite(error.retryAt)
+      )
+        retryAt = Math.max(retryAt, error.retryAt);
+    };
+    const schedule = (delay: number) => {
+      if (this.stopped) return;
+      const timer = setTimeout(
+        () => {
+          this.timers.delete(timer);
+          this.track(tick());
+        },
+        Math.min(delay, 2147483647),
+      );
+      this.timers.add(timer);
+    };
     const tick = async () => {
       if (this.stopped) return;
+      // A long Retry-After can exceed Node's maximum timer duration. Recheck
+      // the absolute deadline rather than letting an overflow retry early.
+      if (retryAt > Date.now()) {
+        schedule(retryAt - Date.now());
+        return;
+      }
+      let failed = false;
       try {
         await work();
         this.errors.delete(name);
+        retryAt = 0;
       } catch (error) {
+        failed = true;
+        rememberDeadline(error);
         this.errors.set(name, errorMessage(error));
         console.error(`Collector ${name}:`, errorMessage(error));
       }
@@ -302,15 +334,15 @@ export class Collector {
         });
         await this.publish();
       } catch (error) {
+        failed = true;
+        rememberDeadline(error);
         console.error("Collector persistence:", errorMessage(error));
       }
-      if (!this.stopped) {
-        const timer = setTimeout(() => {
-          this.timers.delete(timer);
-          this.track(tick());
-        }, interval);
-        this.timers.add(timer);
-      }
+      schedule(
+        failed
+          ? Math.max(Math.min(interval, 30000), retryAt - Date.now())
+          : interval,
+      );
     };
     this.track(tick());
   }

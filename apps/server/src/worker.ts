@@ -3,32 +3,26 @@ import { Upstream } from "./upstream.js";
 import { Collector } from "./collector.js";
 import { ChangeBus } from "./bus.js";
 import { config } from "./config.js";
+import { waitForCollectorLease } from "./collector-lifecycle.js";
 
 const store = await createStore();
 const bus = new ChangeBus(config.redisUrl);
 const upstream = new Upstream(store);
 const collector = new Collector(store, upstream, bus);
-if (!(await collector.start())) {
-  // Render deploy overlap: let the old worker finish rather than running two feeds.
-  console.error(
-    "Another collector currently holds the ingestion lease. Retry after its shutdown.",
-  );
-  bus.close();
-  await upstream.close();
-  await store.close();
-  process.exit(1);
-}
-console.info(
-  `Paperdash ingestion started (${store.kind}); public source observations, not a canonical chain index.`,
-);
-let closing = false;
-async function close() {
-  if (closing) return;
-  closing = true;
-  await collector.stop();
-  await upstream.close();
-  bus.close();
-  await store.close();
+const shutdown = new AbortController();
+let startup: Promise<boolean> = Promise.resolve(false);
+let closing: Promise<void> | undefined;
+function close(): Promise<void> {
+  if (closing) return closing;
+  shutdown.abort();
+  closing = (async () => {
+    await startup.catch(() => {});
+    await collector.stop();
+    await upstream.close();
+    bus.close();
+    await store.close();
+  })();
+  return closing;
 }
 process.once("SIGTERM", () => {
   void close().then(
@@ -42,3 +36,19 @@ process.once("SIGINT", () => {
     () => process.exit(1),
   );
 });
+startup = waitForCollectorLease(collector, shutdown.signal, {
+  onWaiting: () =>
+    console.info(
+      "Paperdash ingestion standing by until the previous collector releases its lease.",
+    ),
+});
+try {
+  if ((await startup) && !closing) {
+    console.info(
+      `Paperdash ingestion started (${store.kind}); public source observations, not a canonical chain index.`,
+    );
+  }
+} catch (error) {
+  await close();
+  throw error;
+}

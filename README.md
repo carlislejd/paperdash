@@ -2,7 +2,7 @@
 
 A public, read-only dashboard for the Papertrade community. React renders protocol metrics, TVL history, observed trading activity and a searchable wallet directory. Opening a wallet shows credited deposits, available balances, portfolio coverage and paginated cashflow/trade history. Following a wallet saves it in the current browser.
 
-The app uses real public Papertrade sources. Demo fixtures exist only in browser tests. It does not connect signing wallets, submit trades, move funds or require a blockchain node. The repository includes a Render Blueprint; no hosted deployment is implied by the presence of that file.
+The [live beta](https://paperdash-web.onrender.com) uses real public Papertrade sources and a continuously running collector backed by Postgres. Demo fixtures exist only in browser tests. It does not connect signing wallets, submit trades, move funds or require a blockchain node.
 
 ## Run locally
 
@@ -83,7 +83,7 @@ Read the [current source evidence](research/DATA_SOURCES_2026-10-09.md) and [ori
 
 [render.yaml](render.yaml) defines a static frontend, two API instances, one collector, Redis-compatible Key Value and Postgres with an HA standby. [infra/render.blueprint.yaml](infra/render.blueprint.yaml) is an identical copy. CI checks schema validity and prevents the copies drifting. Service auto-deploy and preview environments start disabled; Blueprint auto-sync must be disabled separately in Render for manual releases. Key Value uses `noeviction` because it holds coordination locks as well as notifications.
 
-The proposed fixed cost is **$300/month**, including a $25 Pro workspace, $50 for the two APIs, $25 for ingestion, $150 Postgres primary/standby compute, $30 storage and $20 Key Value. An illustrative public-source beta budget is **about $340/month** with egress and a backup allowance. A future $49 archive RPC adds up to approximately **$389/month** under the same assumptions; the current code does not need it. These estimates are not caps or measured traffic forecasts. [Render pricing](https://render.com/pricing).
+The deployed stack's fixed cost estimate is **$300/month**, including a dedicated $25 Pro workspace, $50 for the two APIs, $25 for ingestion, $150 Postgres primary/standby compute, $30 storage and $20 Key Value. An illustrative public-source beta budget is **about $340/month** with egress and a backup allowance. A future $49 archive RPC adds up to approximately **$389/month** under the same assumptions; the current code does not need it. These estimates are not caps or measured traffic forecasts. [Render pricing](https://render.com/pricing).
 
 Initial deployment uses the managed database owner to bootstrap the schema. Before broad public launch, provision restricted runtime roles, separate migration credentials, configure external backups and run the recovery/load checks in [the operations guide](docs/OPERATIONS.md). HA and multiple API instances improve availability; they do not make an incomplete source into a complete ledger.
 
