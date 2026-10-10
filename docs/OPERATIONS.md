@@ -26,6 +26,10 @@ The authoritative deployment file is [render.yaml](../render.yaml); [infra/rende
 
 The initial beta was deployed on October 9, 2026: [frontend](https://paperdash-web.onrender.com), [API readiness](https://paperdash-api.onrender.com/health/ready), and [indexing status](https://paperdash-api.onrender.com/api/indexing). The deployed database uses PostgreSQL 18 with HA enabled and 50 GB per copy; Key Value uses Valkey 8 with `noeviction`. Blueprint auto-sync and service auto-deploy are disabled. These public endpoints report the current state; a past successful deploy is not a guarantee of present freshness.
 
+Release verification: frontend/API `b4c88c6`, collector `682a480`. [CI passed](https://github.com/carlislejd/paperdash/actions/runs/38028420500) with 73 unit/integration tests (including PostgreSQL and Redis), 14 desktop/mobile browser tests, seven Python tests and Blueprint validation. The production replacement logged standby at 22:43:37 PDT, then acquired the lease at 22:44:38 without a crash. Retained data survived the earlier restart and this deployment. Public checks afterward returned a fresh connected stream, 300 retained TVL chart points, and advancing backfill status (622 discovered wallets, 858 completed history jobs, zero failed jobs at the sampled instant). Initial backfill was still running. SSE reconnect returned a fresh snapshot with a newer watermark; trade replay during activity, load capacity, HA failover and backup restoration were not established by these checks.
+
+Dependency maintenance: the release's `npm audit --omit=dev` reported zero vulnerabilities. The full audit reported three findings in the development-only Vitest/mocker/tinypool dependency tree; the reported remediation requires a major test-runner upgrade. The deployed commands run the compiled application, with no Vitest server. Track that tooling upgrade separately from the validated runtime release.
+
 | Resource | Configuration | Monthly fixed estimate |
 | --- | --- | ---: |
 | Workspace | Pro | $25 |
