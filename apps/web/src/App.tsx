@@ -510,7 +510,7 @@ function App() {
           section === "following") && (
           <section className="overview-board" aria-label="Protocol overview">
             <div className="metrics-row">
-              <div className="metric metric-primary">
+              <div className="metric">
                 <span className="metric-label">
                   TVL{" "}
                   <button
@@ -525,12 +525,17 @@ function App() {
                 </strong>
                 <span className="metric-note">USDC · protocol-reported</span>
               </div>
-              <div className="metric metric-primary">
-                <span className="metric-label">Wallets</span>
-                <strong>
-                  {data?.accountCount?.toLocaleString("en-US") ?? "—"}
+              <div className="metric">
+                <span
+                  className="metric-label"
+                  title="Lifetime USDC allocated to PAPER stakers, including unclaimed rewards"
+                >
+                  Staking revenue
+                </span>
+                <strong title={formatRawUsd(summary?.fees.lifetime)}>
+                  {formatRawUsd(summary?.fees.lifetime, true)}
                 </strong>
-                <span className="metric-note">Public accounts</span>
+                <span className="metric-note">USDC · lifetime allocated</span>
               </div>
               <div className="metric">
                 <span className="metric-label">Trading volume</span>

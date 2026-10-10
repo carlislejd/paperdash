@@ -31,9 +31,6 @@
 .overview-page .overview-board .metric {
   gap: 5px;
 }
-.overview-page .overview-board .metric-primary strong {
-  font-size: clamp(34px, 3.6vw, 50px);
-}
 .overview-page .board-status {
   margin-top: 12px;
 }
@@ -205,9 +202,6 @@
   }
   .overview-page .overview-board .metric:nth-child(n + 3) {
     padding-top: 10px;
-  }
-  .overview-page .overview-board .metric-primary strong {
-    font-size: clamp(32px, 8vw, 44px);
   }
   .overview-chart-toolbar {
     align-items: flex-start;
@@ -452,7 +446,7 @@ button svg {
 }
 .metrics-row {
   display: grid;
-  grid-template-columns: 1.28fr 1fr 1fr 0.85fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding-top: 23px;
 }
 .metric {
@@ -482,17 +476,10 @@ button svg {
   padding: 0;
 }
 .metric strong {
-  font-size: 37px;
   font-weight: 500;
   letter-spacing: -1.6px;
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
-}
-.metric-primary strong {
-  font-size: 48px;
-  line-height: 1.08;
-  margin: 5px 0 7px;
-  letter-spacing: -2.5px;
 }
 .metric-note {
   font-size: 9px;
@@ -1178,12 +1165,6 @@ button svg {
   .metric {
     padding: 0 22px;
   }
-  .metric strong {
-    font-size: 31px;
-  }
-  .metric-primary strong {
-    font-size: 43px;
-  }
   .activity-panel {
     padding-left: 24px;
   }
@@ -1232,20 +1213,11 @@ button svg {
   .metric {
     padding-inline: 17px;
   }
-  .metric strong {
-    font-size: 28px;
-  }
-  .metric-primary strong {
-    font-size: 37px;
-  }
   .metric-label {
     font-size: 9px;
   }
   .metric-note {
     font-size: 8px;
-  }
-  .metrics-row {
-    grid-template-columns: 1.2fr 1fr 1fr 0.85fr;
   }
   .activity-panel {
     padding-left: 20px;
@@ -1329,12 +1301,6 @@ button svg {
   .metric:nth-child(3) {
     padding-left: 0;
     border-left: 0;
-  }
-  .metric strong {
-    font-size: 33px;
-  }
-  .metric-primary strong {
-    font-size: 39px;
   }
   .metric-label {
     font-size: 10px;
@@ -1554,7 +1520,7 @@ button svg {
   padding: 31px 0 20px;
 }
 .overview-board .metrics-row {
-  grid-template-columns: 1.5fr 1.2fr 1fr 0.85fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding-top: 0;
   align-items: center;
 }
@@ -1567,13 +1533,10 @@ button svg {
   color: var(--muted);
 }
 .overview-board .metric strong {
-  font-size: 32px;
+  font-size: clamp(32px, 3.6vw, 50px);
+  letter-spacing: -1.8px;
   line-height: 1.15;
   margin: 0;
-}
-.overview-board .metric-primary strong {
-  font-size: clamp(42px, 4.2vw, 60px);
-  letter-spacing: -2.5px;
 }
 .board-status {
   display: flex;
@@ -1582,15 +1545,8 @@ button svg {
   min-height: 14px;
 }
 @media (max-width: 850px) {
-  .overview-board .metric-primary strong {
-    font-size: 42px;
-    letter-spacing: -1.9px;
-  }
   .overview-board .metric strong {
-    font-variant-numeric: tabular-nums;
-  }
-  .overview-board .metric:not(.metric-primary) strong {
-    font-size: 28px;
+    font-size: clamp(24px, 3.6vw, 32px);
   }
   .overview-board .metric-label {
     font-size: 11px;
@@ -1604,12 +1560,9 @@ button svg {
     grid-template-columns: 1fr 1fr;
     row-gap: 20px;
   }
-  .overview-board .metric-primary strong {
-    font-size: clamp(35px, 9.6vw, 48px);
-  }
-  .overview-board .metric:not(.metric-primary) strong {
-    font-size: 26px;
-    letter-spacing: -1px;
+  .overview-board .metric strong {
+    font-size: clamp(28px, 8vw, 44px);
+    letter-spacing: -1.4px;
   }
   .overview-board .metric:nth-child(n + 3) {
     padding-top: 16px;
