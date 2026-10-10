@@ -22,6 +22,7 @@ import { readHouse } from "./house.js";
 import { readLiquidations } from "./liquidations.js";
 import { EventHub, type StreamTopic } from "./event-hub.js";
 import { PublicReadCache, ReadCapacityError } from "./public-read-cache.js";
+import { applyEdgeCachePolicy } from "./edge-cache.js";
 export { EventHub } from "./event-hub.js";
 
 export async function buildApi(
@@ -123,9 +124,10 @@ export async function buildApi(
       .code(500)
       .send({ error: "The data service is temporarily unavailable." });
   });
-  app.addHook("onSend", async (_req, reply) => {
+  app.addHook("onSend", async (req, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    applyEdgeCachePolicy(req, reply, config.origins);
   });
   app.get(
     "/health/ready",
@@ -390,7 +392,8 @@ export async function buildApi(
         if (value !== undefined) reply.raw.setHeader(name, value);
       reply.raw.writeHead(200, {
         "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
+        "Cache-Control": "no-store, no-transform",
+        "CDN-Cache-Control": "no-store",
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       });
