@@ -36,12 +36,12 @@ export function HouseStats() {
       hover === null ? points.length - 1 : Math.min(hover, points.length - 1)
     ];
   const stale = Boolean(error || data?.stale);
-  const paper = (raw: string | null | undefined) => {
+  const paper = (raw: string | null | undefined, compact = true) => {
     const value = rawToNumber(raw);
     return value === null
       ? "—"
       : new Intl.NumberFormat("en-US", {
-          notation: "compact",
+          notation: compact ? "compact" : "standard",
           maximumFractionDigits: 2,
         }).format(value);
   };
@@ -135,17 +135,7 @@ export function HouseStats() {
           <span>24h · available observations</span>
           <span>USDC</span>
         </div>
-        <p id={id} className="protocol-method">
-          LP balance + open house PnL − queue debt
-        </p>
-        {error && (
-          <button className="text-button" onClick={refresh}>
-            Retry house data
-          </button>
-        )}
-      </div>
-      <div className="house-breakdown" aria-describedby={id}>
-        <dl className="house-details">
+        <dl className="house-details" aria-describedby={id}>
           <div>
             <dt>LP balance</dt>
             <dd title={formatRawUsd(data?.house?.lpRaw)}>
@@ -172,29 +162,53 @@ export function HouseStats() {
             </dd>
           </div>
         </dl>
-        <h3>PAPER</h3>
+        <p id={id} className="protocol-method">
+          LP balance + open house PnL − queue debt · estimated
+        </p>
+        {error && (
+          <button className="text-button" onClick={refresh}>
+            Retry house data
+          </button>
+        )}
+      </div>
+      <div className="paper-panel">
+        <div className="section-heading">
+          <h2>PAPER</h2>
+          <span className="tiny-caption">
+            {relativeTime(data?.summarySourceAt)}
+          </span>
+        </div>
         <dl className="paper-details">
           <div>
-            <dt>Supply</dt>
-            <dd>{paper(data?.paper.supplyRaw)}</dd>
+            <dt>PAPER supply</dt>
+            <dd>
+              <strong title={`${paper(data?.paper.supplyRaw, false)} PAPER`}>
+                {paper(data?.paper.supplyRaw)}
+              </strong>
+              <span>Total supply · PAPER</span>
+            </dd>
           </div>
           <div>
-            <dt>Staked</dt>
-            <dd>{paper(data?.paper.stakedRaw)}</dd>
+            <dt>PAPER staked</dt>
+            <dd>
+              <strong title={`${paper(data?.paper.stakedRaw, false)} PAPER`}>
+                {paper(data?.paper.stakedRaw)}
+              </strong>
+              <span>Currently staked · PAPER</span>
+            </dd>
           </div>
           <div>
-            <dt>
-              Staker rewards <small>lifetime</small>
+            <dt title="Lifetime USDC allocated to PAPER stakers, including rewards not yet claimed">
+              Staking revenue
             </dt>
-            <dd title={formatRawUsd(data?.paper.stakerRewardsRaw)}>
-              {formatRawUsd(data?.paper.stakerRewardsRaw, true)}
+            <dd>
+              <strong title={formatRawUsd(data?.paper.stakerRewardsRaw)}>
+                {formatRawUsd(data?.paper.stakerRewardsRaw, true)}
+              </strong>
+              <span>Lifetime allocated · USDC</span>
             </dd>
           </div>
         </dl>
-        <p className="protocol-method">
-          House values are estimates. PAPER updated{" "}
-          {relativeTime(data?.summarySourceAt).toLowerCase()}.
-        </p>
       </div>
     </section>
   );

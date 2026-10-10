@@ -101,6 +101,18 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   await expect(panel.locator(".house-value strong")).toHaveText("-$10B");
   await expect(panel).toContainText("125.57M");
   await expect(panel).toContainText("$16.27K");
+  const paper = panel.locator(".paper-details");
+  await expect(paper.locator("dt")).toHaveText([
+    "PAPER supply",
+    "PAPER staked",
+    "Staking revenue",
+  ]);
+  await expect(paper.locator("strong")).toHaveText(["125.57M", "0", "$16.27K"]);
+  await expect(paper).toContainText("Lifetime allocated · USDC");
+  await expect(paper.locator("strong").first()).toHaveAttribute(
+    "title",
+    "125,571,374 PAPER",
+  );
   await expect(panel).toContainText("LP balance + open house PnL − queue debt");
   const d = await panel.locator("svg path").getAttribute("d");
   expect(d?.match(/M/g)).toHaveLength(2);
