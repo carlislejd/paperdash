@@ -83,6 +83,13 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       await owner.query(
         `GRANT UPDATE(state) ON paperdash_history_jobs TO ${apiRole}`,
       );
+      await owner.query(`GRANT SELECT ON paperdash_trade_inbox TO ${apiRole}`);
+      await owner.query(
+        `GRANT UPDATE(payload) ON paperdash_trade_inbox TO ${workerRole}`,
+      );
+      await owner.query(
+        `GRANT DELETE ON paperdash_trade_ingestion_gaps TO ${workerRole}`,
+      );
       await applyPolicy();
 
       async function runtime(role: string) {
@@ -284,6 +291,70 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       expect((await api.store.eventBounds()).latest).not.toBeNull();
       expect((await api.store.events()).length).toBeGreaterThan(0);
 
+      // Pending intake survives connection/process replacement. A committed
+      // trade whose acknowledgement was lost is replayed with its original ID.
+      const pendingTrades: TradeEvent[] = [
+        { ...trade, id: "roles:inbox:first", kind: "open", ts: at - 400 },
+        { ...trade, id: "roles:inbox:second", kind: "open", ts: at - 300 },
+      ];
+      async function closeRuntimeStore(value: Store) {
+        await value.close();
+        stores.splice(stores.indexOf(value), 1);
+      }
+      const intakeWriter = await runtime(workerRole);
+      await intakeWriter.store.tradeInbox.append(pendingTrades, at);
+      await intakeWriter.store.tradeInbox.append(pendingTrades, at + 1);
+      expect((await intakeWriter.store.tradeInbox.status()).pending).toBe(2);
+      await closeRuntimeStore(intakeWriter.store);
+      const firstReader = await runtime(workerRole);
+      expect(await firstReader.store.tradeInbox.head()).toEqual(pendingTrades);
+      expect(await firstReader.store.recordTrade(pendingTrades[0])).toBe(true);
+      await closeRuntimeStore(firstReader.store);
+      const restarted = await runtime(workerRole);
+      const replayed = await restarted.store.tradeInbox.head();
+      const inserted: boolean[] = [];
+      for (const observation of replayed) {
+        inserted.push(await restarted.store.recordTrade(observation));
+        await restarted.store.history.ensureWallet(observation.wallet, 20);
+        await restarted.store.tradeInbox.acknowledge(observation.id);
+      }
+      expect(inserted).toEqual([false, true]);
+      expect(await restarted.store.tradeInbox.head()).toEqual([]);
+      expect((await restarted.store.tradeInbox.status()).pending).toBe(0);
+      expect(
+        (
+          await owner.query(
+            "SELECT id FROM paperdash_trade_observations WHERE id LIKE 'roles:inbox:%'",
+          )
+        ).rowCount,
+      ).toBe(2);
+      expect(
+        (
+          await owner.query(
+            "SELECT id FROM paperdash_stream_events WHERE payload->'data'->>'id' LIKE 'roles:inbox:%'",
+          )
+        ).rowCount,
+      ).toBe(2);
+      const gap = {
+        firstAt: at,
+        at: at + 10,
+        kind: "overflow" as const,
+        count: 1,
+        reason: "Fixture intake interrupted.",
+      };
+      await restarted.store.tradeInbox.recordGap(gap);
+      await restarted.store.tradeInbox.recordGap({
+        ...gap,
+        firstAt: at - 10,
+        at: at + 5,
+        count: 3,
+      });
+      expect((await restarted.store.tradeInbox.status()).gap).toEqual({
+        ...gap,
+        firstAt: at - 10,
+      });
+      await closeRuntimeStore(restarted.store);
+
       for (const { pool } of [api, worker]) {
         await expect(
           pool.query("CREATE TABLE forbidden(id integer)"),
@@ -311,6 +382,56 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       ).rejects.toMatchObject({ code: "42501" });
       await expect(
         api.pool.query("SELECT * FROM paperdash_history_pages"),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        api.store.tradeInbox.append(pendingTrades, at),
+      ).rejects.toMatchObject({ code: "42501" });
+      // Direct writes must fail independently of helper SELECT/sequence checks.
+      await expect(
+        api.pool.query(
+          "INSERT INTO paperdash_trade_inbox(seq,id,payload,received_at,byte_size) VALUES(999999,'forbidden','{}',1,2)",
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        api.pool.query("DELETE FROM paperdash_trade_inbox"),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        api.pool.query(
+          "INSERT INTO paperdash_trade_ingestion_gaps(id,first_at,last_at,kind,item_count,reason) VALUES(2,1,1,'malformed',1,'forbidden')",
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        api.pool.query(
+          "UPDATE paperdash_trade_ingestion_gaps SET reason='forbidden'",
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(api.store.tradeInbox.head()).rejects.toMatchObject({
+        code: "42501",
+      });
+      await expect(
+        api.store.tradeInbox.acknowledge(pendingTrades[0].id),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(api.store.tradeInbox.recordGap(gap)).rejects.toMatchObject({
+        code: "42501",
+      });
+      for (const table of [
+        "paperdash_trade_ingestion_gaps",
+        "paperdash_trade_inbox_totals",
+      ]) {
+        await expect(
+          api.pool.query(`SELECT * FROM ${table}`),
+        ).rejects.toMatchObject({ code: "42501" });
+        await expect(
+          worker.pool.query(`DELETE FROM ${table} WHERE false`),
+        ).rejects.toMatchObject({ code: "42501" });
+      }
+      await expect(
+        api.pool.query("SELECT nextval('paperdash_trade_inbox_seq_seq')"),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        worker.pool.query(
+          "UPDATE paperdash_trade_inbox SET payload='{}' WHERE false",
+        ),
       ).rejects.toMatchObject({ code: "42501" });
       for (const table of [
         "paperdash_trade_observations",

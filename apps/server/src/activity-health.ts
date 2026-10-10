@@ -16,8 +16,10 @@ export async function activityDelayed(
     now - heartbeat.value.at > 30000 ||
     Boolean(
       heartbeat.value.errors?.stream ||
-        heartbeat.value.errors?.recent ||
-        heartbeat.value.errors?.["asset-activity"],
+      heartbeat.value.errors?.recent ||
+      heartbeat.value.errors?.["trade-ingestion"] ||
+      heartbeat.value.errors?.["trade-ingestion-gap"] ||
+      heartbeat.value.errors?.["asset-activity"],
     ) ||
     overview?.value.status.stream !== "connected"
   );

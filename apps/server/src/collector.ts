@@ -1,18 +1,15 @@
 import { Centrifuge, type Subscription } from "centrifuge";
-import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 import { z } from "zod";
 import type {
   Overview,
   ProtocolSummary,
   StreamMessage,
-  TradeEvent,
 } from "../../../packages/shared/src/types.js";
 import { config, errorMessage } from "./config.js";
 import {
   accountsSchema,
   digest,
-  normalizeTrade,
   protocolHistorySchema,
   summarySchema,
 } from "./schemas.js";
@@ -30,6 +27,7 @@ import { refreshMarkets } from "./market.js";
 import { retainHouseSource, refreshHouse } from "./house.js";
 import { refreshLiquidations } from "./liquidations.js";
 import { readLiveTvl } from "../../../packages/shared/src/live-tvl.js";
+import { TradeIntake, type IntakeState } from "./trade-intake.js";
 
 export interface StreamDiagnostics {
   at: number;
@@ -192,14 +190,17 @@ export class Collector {
   private client: Centrifuge | null = null;
   private subscription: Subscription | null = null;
   private streamSafetyBlocked = false;
-  private streamFailureRevision = 0;
   private lastSubscribedAt: number | null = null;
   private statusPersistence: Promise<void> = Promise.resolve();
   private release: (() => Promise<void>) | null = null;
   private stream: Overview["status"]["stream"] = "connecting";
   private errors = new Map<string, string>();
   private chain: Promise<void> = Promise.resolve();
-  private ingestion: Promise<void> = Promise.resolve();
+  private intake: TradeIntake;
+  private intakeState: IntakeState | null = null;
+  private intakePublication: Promise<void> | null = null;
+  private intakeDirty = false;
+  private intakePausedSubscription = false;
   private metricsSignature = "";
   private historySignature = "";
   private marketFeed: MarketFeed | null = null;
@@ -207,10 +208,40 @@ export class Collector {
     private store: Store,
     private upstream: Upstream,
     private bus: ChangeBus,
-  ) {}
+  ) {
+    this.intake = new TradeIntake(store, {
+      change: (state) => {
+        this.intakeState = state;
+        if (state.error) this.errors.set("trade-ingestion", state.error);
+        else this.errors.delete("trade-ingestion");
+        if (state.gap)
+          this.errors.set(
+            "trade-ingestion-gap",
+            "Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+          );
+        this.publishIntakeStatus();
+      },
+      committed: () => this.bus.notify(),
+      overflow: () => {
+        this.intakePausedSubscription = true;
+        this.subscription?.unsubscribe();
+      },
+      capacityAvailable: () => {
+        if (
+          !this.stopped &&
+          !this.streamSafetyBlocked &&
+          this.intakePausedSubscription
+        ) {
+          this.intakePausedSubscription = false;
+          this.subscription?.subscribe();
+        }
+      },
+    });
+  }
   async start(): Promise<boolean> {
     this.release = await this.store.lease();
     if (!this.release) return false;
+    this.intake.start();
     this.marketFeed = new MarketFeed(
       async (quote) => {
         if (await this.store.market.quote(quote)) this.bus.notify();
@@ -326,12 +357,12 @@ export class Collector {
       await this.store.put("indexing-status", await this.store.history.stats());
     });
     this.loop("recent", config.recentInterval, async () => {
+      if (!this.intake.canAccept) return;
       const r = await this.upstream.request(
         "/query/protocol/trades/recent",
         z.object({ ok: z.literal(true), events: z.array(z.unknown()).max(50) }),
       );
-      for (const item of [...r.events].reverse())
-        await this.accept(normalizeTrade(item, "recent-api"));
+      this.intake.enqueue([...r.events].reverse(), "recent-api");
     });
     this.client = new Centrifuge(config.streamUrl, {
       websocket: WebSocket as unknown as typeof globalThis.WebSocket,
@@ -401,34 +432,18 @@ export class Collector {
     });
     subscription.on("publication", (context) => {
       if (this.stopped || this.streamSafetyBlocked) return;
-      const failureRevision = this.streamFailureRevision;
-      const task = (async () => {
-        const batch = z.array(z.unknown()).min(1).max(20).parse(context.data);
-        for (const item of batch)
-          await this.accept(
-            normalizeTrade(item, "public-stream", randomUUID()),
-          );
-        if (
-          !this.stopped &&
-          !this.streamSafetyBlocked &&
-          failureRevision === this.streamFailureRevision &&
-          this.errors.has("stream") &&
-          this.client?.state === "connected" &&
-          subscription.state === "subscribed"
-        ) {
-          this.errors.delete("stream");
-          this.streamLifecycle("publication-recovered");
-        }
-        await this.publish();
-      })().catch((error) => {
-        this.streamLifecycle(
-          "publication-error",
-          null,
-          errorMessage(error),
-          "Trade collection is temporarily unavailable.",
-        );
-      });
-      this.track(task);
+      const valid = this.intake.enqueue(context.data, "public-stream");
+      // A valid new publication proves transport recovery only. Independent
+      // ingestion/gap errors remain until their own conditions are resolved.
+      if (
+        valid &&
+        this.errors.has("stream") &&
+        this.client?.state === "connected" &&
+        subscription.state === "subscribed"
+      ) {
+        this.errors.delete("stream");
+        this.streamLifecycle("publication-recovered");
+      }
     });
     subscription.subscribe();
     this.client.connect();
@@ -456,7 +471,6 @@ export class Collector {
           ? "connected"
           : "connecting";
     if (failure) {
-      this.streamFailureRevision++;
       this.errors.set("stream", failure);
     }
     const diagnostic: StreamDiagnostics = {
@@ -490,6 +504,7 @@ export class Collector {
       await this.store.put("collector-heartbeat", {
         at: Date.now(),
         errors: Object.fromEntries(this.errors),
+        ...(this.intakeState ? { tradeIntake: this.intakeState } : {}),
       });
     });
     this.statusPersistence = run.catch(() => {});
@@ -561,15 +576,25 @@ export class Collector {
     await this.store.event(message);
     this.bus.notify();
   }
-  private accept(trade: TradeEvent) {
-    const task = this.ingestion.then(async () => {
-      if (await this.store.recordTrade(trade)) {
-        await this.store.history.ensureWallet(trade.wallet, 20);
-        this.bus.notify();
-      }
-    });
-    this.ingestion = task.catch(() => {});
-    return task;
+  private publishIntakeStatus() {
+    if (this.stopped) return;
+    this.intakeDirty = true;
+    if (this.intakePublication) return;
+    const task = (async () => {
+      do {
+        this.intakeDirty = false;
+        await this.persistStatus();
+        await this.publish();
+      } while (this.intakeDirty && !this.stopped);
+    })()
+      .catch(() => {
+        console.error("Trade intake status persistence is delayed.");
+      })
+      .finally(() => {
+        this.intakePublication = null;
+      });
+    this.intakePublication = task;
+    this.track(task);
   }
   private publish(): Promise<void> {
     const run = this.chain.then(async () => {
@@ -662,9 +687,8 @@ export class Collector {
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
     this.client?.disconnect();
-    await this.marketFeed?.stop();
+    await Promise.all([this.marketFeed?.stop(), this.intake.stop()]);
     await Promise.allSettled([...this.tasks]);
-    await this.ingestion;
     await this.statusPersistence;
     await this.chain;
     await this.release?.();

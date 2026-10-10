@@ -1,5 +1,11 @@
 import { DeadlinePgClient, rollbackPg } from "./pg-deadline.js";
 import { monitorPgLease } from "./pg-lease.js";
+import {
+  createLocalTradeInbox,
+  createPgTradeInbox,
+  tradeInboxSchemaSql,
+  type TradeInboxStore,
+} from "./trade-inbox-store.js";
 import { DatabaseSync } from "node:sqlite";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -69,6 +75,7 @@ export interface Store {
   market: MarketStore;
   house: HouseStore;
   liquidations: LiquidationsStore;
+  tradeInbox: TradeInboxStore;
   get<T>(key: string): Promise<Saved<T> | null>;
   put(key: string, value: unknown, receivedAt?: number): Promise<void>;
   trade(value: TradeEvent): Promise<boolean>;
@@ -103,6 +110,7 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query(marketSchemaSql("paperdash_", true));
     await client.query(houseSchemaSql("paperdash_", true));
     await client.query(liquidationsSchemaSql("paperdash_", true));
+    await client.query(tradeInboxSchemaSql("paperdash_", true));
     await client.query("COMMIT");
   } catch (error) {
     await rollbackPg(client);
@@ -137,7 +145,7 @@ export async function createStore(
       console.error("Database connection error:", error.message),
     );
     if (options.autoMigrate ?? config.autoMigrate) await migrate(pool);
-    else
+    else {
       await pool
         .query(
           "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0; SELECT 1 FROM paperdash_house_samples LIMIT 0; SELECT 1 FROM paperdash_liquidation_state LIMIT 0",
@@ -147,6 +155,14 @@ export async function createStore(
             "Database schema is unavailable; run npm run db:migrate with the schema owner.",
           );
         });
+      const inboxSchema = await pool.query(
+        "SELECT to_regclass('paperdash_trade_inbox') IS NOT NULL AND to_regclass('paperdash_trade_inbox_totals') IS NOT NULL AND to_regclass('paperdash_trade_ingestion_gaps') IS NOT NULL AS available",
+      );
+      if (!inboxSchema.rows[0]?.available)
+        throw new Error(
+          "Database inbox schema is unavailable; run npm run db:migrate with the schema owner.",
+        );
+    }
     let leaseClient: PoolClient | null = null;
     let stopLeaseMonitor: (() => void) | null = null;
     function releaseCollectorLease() {
@@ -198,6 +214,7 @@ export async function createStore(
       market: createPgMarket(pool),
       house: createPgHouse(pool),
       liquidations: createPgLiquidations(pool),
+      tradeInbox: createPgTradeInbox(pool),
       async get<T>(key: string) {
         const r = await pool.query(
           "SELECT payload,received_at FROM paperdash_snapshots WHERE key=$1",
@@ -382,6 +399,7 @@ export async function createStore(
   migrateLocalMarket(db);
   db.exec(houseSchemaSql("", false));
   db.exec(liquidationsSchemaSql("", false));
+  db.exec(tradeInboxSchemaSql("", false));
   const maxBytes = options.maxBytes ?? config.localMaxBytes;
   let checkAt = 0;
   async function writable() {
@@ -408,6 +426,7 @@ export async function createStore(
     market: createLocalMarket(db, writable),
     house: createLocalHouse(db, writable),
     liquidations: createLocalLiquidations(db, writable),
+    tradeInbox: createLocalTradeInbox(db, writable),
     history: createHistoryStore({
       prefix: "",
       async rows<T>(sql: string, params: unknown[] = []) {

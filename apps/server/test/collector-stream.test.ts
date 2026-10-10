@@ -324,7 +324,7 @@ describe("collector stream lifecycle diagnostics", () => {
     expect(await streamError()).toBeUndefined();
   });
 
-  it("clears a transient error only after valid persisted traffic on a healthy subscription", async () => {
+  it("recovers healthy transport while retaining independent malformed-publication gap evidence", async () => {
     await subscribed();
     client.subscription.emit("error", {
       type: "refresh",
@@ -332,7 +332,7 @@ describe("collector stream lifecycle diagnostics", () => {
     });
     client.subscription.emit("publication", { data: [] });
     await flush();
-    expect((await diagnostic()).event).toBe("publication-error");
+    expect((await store.tradeInbox.status()).gap?.kind).toBe("malformed");
     expect(await streamError()).toBeTruthy();
     expect(await store.trades()).toEqual([]);
     client.subscription.emit("publication", publication());
@@ -340,6 +340,11 @@ describe("collector stream lifecycle diagnostics", () => {
     expect(await store.trades()).toHaveLength(1);
     expect((await diagnostic()).event).toBe("publication-recovered");
     expect(await streamError()).toBeUndefined();
+    expect(
+      (await store.get<{ errors: Record<string, string> }>(
+        "collector-heartbeat",
+      ))!.value.errors["trade-ingestion-gap"],
+    ).toBeTruthy();
 
     // A late publication after a terminal event is not evidence of recovery.
     client.state = "disconnected";
@@ -442,5 +447,45 @@ describe("collector stream lifecycle diagnostics", () => {
     expect(await store.trades()).toEqual([]);
     expect((await diagnostic()).event).toBe("recovery-rejected");
     expect((await streamState()).stream).toBe("disconnected");
+  });
+
+  it("bounds publication tasks during an outage and resubscribes after capacity recovers without hiding the gap", async () => {
+    await subscribed();
+    const append = vi
+      .spyOn(store.tradeInbox, "append")
+      .mockRejectedValue(new Error("fixture database outage"));
+    const item = publication().data[0];
+    for (let batch = 0; batch < 51; batch++)
+      client.subscription.emit("publication", {
+        data: Array.from({ length: 20 }, () => ({ ...item })),
+      });
+    await flush();
+    const collectorTasks = (
+      collector as unknown as { tasks: Set<Promise<unknown>> }
+    ).tasks;
+    expect(collectorTasks.size).toBeLessThan(20);
+    expect(client.subscription.unsubscribe).toHaveBeenCalledTimes(1);
+    const heartbeat = await store.get<{
+      tradeIntake: { memoryRecords: number; admissionPaused: boolean };
+      errors: Record<string, string>;
+    }>("collector-heartbeat");
+    expect(heartbeat!.value.tradeIntake).toMatchObject({
+      memoryRecords: 1000,
+      admissionPaused: true,
+    });
+    expect(heartbeat!.value.errors["trade-ingestion-gap"]).toBeTruthy();
+    append.mockRestore();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(client.subscription.subscribe).toHaveBeenCalledTimes(2);
+    await subscribed();
+    expect(
+      (await store.analytics.activity([0], Date.now()))[0].counts.total,
+    ).toBe(1000);
+    expect((await store.tradeInbox.status()).pending).toBe(0);
+    expect(
+      (await store.get<{ errors: Record<string, string> }>(
+        "collector-heartbeat",
+      ))!.value.errors["trade-ingestion-gap"],
+    ).toBeTruthy();
   });
 });

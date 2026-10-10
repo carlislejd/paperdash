@@ -46,6 +46,9 @@ $handoff$;
 REVOKE ALL PRIVILEGES ON TABLE
   :"app_schema".paperdash_snapshots,
   :"app_schema".paperdash_trade_observations,
+  :"app_schema".paperdash_trade_inbox,
+  :"app_schema".paperdash_trade_inbox_totals,
+  :"app_schema".paperdash_trade_ingestion_gaps,
   :"app_schema".paperdash_samples,
   :"app_schema".paperdash_stream_events,
   :"app_schema".paperdash_history_wallets,
@@ -76,7 +79,9 @@ REVOKE ALL PRIVILEGES ON TABLE
   :"app_schema".paperdash_liquidation_state
   FROM :"api_role", :"ingest_role";
 
-REVOKE ALL PRIVILEGES ON SEQUENCE :"app_schema".paperdash_stream_events_id_seq
+REVOKE ALL PRIVILEGES ON SEQUENCE
+  :"app_schema".paperdash_stream_events_id_seq,
+  :"app_schema".paperdash_trade_inbox_seq_seq
   FROM :"api_role", :"ingest_role";
 
 -- Table-level REVOKE does not clear independently granted column privileges.
@@ -89,6 +94,9 @@ BEGIN
   FOREACH table_name IN ARRAY ARRAY[
     'paperdash_snapshots',
     'paperdash_trade_observations',
+    'paperdash_trade_inbox',
+    'paperdash_trade_inbox_totals',
+    'paperdash_trade_ingestion_gaps',
     'paperdash_samples',
     'paperdash_stream_events',
     'paperdash_history_wallets',
@@ -178,6 +186,9 @@ GRANT UPDATE(next_run) ON TABLE
 GRANT SELECT ON TABLE
   :"app_schema".paperdash_snapshots,
   :"app_schema".paperdash_trade_observations,
+  :"app_schema".paperdash_trade_inbox,
+  :"app_schema".paperdash_trade_inbox_totals,
+  :"app_schema".paperdash_trade_ingestion_gaps,
   :"app_schema".paperdash_samples,
   :"app_schema".paperdash_stream_events,
   :"app_schema".paperdash_history_wallets,
@@ -233,6 +244,9 @@ GRANT INSERT,UPDATE ON TABLE
 
 GRANT INSERT ON TABLE
   :"app_schema".paperdash_trade_observations,
+  :"app_schema".paperdash_trade_inbox,
+  :"app_schema".paperdash_trade_inbox_totals,
+  :"app_schema".paperdash_trade_ingestion_gaps,
   :"app_schema".paperdash_stream_events,
   :"app_schema".paperdash_history_visits,
   :"app_schema".paperdash_history_pages,
@@ -242,12 +256,15 @@ GRANT INSERT ON TABLE
   TO :"ingest_role";
 
 GRANT UPDATE ON TABLE
+  :"app_schema".paperdash_trade_inbox_totals,
+  :"app_schema".paperdash_trade_ingestion_gaps,
   :"app_schema".paperdash_analytics_state,
   :"app_schema".paperdash_position_metrics_state,
   :"app_schema".paperdash_liquidation_state
   TO :"ingest_role";
 
 GRANT DELETE ON TABLE
+  :"app_schema".paperdash_trade_inbox,
   :"app_schema".paperdash_stream_events,
   :"app_schema".paperdash_history_visits,
   :"app_schema".paperdash_history_corrections,
@@ -256,5 +273,8 @@ GRANT DELETE ON TABLE
   :"app_schema".paperdash_position_metrics_facts
   TO :"ingest_role";
 
-GRANT USAGE ON SEQUENCE :"app_schema".paperdash_stream_events_id_seq TO :"ingest_role";
+GRANT USAGE ON SEQUENCE
+  :"app_schema".paperdash_stream_events_id_seq,
+  :"app_schema".paperdash_trade_inbox_seq_seq
+  TO :"ingest_role";
 COMMIT;
