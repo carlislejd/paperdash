@@ -1,0 +1,35 @@
+{
+  "startedAt": "2026-10-10T16:48:25.768Z",
+  "durationMs": 10004,
+  "bytes": 34972,
+  "records": [
+    {
+      "http": 200
+    },
+    {
+      "atMs": 297,
+      "id": "79012",
+      "type": "overview"
+    },
+    {
+      "atMs": 713,
+      "id": "79012",
+      "type": "overview"
+    },
+    {
+      "atMs": 1876,
+      "id": "79029",
+      "type": "metrics"
+    },
+    {
+      "atMs": 4020,
+      "id": "79044",
+      "type": "metrics"
+    },
+    {
+      "atMs": 6263,
+      "id": "79057",
+      "type": "metrics"
+    }
+  ]
+}

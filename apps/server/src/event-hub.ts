@@ -55,7 +55,7 @@ function encode(record: StreamRecord): Frame {
 /** One database tail and encoded replay buffer per process, independent of viewer count. */
 export class EventHub {
   private clients = new Set<Client>();
-  private cursor = 0n;
+  private cursor: bigint | null = null;
   private ringFloor = 0n;
   private ring: Frame[] = [];
   private pumping: Promise<void> | null = null;
@@ -123,9 +123,32 @@ export class EventHub {
     this.bootstrapping = (async () => {
       const { overview, cursor } = await readOverviewSnapshot(this.store);
       const bounds = await this.store.eventBounds();
-      const gap =
+      let gap =
         bounds.oldest !== null && BigInt(cursor) < BigInt(bounds.oldest) - 1n;
-      const start = gap ? BigInt(bounds.oldest!) - 1n : BigInt(cursor);
+      let start = gap ? BigInt(bounds.oldest!) - 1n : BigInt(cursor);
+      const records: Frame[] = [];
+      let sequence = start;
+      // Durable replay is bounded to 1,000 retained events. Catch-up remains bounded
+      // during a continuously busy source, and any later deltas come from the shared tail.
+      for (let pass = 0; pass < 2; pass++) {
+        const next = await this.store.events(String(sequence));
+        if (next[0] && BigInt(next[0].id) > sequence + 1n) {
+          const currentBounds = await this.store.eventBounds();
+          if (
+            currentBounds.oldest &&
+            BigInt(currentBounds.oldest) - 1n > sequence
+          ) {
+            gap = true;
+            // When the initial prefix expired during this read, align the
+            // bootstrap watermark with the first row we actually hold. Later
+            // batches keep earlier buffered rows and declare the gap up front.
+            if (!records.length) start = BigInt(next[0].id) - 1n;
+          }
+        }
+        records.push(...next.map(encode));
+        if (next.length) sequence = BigInt(next.at(-1)!.id);
+        if (next.length < 1000) break;
+      }
       if (gap)
         overview.status = {
           ...overview.status,
@@ -136,16 +159,6 @@ export class EventHub {
             .filter(Boolean)
             .join(" "),
         };
-      const records: Frame[] = [];
-      let sequence = start;
-      // Durable replay is bounded to 1,000 retained events. Catch-up remains bounded
-      // during a continuously busy source, and any later deltas come from the shared tail.
-      for (let pass = 0; pass < 2; pass++) {
-        const next = await this.store.events(String(sequence));
-        records.push(...next.map(encode));
-        if (next.length) sequence = BigInt(next.at(-1)!.id);
-        if (next.length < 1000) break;
-      }
       const result: Bootstrap = {
         at: Date.now(),
         overview,
@@ -190,6 +203,7 @@ export class EventHub {
     for (let attempt = 0; attempt < 2; attempt++) {
       const snapshot = await this.snapshot();
       if (this.closed || client.response.destroyed) return;
+      this.initializeTail(snapshot);
       const last = snapshot.records.at(-1)?.sequence ?? snapshot.sequence;
       if (last < this.ringFloor) {
         this.bootstrap = null;
@@ -225,6 +239,34 @@ export class EventHub {
     }
     client.response.end();
   }
+  private initializeTail(snapshot: Bootstrap) {
+    if (this.cursor !== null) return;
+    // A process can start long after retention has removed event 1. Start at
+    // the same valid replay floor as its first clients, before making them ready.
+    // The tail still reads every later delta; per-client cursors deduplicate
+    // anything already delivered by the coalesced bootstrap.
+    this.cursor = snapshot.sequence;
+    this.ringFloor = snapshot.sequence;
+  }
+  private reconnectAfterGap(client: Client) {
+    this.write(
+      client,
+      `data: ${JSON.stringify({ type: "status", data: { receivedAt: null, sourceAt: null, indexedBlock: null, stale: true, persistence: this.store.kind, stream: "disconnected", message: "Live notification replay expired. Reconnecting to refresh saved data." } })}\n\n`,
+    );
+    // Never reset an existing connection to an older overview watermark. A new
+    // connection gets a fresh snapshot/replay; quote state also refreshes through
+    // the bounded market snapshot endpoint after this explicitly signalled gap.
+    client.response.end();
+    this.clients.delete(client);
+  }
+  private advanceReplayFloor(floor: bigint) {
+    this.cursor = floor;
+    this.ringFloor = floor;
+    this.ring = [];
+    this.bootstrap = null;
+    for (const client of this.clients)
+      if (client.ready && client.last < floor) this.reconnectAfterGap(client);
+  }
   private pump(): Promise<void> {
     if (this.closed || !this.clients.size) return Promise.resolve();
     if (this.pumping) {
@@ -245,20 +287,35 @@ export class EventHub {
     return this.pumping;
   }
   private async tail() {
+    if (this.cursor === null) {
+      const snapshot = await this.snapshot();
+      if (this.closed) return;
+      this.initializeTail(snapshot);
+    }
     const bounds = await this.store.eventBounds();
     if (this.closed) return;
-    if (bounds.oldest && this.cursor < BigInt(bounds.oldest) - 1n) {
-      this.cursor = BigInt(bounds.latest!);
-      this.ringFloor = this.cursor;
-      this.ring = [];
-      this.bootstrap = null;
-      // One shared bootstrap promise; no reconnect-specific database reads.
-      await Promise.all(
-        [...this.clients].filter((c) => c.ready).map((c) => this.resync(c)),
-      );
-      return;
+    if (bounds.oldest && this.cursor! < BigInt(bounds.oldest) - 1n) {
+      this.advanceReplayFloor(BigInt(bounds.oldest) - 1n);
+      // Fresh clients may already be beyond this floor, particularly after an
+      // idle period. Keep them connected and replay retained deltas from the
+      // oldest surviving event, rather than skipping to a snapshot's watermark.
     }
     const records = (await this.store.events(String(this.cursor))).map(encode);
+    if (records[0] && records[0].sequence > this.cursor! + 1n) {
+      // Retention can advance between the bounds check and the event query.
+      // An ID hole alone is legitimate (e.g. a rolled-back sequence allocation),
+      // so confirm that the retained prefix actually advanced before reconnecting.
+      const currentBounds = await this.store.eventBounds();
+      if (this.closed) return;
+      if (
+        currentBounds.oldest &&
+        BigInt(currentBounds.oldest) - 1n > this.cursor!
+      ) {
+        // Preserve this already-loaded batch even if a later prune has since
+        // removed it from the database; the gap ends at its first surviving row.
+        this.advanceReplayFloor(records[0].sequence - 1n);
+      }
+    }
     for (const frame of records) {
       if (this.closed) return;
       this.ring.push(frame);

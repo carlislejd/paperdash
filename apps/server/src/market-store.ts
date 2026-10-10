@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Pool } from "pg";
+import { appendStreamEventPg } from "./stream-event-store.js";
 import type {
   AssetPricePoint,
   TradeEvent,
@@ -182,13 +183,9 @@ export function createPgMarket(pool: Pool): MarketStore {
         ]);
         const saved = await client.query(sqlPg(q.sql), q.params);
         if (saved.rowCount) {
-          const event = await client.query(
-            "INSERT INTO paperdash_stream_events(payload) VALUES($1) RETURNING id",
-            [q.event(saved.rows[0].gap_before === 1)],
-          );
-          await client.query(
-            "DELETE FROM paperdash_stream_events WHERE id<=$1::bigint-1000",
-            [event.rows[0].id],
+          await appendStreamEventPg(
+            client,
+            q.event(saved.rows[0].gap_before === 1),
           );
         }
         await client.query("COMMIT");

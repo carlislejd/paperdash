@@ -29,18 +29,27 @@ class Response extends EventEmitter {
         .map((line) => JSON.parse(line.slice(6))),
     );
   }
+  ids() {
+    return this.chunks.flatMap((text) =>
+      text
+        .split("\n")
+        .filter((line) => line.startsWith("id: "))
+        .map((line) => line.slice(4)),
+    );
+  }
 }
 const cleanups: (() => void)[] = [];
 afterEach(() => {
   for (const close of cleanups.splice(0)) close();
   vi.restoreAllMocks();
 });
-function fixture() {
+function fixture(bootstrapTtl = 1000) {
   const records: StreamRecord[] = [];
+  let eventCursor = "0";
   const store = {
     kind: "local",
     get: vi.fn(async () => ({
-      value: { ...emptyOverview("local"), eventCursor: "0" },
+      value: { ...emptyOverview("local"), eventCursor },
       receivedAt: Date.now(),
     })),
     eventBounds: vi.fn(async () => ({
@@ -52,7 +61,10 @@ function fixture() {
     ),
   } as unknown as Store;
   const bus = new ChangeBus();
-  const hub = new EventHub(store, bus);
+  const hub = new EventHub(store, bus, {
+    bootstrapTtl,
+    maxBufferedBytes: 64 * 1024,
+  });
   cleanups.push(() => {
     hub.close();
     bus.close();
@@ -66,7 +78,16 @@ function fixture() {
     );
     return response;
   };
-  return { records, store, bus, hub, add };
+  return {
+    records,
+    store,
+    bus,
+    hub,
+    add,
+    setCursor: (value: string) => {
+      eventCursor = value;
+    },
+  };
 }
 function trade(
   id: string,
@@ -95,6 +116,136 @@ function trade(
   };
 }
 describe("shared SSE fanout", () => {
+  it("declares retention that advances during the initial snapshot replay", async () => {
+    const { records, store, bus, add, setCursor } = fixture();
+    records.push(trade("100"));
+    setCursor("100");
+    const original = store.events;
+    vi.spyOn(store, "events").mockImplementationOnce(async (after) => {
+      records.splice(0, records.length, trade("500"), trade("501"));
+      return original(after);
+    });
+    const response = await add();
+    expect(response.ids()).toEqual(["499", "500", "501"]);
+    expect(response.messages()[0].data.status.message).toMatch(
+      /replay expired/i,
+    );
+    records.push(trade("502"));
+    bus.notify();
+    await vi.waitFor(() => expect(response.ids()).toContain("502"));
+    expect(response.ids()).toEqual(["499", "500", "501", "502"]);
+    expect(response.destroyed).toBe(false);
+  });
+  it("signals a replay gap when retention advances between bounds and the tail read", async () => {
+    const { records, store, bus, add, setCursor } = fixture();
+    records.push(trade("100"));
+    setCursor("100");
+    const response = await add();
+    const original = store.events;
+    vi.spyOn(store, "events").mockImplementationOnce(async (after) => {
+      records.splice(0, records.length, trade("500"), trade("501"));
+      return original(after);
+    });
+    bus.notify();
+    await vi.waitFor(() => expect(response.destroyed).toBe(true));
+    expect(response.ids()).toEqual(["100"]);
+    expect(response.messages().at(-1)).toMatchObject({
+      type: "status",
+      data: { stale: true, stream: "disconnected" },
+    });
+    expect(response.messages().at(-1).data.message).toMatch(/replay expired/i);
+  });
+  it("allows an allocated sequence hole when the retained prefix has not expired", async () => {
+    const { records, bus, add, setCursor } = fixture();
+    records.push(trade("100"));
+    setCursor("100");
+    const response = await add();
+    records.push(trade("102"));
+    bus.notify();
+    await vi.waitFor(() => expect(response.ids()).toContain("102"));
+    expect(response.ids()).toEqual(["100", "102"]);
+    expect(response.destroyed).toBe(false);
+    expect(
+      response.messages().filter((message) => message.type === "status"),
+    ).toEqual([]);
+  });
+  it("starts a cold hub at the saved watermark without resending its already-delivered bootstrap", async () => {
+    const { records, bus, add, setCursor } = fixture();
+    records.push(trade("100"), trade("101"), trade("102"));
+    setCursor("100");
+    const response = await add();
+    expect(response.ids()).toEqual(["100", "101", "102"]);
+    records.push(trade("103"));
+    bus.notify();
+    await vi.waitFor(() => expect(response.ids()).toContain("103"));
+    expect(response.ids()).toEqual(["100", "101", "102", "103"]);
+    expect(
+      response.messages().filter((message) => message.type === "overview"),
+    ).toHaveLength(1);
+  });
+  it("does not reset a fresh client after an idle hub's retained log has advanced", async () => {
+    const { records, bus, add, setCursor } = fixture(0);
+    records.push(trade("100"), trade("101"));
+    setCursor("100");
+    const old = await add();
+    old.end();
+    records.splice(0, records.length, trade("500"), trade("501"), trade("502"));
+    setCursor("501");
+    const fresh = await add(["overview", "trades"]);
+    records.push(trade("503"));
+    bus.notify();
+    await vi.waitFor(() => expect(fresh.ids()).toContain("503"));
+    expect(fresh.ids()).toEqual(["501", "502", "503"]);
+    expect(fresh.destroyed).toBe(false);
+  });
+  it("closes only clients with an actual expired replay gap and keeps caught-up clients ordered", async () => {
+    const { records, bus, add, setCursor } = fixture(0);
+    records.push(trade("100"), trade("101"));
+    setCursor("100");
+    const lagging = await add();
+    records.splice(0, records.length, trade("500"), trade("501"), trade("502"));
+    setCursor("501");
+    const fresh = await add();
+    bus.notify();
+    await vi.waitFor(() => expect(lagging.destroyed).toBe(true));
+    expect(lagging.ids()).toEqual(["100", "101"]);
+    expect(lagging.messages().at(-1)).toMatchObject({
+      type: "status",
+      data: { stale: true, stream: "disconnected" },
+    });
+    expect(lagging.messages().at(-1).data.message).toMatch(/replay expired/i);
+    const reconnected = await add();
+    records.push(trade("503"));
+    bus.notify();
+    await vi.waitFor(() => expect(reconnected.ids()).toContain("503"));
+    expect(fresh.destroyed).toBe(false);
+    expect(fresh.ids()).toEqual(["501", "502", "503"]);
+    expect(reconnected.ids()).toEqual(["501", "502", "503"]);
+  });
+  it("shares cold initialization with a tail requested while the first snapshot is pending", async () => {
+    const { store, records, bus, add, setCursor } = fixture();
+    records.push(trade("100"), trade("101"));
+    setCursor("100");
+    let release!: () => void;
+    const pause = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = store.get;
+    vi.spyOn(store, "get").mockImplementation(async (...args) => {
+      const result = await original(...args);
+      await pause;
+      return result;
+    });
+    const joining = add();
+    bus.notify();
+    release();
+    const response = await joining;
+    records.push(trade("102"));
+    bus.notify();
+    await vi.waitFor(() => expect(response.ids()).toContain("102"));
+    expect(response.ids()).toEqual(["100", "101", "102"]);
+    expect(store.get).toHaveBeenCalledTimes(1);
+  });
   it("bootstraps 2000 viewers with one snapshot read and one replay read", async () => {
     const { store, hub, add } = fixture();
     const clients = await Promise.all(

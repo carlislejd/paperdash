@@ -7,6 +7,7 @@ import type {
   ClosedTrade,
 } from "../../../packages/shared/src/types.js";
 import { config, errorMessage } from "./config.js";
+import { trustProxy } from "./proxy.js";
 import { addressSchema, accountsQuerySchema, cursorSchema } from "./schemas.js";
 import { readOverview } from "./collector.js";
 import { type Store } from "./store.js";
@@ -36,7 +37,7 @@ export async function buildApi(
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: options.logger ?? true,
-    trustProxy: (_address: string, hop: number) => hop < 1,
+    trustProxy,
     bodyLimit: 16384,
     requestTimeout: 15000,
   });

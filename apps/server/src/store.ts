@@ -7,6 +7,7 @@ import type {
   TradeEvent,
 } from "../../../packages/shared/src/types.js";
 import { config } from "./config.js";
+import { appendStreamEventPg } from "./stream-event-store.js";
 import {
   analyticsSchemaSql,
   createLocalAnalytics,
@@ -247,13 +248,9 @@ export async function createStore(
           }
           await projectTradePg(client, value);
           await projectLiquidationPg(client, value);
-          const event = await client.query(
-            "INSERT INTO paperdash_stream_events(payload) VALUES($1) RETURNING id",
-            [JSON.stringify({ type: "trade", data: value })],
-          );
-          await client.query(
-            "DELETE FROM paperdash_stream_events WHERE id <= $1::bigint - 1000",
-            [event.rows[0].id],
+          await appendStreamEventPg(
+            client,
+            JSON.stringify({ type: "trade", data: value }),
           );
           await client.query("COMMIT");
           return true;
@@ -286,16 +283,18 @@ export async function createStore(
           .reverse();
       },
       async event(message) {
-        const r = await pool.query(
-          "INSERT INTO paperdash_stream_events(payload) VALUES($1) RETURNING id",
-          [JSON.stringify(message)],
-        );
-        // Only replay notifications expire. Financial observations above never do.
-        await pool.query(
-          "DELETE FROM paperdash_stream_events WHERE id <= $1::bigint - 1000",
-          [r.rows[0].id],
-        );
-        return String(r.rows[0].id);
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const id = await appendStreamEventPg(client, JSON.stringify(message));
+          await client.query("COMMIT");
+          return id;
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
       },
       async events(after = "0", limit = 1000) {
         const r = await pool.query(

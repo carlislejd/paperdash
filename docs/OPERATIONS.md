@@ -117,60 +117,11 @@ Use the Cloudflare metrics as **visits and pageviews**, not exact unique people.
 
 The initial Blueprint injects the managed database owner's connection into both services. This makes schema bootstrap runnable, but grants more permission than a public API should retain. **It is not a least-privilege production setup.** The API writes current account/directory caches and prioritizes wallet indexing, so a strictly read-only role would break those operations.
 
-Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables, eight history tables, seven activity tables, four position-metric tables the market-price table, house observations and liquidation projections; the `\password` commands prompt without putting passwords in shell history:
+Before broad launch, create separate API and ingestion login roles from an owner session on the private network, using the [credential handoff procedure](RUNTIME_ROLES_HANDOFF.md). Apply [the executable grant policy](../infra/runtime-grants.sql) after the owner migration. That file is the single reviewed policy; do not maintain a separate copied grant list here.
 
-```sql
-CREATE ROLE paperdash_api LOGIN;
-CREATE ROLE paperdash_ingest LOGIN;
-\password paperdash_api
-\password paperdash_ingest
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-GRANT USAGE ON SCHEMA public TO paperdash_api, paperdash_ingest;
-GRANT SELECT ON paperdash_snapshots, paperdash_trade_observations,
-  paperdash_samples, paperdash_stream_events,
-  paperdash_history_wallets, paperdash_history_jobs, paperdash_history_records,
-  paperdash_history_pages, paperdash_history_visits, paperdash_history_points,
-  paperdash_history_portfolio_batches, paperdash_history_corrections,
-  paperdash_analytics_members, paperdash_analytics_fingerprints,
-  paperdash_analytics_minutes, paperdash_analytics_oi_samples,
-  paperdash_analytics_wallet_fingerprints, paperdash_analytics_wallet_minutes,
-  paperdash_analytics_state, paperdash_position_metrics_queue,
-  paperdash_position_metrics_rollups, paperdash_position_metrics_state,
-  paperdash_market_prices, paperdash_house_samples,
-  paperdash_liquidation_members, paperdash_liquidation_fingerprints,
-  paperdash_liquidation_minutes, paperdash_liquidation_events,
-  paperdash_liquidation_state
-  TO paperdash_api, paperdash_ingest;
-GRANT SELECT ON paperdash_position_metrics_facts TO paperdash_ingest;
-GRANT INSERT, UPDATE ON paperdash_snapshots,
-  paperdash_history_wallets, paperdash_history_jobs TO paperdash_api;
-GRANT UPDATE ON paperdash_history_corrections TO paperdash_api;
-GRANT INSERT, UPDATE ON paperdash_snapshots, paperdash_samples TO paperdash_ingest;
-GRANT INSERT ON paperdash_trade_observations, paperdash_stream_events TO paperdash_ingest;
-GRANT DELETE ON paperdash_stream_events TO paperdash_ingest;
-GRANT USAGE, SELECT ON SEQUENCE paperdash_stream_events_id_seq TO paperdash_ingest;
-GRANT INSERT, UPDATE ON paperdash_history_wallets, paperdash_history_jobs,
-  paperdash_history_records, paperdash_history_visits, paperdash_history_points,
-  paperdash_history_corrections TO paperdash_ingest;
-GRANT INSERT ON paperdash_history_pages, paperdash_history_portfolio_batches
-  TO paperdash_ingest;
-GRANT DELETE ON paperdash_history_visits, paperdash_history_corrections,
-  paperdash_history_points TO paperdash_ingest;
-GRANT INSERT, UPDATE ON paperdash_analytics_members,
-  paperdash_analytics_fingerprints, paperdash_analytics_minutes,
-  paperdash_analytics_oi_samples, paperdash_analytics_wallet_fingerprints,
-  paperdash_analytics_wallet_minutes, paperdash_analytics_state
-  TO paperdash_ingest;
-GRANT INSERT, UPDATE ON paperdash_position_metrics_queue,
-  paperdash_position_metrics_facts, paperdash_position_metrics_rollups,
-  paperdash_position_metrics_state TO paperdash_ingest;
-GRANT DELETE ON paperdash_position_metrics_queue,
-  paperdash_position_metrics_facts TO paperdash_ingest;
-GRANT INSERT, UPDATE ON paperdash_market_prices, paperdash_house_samples,
-  paperdash_liquidation_members, paperdash_liquidation_fingerprints,
-  paperdash_liquidation_minutes, paperdash_liquidation_events,
-  paperdash_liquidation_state TO paperdash_ingest;
-```
+The policy replaces only these two roles' explicit grants on the 30 application tables and stream sequence, within one transaction. It rejects missing or elevated roles, role memberships, runtime ownership and inherited schema CREATE. It leaves shared PUBLIC rights and unrelated objects untouched. The API receives retained reads, three cache/scheduling INSERT permissions and column-scoped UPDATE; the collector receives the exact projection/checkpoint permissions. Neither can update or delete immutable raw trade observations, history pages or portfolio batches.
+
+The [PostgreSQL role integration test](../apps/server/test/runtime-roles-postgres.test.ts) applies this exact policy twice using disposable NOLOGIN roles. It verifies real cache writes, scheduling, retained history, projections, stream sequence/retention and forbidden DDL/raw writes. Local role capability tests passed; production login authentication and the credential cutover are still pending.
 
 Neither runtime role needs `CREATE`, `ALTER`, `DROP`, ownership or access to unrelated schemas. New tables/sequences require explicit reviewed grants. Store the two role URLs separately in Render, replace the two `fromDatabase` entries with `sync: false`, and set `AUTO_MIGRATE=false` in both services. Keep the database's internal host/database name; only the URL-encoded username/password change.
 
