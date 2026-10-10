@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -70,14 +70,21 @@ function retain(
   }
 }
 async function tradeJob(store: Store, at = Date.now()) {
-  await store.history.ensureWallet(a);
-  for (let i = 0; i < 8; i++) {
-    const job = await store.history.claimJob(at);
-    if (!job) throw new Error("No trade job available");
-    if (job.kind === "trades" && !job.correctionId) return job;
-    await store.history.failJob(job, "test deferral", at, at + 86400000);
+  // Creation and claiming must share the caller's clock even if setup crosses
+  // a millisecond boundary; otherwise the new job is not due at `at` yet.
+  const clock = vi.spyOn(Date, "now").mockReturnValue(at);
+  try {
+    await store.history.ensureWallet(a);
+    for (let i = 0; i < 8; i++) {
+      const job = await store.history.claimJob(at);
+      if (!job) throw new Error("No trade job available");
+      if (job.kind === "trades" && !job.correctionId) return job;
+      await store.history.failJob(job, "test deferral", at, at + 86400000);
+    }
+    throw new Error("No trade job found");
+  } finally {
+    clock.mockRestore();
   }
-  throw new Error("No trade job found");
 }
 afterEach(async () => {
   for (const db of databases.splice(0)) db.close();
