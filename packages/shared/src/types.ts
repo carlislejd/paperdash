@@ -340,6 +340,18 @@ export interface LiquidationsResponse {
   items: TradeEvent[];
   nextCursor: string | null;
   stats: { hour: LiquidationTotals; day: LiquidationTotals };
+  /** Optional during rollout; zeros mean no retained observations, not complete source coverage. */
+  hourly?: {
+    intervalMs: 3600000;
+    from: number;
+    to: number;
+    buckets: {
+      /** UTC hour start; first/current buckets can cover only part of that hour. */
+      time: number;
+      partial: boolean;
+      assets: { instrument: number; count: number; notionalUsd: number }[];
+    }[];
+  };
   windowTo: number;
   receivedAt: number | null;
   stale: boolean;

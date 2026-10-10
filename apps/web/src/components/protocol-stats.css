@@ -164,6 +164,22 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+.liquidation-chart {
+  margin: 0 0 22px;
+}
+.liquidation-chart-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.liquidation-chart .pc-chart-plot {
+  --pc-plot-height: clamp(150px, 22cqw, 215px);
+}
 .liquidation-toolbar .feed-filters {
   margin: 0;
 }

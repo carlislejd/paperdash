@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { account, mockSources, WALLET, SECOND_WALLET } from "./fixtures";
 import type {
   HouseResponse,
@@ -47,7 +48,10 @@ function house(): HouseResponse {
     },
   };
 }
-function liquidations(instrument = 0, older = false): LiquidationsResponse {
+function liquidations(
+  instrument?: number,
+  older = false,
+): LiquidationsResponse {
   const at = Date.now(),
     totals = {
       count: 23,
@@ -61,7 +65,7 @@ function liquidations(instrument = 0, older = false): LiquidationsResponse {
         id: older ? "older" : "latest",
         ts: at - 1000,
         wallet: older ? SECOND_WALLET : WALLET,
-        instrument,
+        instrument: instrument ?? 0,
         side: "long",
         leverage: 1000,
         notionalUsd: 10_000_000_000,
@@ -73,6 +77,30 @@ function liquidations(instrument = 0, older = false): LiquidationsResponse {
     ],
     nextCursor: older ? null : "older-page",
     stats: { day: totals, hour: totals },
+    hourly: {
+      intervalMs: 3600000,
+      from: at - 86400000,
+      to: at,
+      buckets: Array.from({ length: 25 }, (_, index) => ({
+        time: Math.floor(at / 3600000) * 3600000 - (24 - index) * 3600000,
+        partial: index === 0 || index === 24,
+        assets: [
+          {
+            instrument: 0,
+            count: index === 23 ? 4 : index === 24 ? 10 : 0,
+            notionalUsd: index >= 23 ? 3_000_000_000 : 0,
+          },
+          {
+            instrument: 1,
+            count: index === 23 ? 3 : index === 24 ? 6 : 0,
+            notionalUsd: index >= 23 ? 2_000_000_000 : 0,
+          },
+        ].filter(
+          (asset) =>
+            instrument === undefined || asset.instrument === instrument,
+        ),
+      })),
+    },
     windowTo: at,
     receivedAt: at,
     stale: false,
@@ -92,7 +120,9 @@ async function sources(page: Parameters<typeof mockSources>[0]) {
   await page.route("**/api/liquidations**", (route) => {
     const url = new URL(route.request().url());
     const data = liquidations(
-      Number(url.searchParams.get("instrument") ?? 0),
+      url.searchParams.has("instrument")
+        ? Number(url.searchParams.get("instrument"))
+        : undefined,
       url.searchParams.has("cursor"),
     );
     return route.fulfill({ json: data });
@@ -176,6 +206,115 @@ test("liquidation filtering, retained pagination and wallet links remain bounded
     path: `/tmp/paperdash-liquidations-${test.info().project.name}.png`,
     fullPage: true,
   });
+});
+
+test("hourly liquidations stack assets, switch metric and export an expanded chart", async ({
+  page,
+}) => {
+  await sources(page);
+  await page.goto("/?view=liquidations");
+  const chart = page.getByRole("region", {
+    name: "Hourly liquidations by asset",
+  });
+  await expect(chart).toBeVisible();
+  const metricsBox = await page.locator(".liquidation-metrics").boundingBox();
+  const chartBox = await chart.boundingBox();
+  const tableBox = await page.locator(".liquidation-table").boundingBox();
+  expect(chartBox!.y).toBeGreaterThan(metricsBox!.y + metricsBox!.height);
+  expect(tableBox!.y).toBeGreaterThan(chartBox!.y + chartBox!.height);
+  await chart.getByRole("img").focus();
+  await page.keyboard.press("End");
+  await expect(chart.locator(".pc-chart-inspect")).toContainText("BTC");
+  await expect(chart.locator(".pc-chart-inspect")).toContainText("ETH");
+  await expect(chart.locator(".pc-chart-inspect")).toContainText("partial");
+  await expect(chart.locator(".pc-chart-inspect")).toContainText(
+    "3,000,000,000",
+  );
+  await expect(chart.locator(".pc-chart-inspect")).toContainText(
+    "2,000,000,000",
+  );
+  await chart.getByRole("button", { name: "Count", exact: true }).click();
+  await chart.getByRole("img").focus();
+  await page.keyboard.press("End");
+  await expect(chart.locator(".pc-chart-inspect")).toContainText(
+    "16 liquidations",
+  );
+  await chart
+    .getByRole("button", { name: "Expand Liquidations / hour chart" })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Liquidations / hour" });
+  await expect(dialog).toContainText("BTC");
+  await expect(dialog).toContainText("ETH");
+  const downloadEvent = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download PNG" }).click();
+  const download = await downloadEvent;
+  const bytes = await readFile((await download.path())!);
+  expect(bytes.subarray(1, 4).toString()).toBe("PNG");
+  expect(bytes.readUInt32BE(16)).toBe(1800);
+  await download.saveAs(
+    `/tmp/paperclub-liquidations-share-${test.info().project.name}.png`,
+  );
+  await page.keyboard.press("Escape");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.screenshot({
+    path: `/tmp/paperclub-liquidations-chart-${test.info().project.name}.png`,
+    fullPage: true,
+  });
+});
+
+test("shared liquidation charts keep the asset and metric while missing history stays unavailable", async ({
+  page,
+}) => {
+  await sources(page);
+  await page.addInitScript(() =>
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          throw new Error("Copy unavailable in test");
+        },
+      },
+    }),
+  );
+  await page.goto(
+    "/?view=liquidations&chart=liquidations-count&instrument=1&note=private#discard",
+  );
+  const dialog = page.getByRole("dialog", { name: "Liquidations / hour" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("ETH");
+  await expect(dialog).not.toContainText("BTC");
+  await dialog.getByRole("img").focus();
+  await page.keyboard.press("End");
+  await expect(dialog.locator(".pc-chart-inspect")).toContainText(
+    "6 liquidations",
+  );
+  await dialog.getByRole("button", { name: "Copy chart link" }).click();
+  await expect(dialog.getByRole("textbox", { name: "Chart link" })).toHaveValue(
+    `${new URL(page.url()).origin}/?view=liquidations&chart=liquidations-count&instrument=1`,
+  );
+  await page.keyboard.press("Escape");
+  await expect(
+    page
+      .locator(".liquidation-toolbar")
+      .getByRole("button", { name: "ETH", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.route("**/api/liquidations**", (route) => {
+    const data = liquidations();
+    delete data.hourly;
+    return route.fulfill({ json: data });
+  });
+  await page.reload();
+  const chart = page.getByRole("region", {
+    name: "Hourly liquidations by asset",
+  });
+  await expect(chart).toContainText("Hourly history is not yet available");
+  await expect(chart.locator(".pc-chart-headline strong")).toHaveText("—");
+  await expect(chart.getByRole("img")).toHaveAttribute(
+    "aria-label",
+    /no observations/,
+  );
 });
 test("wallet directory avoids showing prior page rows under new ranks", async ({
   page,

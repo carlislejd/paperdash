@@ -43,6 +43,7 @@ export async function refreshLiquidations(
     const response: LiquidationsResponse = {
       ...page,
       stats: { hour: stats.hour, day: stats.day },
+      hourly: stats.hourly,
       windowTo: now,
       receivedAt: now,
       stale: false,

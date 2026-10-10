@@ -9,6 +9,9 @@ import type {
 import { economicFingerprint } from "./analytics-store.js";
 
 const MINUTE = 60000;
+const HOUR = 3600000;
+const DAY = 86400000;
+const MAX_ASSETS = 32;
 const PAGE_SIZE = 50;
 type Coverage = LiquidationsResponse["coverage"];
 export interface LiquidationsStore {
@@ -20,6 +23,7 @@ export interface LiquidationsStore {
     hour: LiquidationTotals;
     day: LiquidationTotals;
     coverage: Coverage;
+    hourly: NonNullable<LiquidationsResponse["hourly"]>;
   }>;
   page(
     instrument?: number,
@@ -236,6 +240,23 @@ type TotalRow = {
   short_count: number | string | null;
   notional: number | string | null;
 };
+const zeroTotals = (): LiquidationTotals => ({
+  count: 0,
+  longCount: 0,
+  shortCount: 0,
+  notionalUsd: 0,
+});
+function checkTotals(value: LiquidationTotals): LiquidationTotals {
+  if (
+    ![value.count, value.longCount, value.shortCount].every(
+      (n) => Number.isSafeInteger(n) && n >= 0,
+    ) ||
+    !Number.isFinite(value.notionalUsd) ||
+    value.notionalUsd < 0
+  )
+    throw new Error("Liquidation aggregate exceeds supported range");
+  return value;
+}
 function readers(db: Reader): Pick<LiquidationsStore, "stats" | "page"> {
   const f = `${db.prefix}liquidation_fingerprints`,
     m = `${db.prefix}liquidation_minutes`,
@@ -247,62 +268,129 @@ function readers(db: Reader): Pick<LiquidationsStore, "stats" | "page"> {
       checkQuery(instrument, now);
       const filter = instrument === undefined ? "" : "instrument=? AND ";
       const args = instrument === undefined ? [] : [instrument];
-      const totals = async (span: number): Promise<LiquidationTotals> => {
+      const parts = (span: number) => {
         const from = Math.max(0, now - span),
           fullFrom = Math.ceil(from / MINUTE) * MINUTE,
           fullTo = Math.floor(now / MINUTE) * MINUTE;
-        const [buckets, edges] = await Promise.all([
-          db.rows<TotalRow>(
-            `SELECT sum(event_count) AS count,sum(long_count) AS long_count,sum(short_count) AS short_count,sum(notional) AS notional FROM ${m} WHERE ${filter}time>=? AND time<?`,
-            [...args, fullFrom, fullTo],
-          ),
-          db.rows<TotalRow>(
-            `SELECT sum(n) AS count,sum(CASE WHEN side='long' THEN n ELSE 0 END) AS long_count,sum(CASE WHEN side='short' THEN n ELSE 0 END) AS short_count,sum(notional*n) AS notional FROM (SELECT side,notional,${effective} AS n FROM ${f} WHERE ${filter}((source_at>=? AND source_at<?) OR (source_at>=? AND source_at<=?))) boundary`,
-            [...args, from, fullFrom, fullTo, now],
-          ),
-        ]);
-        const sum = (key: keyof TotalRow) =>
-          Number(buckets[0]?.[key] ?? 0) + Number(edges[0]?.[key] ?? 0);
-        const result = {
-          count: sum("count"),
-          longCount: sum("long_count"),
-          shortCount: sum("short_count"),
-          notionalUsd: sum("notional"),
+        return {
+          sql: `SELECT instrument,time AS source_at,event_count AS n,long_count,short_count,notional FROM ${m} WHERE ${filter}time>=? AND time<? UNION ALL SELECT instrument,source_at,n,CASE WHEN side='long' THEN n ELSE 0 END AS long_count,CASE WHEN side='short' THEN n ELSE 0 END AS short_count,notional*n AS notional FROM (SELECT instrument,source_at,side,notional,${effective} AS n FROM ${f} WHERE ${filter}((source_at>=? AND source_at<?) OR (source_at>=? AND source_at<=?))) boundary`,
+          args: [
+            ...args,
+            fullFrom,
+            fullTo,
+            ...args,
+            from,
+            fullFrom,
+            fullTo,
+            now,
+          ],
         };
-        if (
-          ![result.count, result.longCount, result.shortCount].every(
-            (n) => Number.isSafeInteger(n) && n >= 0,
-          ) ||
-          !Number.isFinite(result.notionalUsd)
-        )
-          throw new Error("Liquidation aggregate exceeds supported range");
-        return result;
       };
-      const [hour, day, first, last, state] = await Promise.all([
-        totals(3600000),
-        totals(86400000),
-        db.rows<{ source_at: number | string }>(
-          `SELECT source_at FROM ${f} WHERE ${filter}source_at<=? ORDER BY source_at LIMIT 1`,
-          [...args, now],
+      const dayParts = parts(DAY),
+        hourParts = parts(HOUR);
+      // One database snapshot keeps the hourly segments and day/hour totals
+      // coherent while the worker concurrently admits new observations.
+      // Only indexed minute totals and exact boundary-minute fingerprints are read.
+      const rows = await db.rows<
+        TotalRow & {
+          kind: "bucket" | "hour";
+          instrument: number | null;
+          time: string | number | null;
+          observed_from: string | number | null;
+          latest_at: string | number | null;
+          complete: number | null;
+        }
+      >(
+        `WITH day_parts AS (${dayParts.sql}), hour_parts AS (${hourParts.sql}), grouped AS (SELECT 'bucket' AS kind,instrument,source_at-(source_at%${HOUR}) AS time,sum(n) AS count,sum(long_count) AS long_count,sum(short_count) AS short_count,sum(notional) AS notional FROM day_parts GROUP BY instrument,source_at-(source_at%${HOUR}) UNION ALL SELECT 'hour' AS kind,NULL AS instrument,NULL AS time,sum(n) AS count,sum(long_count) AS long_count,sum(short_count) AS short_count,sum(notional) AS notional FROM hour_parts), coverage AS (SELECT (SELECT source_at FROM ${f} WHERE ${filter}source_at<=? ORDER BY source_at LIMIT 1) AS observed_from,(SELECT source_at FROM ${f} WHERE ${filter}source_at<=? ORDER BY source_at DESC LIMIT 1) AS latest_at,(SELECT complete FROM ${db.prefix}liquidation_state WHERE id=1) AS complete) SELECT kind,instrument,time,CAST(count AS TEXT) AS count,CAST(long_count AS TEXT) AS long_count,CAST(short_count AS TEXT) AS short_count,notional,observed_from,latest_at,complete FROM grouped CROSS JOIN coverage ORDER BY kind,time,instrument LIMIT ${25 * MAX_ASSETS + 2}`,
+        [...dayParts.args, ...hourParts.args, ...args, now, ...args, now],
+      );
+      if (rows.length > 25 * MAX_ASSETS + 1)
+        throw new Error("Liquidation hourly aggregate exceeds supported range");
+      const instruments = new Set(
+        instrument === undefined ? [0, 1] : [instrument],
+      );
+      const values = new Map<
+        string,
+        { instrument: number; count: number; notionalUsd: number }
+      >();
+      const day = zeroTotals();
+      let hour = zeroTotals();
+      for (const row of rows) {
+        const total = checkTotals({
+          count: Number(row.count ?? 0),
+          longCount: Number(row.long_count ?? 0),
+          shortCount: Number(row.short_count ?? 0),
+          notionalUsd: Number(row.notional ?? 0),
+        });
+        if (row.kind === "hour") {
+          hour = total;
+          continue;
+        }
+        const asset = Number(row.instrument),
+          time = Number(row.time);
+        if (
+          !Number.isSafeInteger(asset) ||
+          asset < 0 ||
+          !validTime(time) ||
+          time % HOUR
+        )
+          throw new Error("Invalid liquidation hourly aggregate");
+        instruments.add(asset);
+        values.set(`${time}:${asset}`, {
+          instrument: asset,
+          count: total.count,
+          notionalUsd: total.notionalUsd,
+        });
+        day.count += total.count;
+        day.longCount += total.longCount;
+        day.shortCount += total.shortCount;
+        day.notionalUsd += total.notionalUsd;
+      }
+      if (instruments.size > MAX_ASSETS)
+        throw new Error("Too many liquidation instruments");
+      checkTotals(day);
+      const from = Math.max(0, now - DAY),
+        start = Math.floor(from / HOUR) * HOUR;
+      const lastHour = Math.floor(now / HOUR) * HOUR;
+      const assets = [...instruments].sort((a, b) => a - b);
+      const hourly: NonNullable<LiquidationsResponse["hourly"]> = {
+        intervalMs: HOUR,
+        from,
+        to: now,
+        buckets: Array.from(
+          { length: Math.floor((lastHour - start) / HOUR) + 1 },
+          (_, i) => {
+            const time = start + i * HOUR;
+            return {
+              time,
+              partial: time < from || time === lastHour,
+              assets: assets.map(
+                (asset) =>
+                  values.get(`${time}:${asset}`) ?? {
+                    instrument: asset,
+                    count: 0,
+                    notionalUsd: 0,
+                  },
+              ),
+            };
+          },
         ),
-        db.rows<{ source_at: number | string }>(
-          `SELECT source_at FROM ${f} WHERE ${filter}source_at<=? ORDER BY source_at DESC LIMIT 1`,
-          [...args, now],
-        ),
-        db.rows<{ complete: number }>(
-          `SELECT complete FROM ${db.prefix}liquidation_state WHERE id=1`,
-        ),
-      ]);
+      };
       return {
         hour,
         day,
+        hourly,
         coverage: {
           source: "retained-public-observations",
           partial: true,
           identityAmbiguous: true,
-          projectionBackfillComplete: state[0]?.complete === 1,
-          observedFrom: first[0] ? Number(first[0].source_at) : null,
-          latestObservedAt: last[0] ? Number(last[0].source_at) : null,
+          projectionBackfillComplete: Number(rows[0]?.complete) === 1,
+          observedFrom:
+            rows[0]?.observed_from == null
+              ? null
+              : Number(rows[0].observed_from),
+          latestObservedAt:
+            rows[0]?.latest_at == null ? null : Number(rows[0].latest_at),
         },
       };
     },

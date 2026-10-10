@@ -14,6 +14,26 @@ export interface ChartRange {
 
 export type ChartKind = "line" | "bar";
 export type ChartColor = "lavender" | "green";
+export interface ChartSegment {
+  id: string;
+  label: string;
+  color: ChartColor;
+  points: readonly ChartPoint[];
+}
+
+export function chartColorValue(color?: ChartColor): string {
+  return color === "green" ? "#506746" : "#9078ad";
+}
+
+/** Capture series before an asynchronous export can observe later source mutations. */
+export function cloneChartSegments(
+  segments: readonly ChartSegment[] | undefined,
+): ChartSegment[] | undefined {
+  return segments?.map((segment) => ({
+    ...segment,
+    points: segment.points.map((point) => ({ ...point })),
+  }));
+}
 export const CHART_POINT_LIMIT = 2048;
 export const HOUR_MS = 3_600_000;
 
@@ -103,6 +123,7 @@ export interface ChartGeometry {
   path: string;
   markers: Array<{ x: number; y: number; partial: boolean }>;
   bars: Array<{
+    time: number;
     x: number;
     y: number;
     width: number;
@@ -139,8 +160,14 @@ export function chartGeometry(
   }
   const pad =
     high === low ? Math.max(Math.abs(high) * 0.06, 0.06) : (high - low) * 0.08;
-  low -= pad;
-  high += pad;
+  const nonnegativeBars = kind === "bar" && low >= 0;
+  if (nonnegativeBars) {
+    low = 0;
+    high = high === 0 || !values.length ? 1 : high + pad;
+  } else {
+    low -= pad;
+    high += pad;
+  }
   const x = (time: number) =>
     Math.max(
       0,
@@ -192,8 +219,12 @@ export function chartGeometry(
       end = x(Math.min(point.time + interval, range.to));
     if (end > start)
       bars.push({
+        time: point.time,
         x: start + Math.min(1.5, (end - start) * 0.12),
-        y: Math.min(y(0), y(point.value)),
+        y:
+          point.value === 0 && nonnegativeBars
+            ? Math.max(0, y(0) - 1)
+            : Math.min(y(0), y(point.value)),
         width: Math.max(0.5, (end - start) * 0.82),
         height: Math.max(
           point.value === 0 ? 1 : 0.75,
@@ -215,6 +246,82 @@ export function chartGeometry(
     from: range.from,
     to: range.to,
   };
+}
+
+/** Stacks represent a nonnegative breakdown of the supplied total, never inferred totals. */
+export function chartStackGeometry(
+  geometry: ChartGeometry,
+  input: readonly ChartSegment[],
+) {
+  const range = { from: geometry.from, to: geometry.to, label: "" };
+  const segments = input.map((segment) => ({
+    ...segment,
+    points: chartPoints(segment.points, range).points,
+  }));
+  const byTime = segments.map(
+    (segment) => new Map(segment.points.map((point) => [point.time, point])),
+  );
+  const totals = new Map(geometry.points.map((point) => [point.time, point]));
+  const bars: Array<
+    ChartGeometry["bars"][number] & { segmentId: string; color: ChartColor }
+  > = [];
+  const incompleteTimes: number[] = [];
+  for (const bar of geometry.bars) {
+    const total = totals.get(bar.time)?.value;
+    const components = byTime.map((points) => points.get(bar.time));
+    if (
+      total == null ||
+      total < 0 ||
+      !segments.length ||
+      components.some((point) => point?.value == null || point.value < 0)
+    ) {
+      incompleteTimes.push(bar.time);
+      continue;
+    }
+    const values = components.map((point) => point!.value!);
+    // Dividing before summing avoids overflowing otherwise finite large totals.
+    const fractions = values.map((value) =>
+      total === 0 ? value : value / total,
+    );
+    const sum = fractions.reduce((a, b) => a + b, 0);
+    if (
+      !Number.isFinite(sum) ||
+      (total === 0
+        ? values.some((value) => value !== 0)
+        : Math.abs(sum - 1) > 1e-9)
+    ) {
+      incompleteTimes.push(bar.time);
+      continue;
+    }
+    const partial = bar.partial || components.some((point) => point?.partial);
+    if (total === 0) {
+      bars.push({
+        ...bar,
+        partial,
+        segmentId: segments[0].id,
+        color: segments[0].color,
+      });
+      continue;
+    }
+    let previous = 0;
+    for (let index = 0; index < segments.length; index++) {
+      const next = Math.min(1, previous + fractions[index]);
+      if (values[index] > 0) {
+        const bottom = geometry.y(previous * total);
+        const top = geometry.y(next * total);
+        bars.push({
+          ...bar,
+          y: top,
+          height: Math.max(0, bottom - top),
+          partial,
+          segmentId: segments[index].id,
+          color: segments[index].color,
+        });
+      }
+      previous = next;
+    }
+  }
+  return { segments, bars, incompleteTimes };
 }
 
 export function nearestChartPoint(

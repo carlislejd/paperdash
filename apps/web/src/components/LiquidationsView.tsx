@@ -3,9 +3,10 @@ import type { LiquidationsResponse } from "../../../../packages/shared/src/types
 import { useAnalytics } from "../lib/use-analytics";
 import { formatUsd, shortAddress, relativeTime } from "../lib/format";
 import { Avatar } from "./Avatar";
+import { LiquidationChart } from "./LiquidationChart";
 import "./protocol-stats.css";
 
-type Summary = Omit<LiquidationsResponse, "items" | "nextCursor">;
+type Summary = Omit<LiquidationsResponse, "items" | "nextCursor" | "hourly">;
 export function LiquidationSummary({ onOpen }: { onOpen: () => void }) {
   const { data, error } = useAnalytics<Summary>("/api/liquidations/stats", {
     liveLiquidations: true,
@@ -37,7 +38,12 @@ export function LiquidationsView({
   onWallet: (address: string) => void;
   connected: boolean;
 }) {
-  const [instrument, setInstrument] = useState("all");
+  const [instrument, setInstrument] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get(
+      "instrument",
+    );
+    return requested === "0" || requested === "1" ? requested : "all";
+  });
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [page, setPage] = useState(0);
   const [clock, setClock] = useState(Date.now());
@@ -111,6 +117,12 @@ export function LiquidationsView({
           </dd>
         </div>
       </dl>
+      <LiquidationChart
+        data={data}
+        instrument={instrument}
+        stale={stale}
+        loading={loading}
+      />
       <div className="liquidation-toolbar">
         <div className="feed-filters">
           {[

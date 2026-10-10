@@ -1,11 +1,14 @@
 import {
   chartGeometry,
+  chartColorValue,
+  chartStackGeometry,
   formatChartNumber,
   formatChartTime,
   type ChartColor,
   type ChartKind,
   type ChartPoint,
   type ChartRange,
+  type ChartSegment,
 } from "./chart-data";
 
 export interface ChartExportSnapshot {
@@ -13,6 +16,7 @@ export interface ChartExportSnapshot {
   unit: string;
   kind: ChartKind;
   points: readonly ChartPoint[];
+  segments?: readonly ChartSegment[];
   range: ChartRange;
   sourceAt: number | null;
   coverage: string;
@@ -20,6 +24,7 @@ export interface ChartExportSnapshot {
   color: ChartColor;
   bucketMs?: number;
   valueLabel?: string;
+  valueCaption?: string;
 }
 
 export const CHART_EXPORT_SIZE = { width: 1800, height: 1000 };
@@ -33,6 +38,11 @@ export function chartExportMetadata(snapshot: ChartExportSnapshot): string[] {
     snapshot.kind === "bar"
       ? "Hourly UTC buckets · hatched bars are partial"
       : "Gaps indicate unavailable observations",
+    ...(snapshot.kind === "bar" && snapshot.segments?.length
+      ? [
+          `${snapshot.segments.map((segment) => segment.label).join(" + ")} · ${snapshot.unit}`,
+        ]
+      : []),
   ];
 }
 
@@ -86,7 +96,7 @@ export async function renderChartPng(
   if (!ctx) throw new Error("Image export is unavailable in this browser.");
   const ink = "#252922",
     muted = "#747768",
-    accent = snapshot.color === "green" ? "#506746" : "#9078ad";
+    accent = chartColorValue(snapshot.color);
   ctx.fillStyle = "#f5f2e9";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = ink;
@@ -118,17 +128,23 @@ export async function renderChartPng(
     snapshot.bucketMs,
   );
   const last = geometry.points.at(-1);
+  const stack =
+    snapshot.kind === "bar" && snapshot.segments?.length
+      ? chartStackGeometry(geometry, snapshot.segments)
+      : null;
   ctx.fillStyle = ink;
   fittedText(
     ctx,
     snapshot.valueLabel ?? formatChartNumber(last?.value),
     80,
     263,
-    1100,
+    snapshot.valueCaption ? 700 : 1100,
     58,
     650,
   );
   ctx.fillStyle = muted;
+  if (snapshot.valueCaption)
+    fittedText(ctx, snapshot.valueCaption, 820, 255, 300, 22);
   ctx.textAlign = "right";
   fittedText(ctx, snapshot.range.label, 1720, 255, 560, 24);
   ctx.textAlign = "left";
@@ -153,8 +169,10 @@ export async function renderChartPng(
   ctx.rect(-5, -5, plot.width + 10, plot.height + 10);
   ctx.clip();
   if (snapshot.kind === "bar") {
-    geometry.bars.forEach((bar) => {
-      ctx.fillStyle = accent;
+    (stack?.bars ?? geometry.bars).forEach((bar) => {
+      const barColor =
+        "color" in bar ? chartColorValue(bar.color as ChartColor) : accent;
+      ctx.fillStyle = barColor;
       ctx.globalAlpha = bar.partial ? 0.38 : 0.8;
       ctx.fillRect(bar.x, bar.y, bar.width, bar.height);
       ctx.globalAlpha = 1;
@@ -163,7 +181,7 @@ export async function renderChartPng(
         ctx.beginPath();
         ctx.rect(bar.x, bar.y, bar.width, bar.height);
         ctx.clip();
-        ctx.strokeStyle = accent;
+        ctx.strokeStyle = barColor;
         ctx.lineWidth = 2;
         for (let x = bar.x - bar.height; x < bar.x + bar.width; x += 10) {
           ctx.beginPath();
@@ -206,6 +224,24 @@ export async function renderChartPng(
   ctx.restore();
 
   const metadata = chartExportMetadata(snapshot);
+  if (stack) {
+    // Fixed cells keep both the series name and unit visible without touching the plot.
+    const cellWidth = 1640 / stack.segments.length;
+    stack.segments.forEach((segment, index) => {
+      const x = 80 + index * cellWidth;
+      ctx.fillStyle = chartColorValue(segment.color);
+      ctx.fillRect(x, 778, 15, 15);
+      ctx.fillStyle = muted;
+      fittedText(
+        ctx,
+        `${segment.label} · ${snapshot.unit}`,
+        x + 24,
+        792,
+        cellWidth - 40,
+        21,
+      );
+    });
+  }
   ctx.fillStyle = muted;
   fittedText(ctx, metadata[2], 80, 820, 1640, 23);
   ctx.font = '22px "DM Sans", sans-serif';

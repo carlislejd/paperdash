@@ -133,6 +133,65 @@ describe.skipIf(!url)("PostgreSQL durable liquidation projection", () => {
       expect(
         (await restarted.liquidations.stats(undefined, at)).day.count,
       ).toBe(7);
+      const beforeHourly = await restarted.liquidations.stats(undefined, at);
+      for (const observation of [
+        value("hourly:outside", { ts: at - 86400001, instrument: 1 }),
+        value("hourly:left", {
+          ts: at - 86400000,
+          instrument: 1,
+          notionalUsd: 7,
+        }),
+        value("hourly:interior", { ts: at - 7200000, notionalUsd: 0.125 }),
+        value("hourly:right", { ts: at, instrument: 1, notionalUsd: 11 }),
+        value("hourly:right-recent", {
+          ts: at,
+          instrument: 1,
+          notionalUsd: 11,
+          provenance: "recent-api",
+        }),
+        value("hourly:future", { ts: at + 1, instrument: 1 }),
+      ])
+        await restarted.recordTrade(observation);
+      const hourly = await restarted.liquidations.stats(undefined, at);
+      expect(hourly.day.count).toBe(beforeHourly.day.count + 3);
+      expect(hourly.day.notionalUsd).toBe(
+        beforeHourly.day.notionalUsd + 18.125,
+      );
+      expect(hourly.hourly.buckets).toHaveLength(25);
+      expect(hourly.hourly).toMatchObject({
+        intervalMs: 3600000,
+        from: at - 86400000,
+        to: at,
+      });
+      expect(hourly.hourly.buckets[0]).toMatchObject({
+        partial: true,
+        assets: [
+          { instrument: 0, count: 0, notionalUsd: 0 },
+          { instrument: 1, count: 1, notionalUsd: 7 },
+        ],
+      });
+      expect(hourly.hourly.buckets.at(-1)?.assets[1]).toEqual({
+        instrument: 1,
+        count: 1,
+        notionalUsd: 11,
+      });
+      expect(
+        hourly.hourly.buckets
+          .flatMap((b) => b.assets)
+          .reduce((n, a) => n + a.count, 0),
+      ).toBe(hourly.day.count);
+      expect(
+        hourly.hourly.buckets
+          .flatMap((b) => b.assets)
+          .reduce((n, a) => n + a.notionalUsd, 0),
+      ).toBe(hourly.day.notionalUsd);
+      const ethHourly = await restarted.liquidations.stats(1, at);
+      expect(ethHourly.day).toMatchObject({ count: 2, notionalUsd: 18 });
+      expect(
+        ethHourly.hourly.buckets.every(
+          (b) => b.assets.length === 1 && b.assets[0].instrument === 1,
+        ),
+      ).toBe(true);
       const client = await scoped.connect();
       try {
         await client.query("SET enable_seqscan=off");

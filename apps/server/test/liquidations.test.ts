@@ -177,6 +177,140 @@ describe("incremental observed liquidations", () => {
       ),
     ).toEqual([1]);
   });
+  it("segments exact rolling-day hourly buckets by asset, including clipped first/current boundaries", async () => {
+    const { insert, liquidations } = setup();
+    const from = at - 86400000;
+    for (const value of [
+      event("outside-left", { ts: from - 1 }),
+      event("left-btc", { ts: from }),
+      event("left-eth", { ts: from + 1, instrument: 1, notionalUsd: 7 }),
+      event("interior-btc", { ts: at - 60000, notionalUsd: 0.125 }),
+      event("right-btc", { ts: at, notionalUsd: 10000000000.5 }),
+      event("right-eth", { ts: at - 1, instrument: 1, notionalUsd: 3 }),
+      event("future-eth", { ts: at + 1, instrument: 1 }),
+    ])
+      insert(value);
+    const all = await liquidations.stats(undefined, at);
+    expect(all.hourly).toMatchObject({ intervalMs: 3600000, from, to: at });
+    expect(all.hourly.buckets).toHaveLength(25);
+    expect(all.hourly.buckets[0]).toEqual({
+      time: Math.floor(from / 3600000) * 3600000,
+      partial: true,
+      assets: [
+        { instrument: 0, count: 1, notionalUsd: 10000000000 },
+        { instrument: 1, count: 1, notionalUsd: 7 },
+      ],
+    });
+    expect(all.hourly.buckets.at(-1)).toMatchObject({
+      partial: true,
+      assets: [
+        { instrument: 0, count: 1, notionalUsd: 10000000000.5 },
+        { instrument: 1, count: 1, notionalUsd: 3 },
+      ],
+    });
+    expect(all.hourly.buckets.slice(1, -1).every((b) => !b.partial)).toBe(true);
+    const segments = all.hourly.buckets.flatMap((b) => b.assets);
+    expect(segments.reduce((n, a) => n + a.count, 0)).toBe(all.day.count);
+    expect(segments.reduce((n, a) => n + a.notionalUsd, 0)).toBe(
+      all.day.notionalUsd,
+    );
+    expect(all.day.count).toBe(5);
+    const eth = await liquidations.stats(1, at);
+    expect(
+      eth.hourly.buckets.every(
+        (b) => b.assets.length === 1 && b.assets[0].instrument === 1,
+      ),
+    ).toBe(true);
+    expect(eth.hourly.buckets.reduce((n, b) => n + b.assets[0].count, 0)).toBe(
+      2,
+    );
+    expect(eth.day.notionalUsd).toBe(10);
+  });
+  it("retains cross-source multiplicity and additional observed asset IDs in the hourly totals", async () => {
+    const { insert, liquidations } = setup();
+    for (const instrument of [0, 1, 7]) {
+      for (let i = 0; i < 2; i++)
+        insert(event(`stream:${instrument}:${i}`, { instrument }));
+      for (let i = 0; i < 3; i++)
+        insert(
+          event(`recent:${instrument}:${i}`, {
+            instrument,
+            provenance: "recent-api",
+          }),
+        );
+    }
+    const stats = await liquidations.stats(undefined, at);
+    expect(stats.hourly.buckets.at(-1)?.assets).toEqual(
+      [0, 1, 7].map((instrument) => ({
+        instrument,
+        count: 3,
+        notionalUsd: 30000000000,
+      })),
+    );
+    expect(stats.day.count).toBe(9);
+    expect(
+      stats.hourly.buckets
+        .flatMap((b) => b.assets)
+        .reduce((sum, a) => sum + a.notionalUsd, 0),
+    ).toBe(stats.day.notionalUsd);
+  });
+  it("keeps minute/hour-aligned endpoints inclusive and distinguishes first-full from current-partial buckets", async () => {
+    const { insert, liquidations } = setup();
+    const end = Math.floor(at / 3600000) * 3600000;
+    for (const ts of [
+      end - 86400001,
+      end - 86400000,
+      end - 3600000,
+      end,
+      end + 1,
+    ])
+      insert(event(`boundary:${ts}`, { ts, notionalUsd: 1 }));
+    const stats = await liquidations.stats(undefined, end);
+    expect(stats.day.count).toBe(3);
+    expect(stats.hour.count).toBe(2);
+    expect(stats.hourly.buckets[0]).toMatchObject({
+      partial: false,
+      assets: [
+        { instrument: 0, count: 1, notionalUsd: 1 },
+        { instrument: 1, count: 0, notionalUsd: 0 },
+      ],
+    });
+    expect(stats.hourly.buckets.at(-1)).toMatchObject({
+      partial: true,
+      assets: [
+        { instrument: 0, count: 1, notionalUsd: 1 },
+        { instrument: 1, count: 0, notionalUsd: 0 },
+      ],
+    });
+  });
+  it("keeps pre-observation buckets as observed zeros and rejects unsafe count/notional aggregates", async () => {
+    const { db, liquidations } = setup();
+    const empty = await liquidations.stats(undefined, at);
+    expect(empty.coverage).toMatchObject({ partial: true, observedFrom: null });
+    expect(
+      empty.hourly.buckets.every((b) =>
+        b.assets.every((a) => a.count === 0 && a.notionalUsd === 0),
+      ),
+    ).toBe(true);
+    const minute = Math.floor(at / 60000) * 60000 - 60000;
+    db.prepare("INSERT INTO liquidation_minutes VALUES(?,?,?,?,?,?)").run(
+      0,
+      minute,
+      9007199254740993n,
+      9007199254740993n,
+      0,
+      1,
+    );
+    await expect(liquidations.stats(undefined, at)).rejects.toThrow(
+      "supported range",
+    );
+    db.prepare(
+      "UPDATE liquidation_minutes SET event_count=1,long_count=1,notional=?",
+    ).run(Infinity);
+    await expect(liquidations.stats(undefined, at)).rejects.toThrow(
+      "supported range",
+    );
+  });
   it("paginates bounded stable keys without repeating ties or including new head rows", async () => {
     const { insert, liquidations, db } = setup();
     for (let i = 0; i < 107; i++)
@@ -312,6 +446,11 @@ describe("cached liquidation responses", () => {
       stats = vi.spyOn(liquidations, "stats");
     const first = await readLiquidations(store, undefined, undefined, at);
     expect(first.stale).toBe(false);
+    expect(
+      first.hourly?.buckets
+        .flatMap((b) => b.assets)
+        .reduce((n, a) => n + a.count, 0),
+    ).toBe(55);
     expect(first.coverage).toMatchObject({
       partial: true,
       projectionBackfillComplete: false,
@@ -326,6 +465,18 @@ describe("cached liquidation responses", () => {
     expect(
       (await readLiquidations(store, undefined, undefined, at + 15001)).stale,
     ).toBe(true);
+  });
+  it("reads older cached snapshots without inventing hourly buckets during rollout", async () => {
+    const { store } = setup();
+    await store.put("collector-heartbeat", { at, errors: {} }, at);
+    await store.put("overview", { status: { stream: "connected" } }, at);
+    await refreshLiquidations(store, at);
+    const value = await readLiquidations(store, undefined, undefined, at);
+    const { hourly: _hourly, ...legacy } = value;
+    await store.put("liquidations:all", legacy, at);
+    expect(
+      (await readLiquidations(store, undefined, undefined, at)).hourly,
+    ).toBeUndefined();
   });
   it.each(["stream", "recent", "liquidations", "liquidations-backfill"])(
     "marks feed or projection failure stale despite a current heartbeat: %s",

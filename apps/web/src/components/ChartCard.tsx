@@ -2,8 +2,11 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   chartFilename,
+  chartColorValue,
   chartGeometry,
   chartShareUrl,
+  chartStackGeometry,
+  cloneChartSegments,
   formatChartNumber,
   formatChartTime,
   nearestChartPoint,
@@ -11,6 +14,7 @@ import {
   type ChartKind,
   type ChartPoint,
   type ChartRange,
+  type ChartSegment,
 } from "../lib/chart-data";
 import type { ChartExportSnapshot } from "../lib/chart-export";
 import "./chart-card.css";
@@ -21,6 +25,8 @@ export interface ChartCardProps {
   unit: string;
   kind: ChartKind;
   points: readonly ChartPoint[];
+  /** Optional nonnegative component series for stacked bars; points remain the totals. */
+  segments?: readonly ChartSegment[];
   range: ChartRange;
   sourceAt: number | null;
   coverage: string;
@@ -32,6 +38,8 @@ export interface ChartCardProps {
   color?: ChartColor;
   /** Override only the latest headline; hover and plotted values remain the observations. */
   valueLabel?: string;
+  /** Explain the headline period independently of the full plotted range. */
+  valueCaption?: string;
   valueTitle?: string;
   compact?: boolean;
   bucketMs?: number;
@@ -55,6 +63,7 @@ function ExpandIcon() {
 
 function ChartPlot({
   points,
+  segments,
   range,
   kind,
   title,
@@ -65,7 +74,14 @@ function ChartPlot({
   color,
 }: Pick<
   ChartCardProps,
-  "points" | "range" | "kind" | "title" | "unit" | "bucketMs" | "color"
+  | "points"
+  | "segments"
+  | "range"
+  | "kind"
+  | "title"
+  | "unit"
+  | "bucketMs"
+  | "color"
 > & { expanded?: boolean; compact?: boolean }) {
   const [selectedTime, setSelectedTime] = useState<number | null>(null);
   const patternId = useId().replace(/:/g, "");
@@ -78,6 +94,13 @@ function ChartPlot({
   const geometry = useMemo(
     () => chartGeometry(points, range, kind, plotWidth, height - 12, bucketMs),
     [points, range.from, range.to, kind, plotWidth, height, bucketMs],
+  );
+  const stack = useMemo(
+    () =>
+      kind === "bar" && segments?.length
+        ? chartStackGeometry(geometry, segments)
+        : null,
+    [geometry, segments, kind],
   );
   const selected =
     selectedTime === null
@@ -99,7 +122,7 @@ function ChartPlot({
     );
     setSelectedTime(index === null ? null : geometry.points[index].time);
   }
-  const accent = color === "green" ? "#506746" : "#9078ad";
+  const accent = chartColorValue(color);
   return (
     <div className={`pc-chart-plot${compact ? " pc-chart-plot--spark" : ""}`}>
       {!compact && (
@@ -180,6 +203,36 @@ function ChartPlot({
         }
       >
         <defs>
+          <clipPath id={`${patternId}-clip`}>
+            <rect width={plotWidth} height={height - 12} />
+          </clipPath>
+          {stack &&
+            (["lavender", "green"] as const).map((shade) => (
+              <pattern
+                key={shade}
+                id={`${patternId}-${shade}`}
+                width="6"
+                height="6"
+                patternUnits="userSpaceOnUse"
+                patternTransform="rotate(35)"
+              >
+                <rect
+                  width="6"
+                  height="6"
+                  fill={chartColorValue(shade)}
+                  opacity=".23"
+                />
+                <line
+                  x1="0"
+                  x2="0"
+                  y1="0"
+                  y2="6"
+                  stroke={chartColorValue(shade)}
+                  strokeWidth="2"
+                  opacity=".65"
+                />
+              </pattern>
+            ))}
           <pattern
             id={patternId}
             width="6"
@@ -213,17 +266,36 @@ function ChartPlot({
               />
             ))}
           {kind === "bar" ? (
-            geometry.bars.map((bar, index) => (
-              <rect
-                key={index}
-                x={bar.x}
-                y={bar.y}
-                width={bar.width}
-                height={bar.height}
-                fill={bar.partial ? `url(#${patternId})` : accent}
-                opacity={bar.partial ? 1 : 0.8}
-              />
-            ))
+            <g clipPath={`url(#${patternId}-clip)`}>
+              {stack
+                ? stack.bars.map((bar, index) => (
+                    <rect
+                      key={index}
+                      data-series={bar.segmentId}
+                      x={bar.x}
+                      y={bar.y}
+                      width={bar.width}
+                      height={bar.height}
+                      fill={
+                        bar.partial
+                          ? `url(#${patternId}-${bar.color})`
+                          : chartColorValue(bar.color)
+                      }
+                      opacity={bar.partial ? 1 : 0.8}
+                    />
+                  ))
+                : geometry.bars.map((bar, index) => (
+                    <rect
+                      key={index}
+                      x={bar.x}
+                      y={bar.y}
+                      width={bar.width}
+                      height={bar.height}
+                      fill={bar.partial ? `url(#${patternId})` : accent}
+                      opacity={bar.partial ? 1 : 0.8}
+                    />
+                  ))}
+            </g>
           ) : (
             <>
               <path
@@ -285,9 +357,25 @@ function ChartPlot({
               )}
             </span>
             <span>
-              {formatChartTime(geometry.to, range.to - range.from >= 86_400_000)}
+              {formatChartTime(
+                geometry.to,
+                range.to - range.from >= 86_400_000,
+              )}
             </span>
           </div>
+          {stack && (
+            <div className="pc-chart-legend" aria-label="Series legend">
+              {stack.segments.map((segment) => (
+                <span key={segment.id}>
+                  <i
+                    aria-hidden="true"
+                    style={{ background: chartColorValue(segment.color) }}
+                  />
+                  {segment.label}
+                </span>
+              ))}
+            </div>
+          )}
           <div
             className="pc-chart-inspect"
             aria-live="polite"
@@ -296,13 +384,41 @@ function ChartPlot({
             {selected ? (
               <>
                 <strong>
+                  {stack ? "Total: " : ""}
                   {formatChartNumber(selected.value, false)} {unit}
                 </strong>
                 <span>
                   {formatChartTime(selected.time)}
                   {kind === "bar" ? " · bucket start" : ""}
-                  {selected.partial ? " · partial" : ""}
+                  {selected.partial ||
+                  stack?.segments.some(
+                    (segment) =>
+                      segment.points.find(
+                        (point) => point.time === selected.time,
+                      )?.partial,
+                  )
+                    ? " · partial"
+                    : ""}
                 </span>
+                {stack && (
+                  <div className="pc-chart-segment-values">
+                    {stack.segments.map((segment) => (
+                      <span key={segment.id}>
+                        {segment.label}:{" "}
+                        {formatChartNumber(
+                          segment.points.find(
+                            (point) => point.time === selected.time,
+                          )?.value,
+                          false,
+                        )}{" "}
+                        {unit}
+                      </span>
+                    ))}
+                    {stack.incompleteTimes.includes(selected.time) && (
+                      <span>Breakdown unavailable</span>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <span>
@@ -412,6 +528,7 @@ export function ChartCard(props: ChartCardProps) {
       unit,
       kind: props.kind,
       points: prepared.points.map((point) => ({ ...point })),
+      segments: cloneChartSegments(props.segments),
       range: { ...range },
       sourceAt,
       coverage: exportCoverage,
@@ -419,6 +536,7 @@ export function ChartCard(props: ChartCardProps) {
       color: props.color ?? "lavender",
       bucketMs: props.bucketMs,
       valueLabel: props.valueLabel,
+      valueCaption: props.valueCaption,
     };
   }
   async function png(frozen = snapshot()) {
@@ -563,6 +681,7 @@ export function ChartCard(props: ChartCardProps) {
           {props.valueLabel ?? formatChartNumber(last?.value)}
         </strong>
         <span>{unit}</span>
+        {props.valueCaption && <span>· {props.valueCaption}</span>}
         {compact && <ChartPlot {...props} compact />}
       </div>
       {!compact && <ChartPlot {...props} />}
@@ -637,6 +756,7 @@ export function ChartCard(props: ChartCardProps) {
                 {props.valueLabel ?? formatChartNumber(last?.value)}
               </strong>
               <span>{unit}</span>
+              {props.valueCaption && <span>· {props.valueCaption}</span>}
               <small>{status}</small>
             </div>
             <ChartPlot {...props} expanded compact={false} />

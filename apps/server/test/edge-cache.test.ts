@@ -7,6 +7,7 @@ import { createStore, type Store } from "../src/store.js";
 import { emptyOverview } from "../src/collector.js";
 import { Upstream } from "../src/upstream.js";
 import { config } from "../src/config.js";
+import { refreshLiquidations } from "../src/liquidations.js";
 
 const edge = "public, s-maxage=1, must-revalidate";
 const address = `0x${"1".repeat(40)}`;
@@ -69,6 +70,17 @@ async function app(options: { rateLimit?: number; readCacheMs?: number } = {}) {
 }
 
 describe("explicit native edge-cache policy", () => {
+  it("keeps hourly liquidation data on the chart endpoint and out of the compact overview stats response", async () => {
+    await refreshLiquidations(store);
+    const api = await app();
+    const full = (await api.inject("/api/liquidations")).json();
+    const stats = (await api.inject("/api/liquidations/stats")).json();
+    expect(full.hourly.buckets).toHaveLength(25);
+    expect(stats).not.toHaveProperty("hourly");
+    expect(stats).not.toHaveProperty("items");
+    expect(stats).not.toHaveProperty("nextCursor");
+    expect(stats.stats).toEqual(full.stats);
+  });
   it.each([
     "/api/overview",
     "/api/assets",

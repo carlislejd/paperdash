@@ -214,6 +214,7 @@ export async function buildApi(
         const {
           items: _items,
           nextCursor: _cursor,
+          hourly: _hourly,
           ...summary
         } = await readLiquidations(store);
         return summary;

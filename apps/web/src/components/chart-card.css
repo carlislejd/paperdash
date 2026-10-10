@@ -124,6 +124,32 @@
   color: var(--ink);
   font-weight: 600;
 }
+.pc-chart-legend,
+.pc-chart-segment-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.pc-chart-legend {
+  margin-top: 8px;
+}
+.pc-chart-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pc-chart-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.pc-chart-segment-values {
+  flex-basis: 100%;
+  font-size: inherit;
+}
 .pc-chart-meta {
   flex-direction: column;
   gap: 2px;
