@@ -81,6 +81,10 @@ test("overview and wallet means use the closed cohort and separate open-position
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Wallets", exact: true })
+    .click();
   await page.getByRole("button", { name: /^Aoi / }).click();
   const dialog = page.getByRole("dialog");
   const means = dialog.getByRole("region", {
