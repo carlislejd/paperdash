@@ -14,6 +14,12 @@ const uint = z
   .string()
   .max(78)
   .regex(/^(0|[1-9]\d*)$/);
+// Public stream publications can encode seq as a JSON number. Convert only
+// exact safe integers; broad coercion could corrupt the retained event ID.
+const tradeSequence = z.union([
+  uint,
+  z.number().int().nonnegative().safe().transform(String),
+]);
 const time = z.number().int().nonnegative().safe();
 const hash = z.string().regex(/^0x[\da-fA-F]{64}$/);
 export const summarySchema = z.object({
@@ -200,7 +206,7 @@ const tickerSchema = z.object({
   notionalUsd: z.number().finite().nonnegative(),
   kind: z.enum(["open", "close", "liq"]),
   pnlUsd: z.number().finite().nullable(),
-  seq: uint.optional(),
+  seq: tradeSequence.optional(),
 });
 export function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
