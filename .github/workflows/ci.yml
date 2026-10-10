@@ -15,6 +15,28 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      redis:
+        image: redis:7.4
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: paperdash_test
+          POSTGRES_PASSWORD: paperdash_test
+          POSTGRES_DB: paperdash_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paperdash_test"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_REDIS_URL: redis://127.0.0.1:6379
+      TEST_DATABASE_URL: postgres://paperdash_test:paperdash_test@127.0.0.1:5432/paperdash_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

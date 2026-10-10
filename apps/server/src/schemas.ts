@@ -141,6 +141,18 @@ export const walletSchema = z.object({
 }); // Zod strips session keys, operations, and all other unexposed fields.
 export const portfolioSchema = z
   .object({
+    fromMs: time.optional(),
+    toMs: time.optional(),
+    intervalMs: z.number().int().positive().optional(),
+    source: z
+      .object({
+        asOfMs: time,
+        revision: z.string().regex(/^\d+:\d+$/),
+        generation: z.string().min(1).max(256),
+      })
+      .optional(),
+    series: z.literal("portfolio").optional(),
+    aggregation: z.string().max(50).optional(),
     baseTimeMs: time,
     timeOffsetsMs: z.array(time).max(10000),
     columns: z.object({
@@ -158,7 +170,8 @@ export const portfolioSchema = z
     (v) =>
       v.columns.equity.length === v.timeOffsetsMs.length &&
       v.columns.pnl.length === v.timeOffsetsMs.length &&
-      v.timeOffsetsMs.every((n, i, a) => !i || n >= a[i - 1]),
+      v.timeOffsetsMs.every((n, i, a) => !i || n >= a[i - 1]) &&
+      v.gapIndices.every((i) => i < v.timeOffsetsMs.length),
     "Inconsistent portfolio columns",
   );
 export const protocolHistorySchema = z

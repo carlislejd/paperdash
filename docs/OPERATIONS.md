@@ -2,7 +2,7 @@
 
 Paperdash is a public-source analytics beta. It reads the official Papertrade HTTP endpoints and public trade stream. It does not submit orders, connect a user's signing wallet, run a blockchain node, or currently decode canonical HyperEVM contract events.
 
-Observed trades are retained in our database; protocol totals, account details and wallet histories are upstream snapshots with source timestamps and coverage limits. A connected stream is not proof of complete execution history. The upstream recent-trades feed is bounded, and its public stream does not provide canonical transaction identities. Do not describe this deployment as an independently reconciled ledger or a complete lifetime trade archive. The earlier [research plan](../research/DASHBOARD_PLAN.md) describes later canonical ingestion work; this document describes the implemented beta.
+Global trade observations, minute TVL samples, wallet cashflows/trades, raw history pages and portfolio batches are retained in our database. Protocol totals and current account details remain upstream snapshots with source timestamps. Wallet history has separate indexing and coverage status. A connected stream or completed source backfill is not proof of complete execution history. The upstream recent-trades feed is bounded, and its public stream does not provide canonical transaction identities. Do not describe this deployment as an independently reconciled ledger or a complete lifetime trade archive. The earlier [research plan](../research/DASHBOARD_PLAN.md) describes later canonical ingestion work; this document describes the implemented beta.
 
 ## Local development
 
@@ -16,13 +16,13 @@ npm run dev
 
 Vite serves the frontend at `http://127.0.0.1:5173` and proxies `/api` to the API on port 8787. With `DATABASE_URL` absent, the API runs its collector and a durable SQLite store. The example environment uses `.data/paperdash.sqlite`. Keep the database, `-wal` and `-shm` files together while running; stop the process before making a simple filesystem copy. Local collection fails visibly at `LOCAL_MAX_BYTES` rather than silently removing financial observations. Do not use local SQLite for multiple Render instances: their filesystems are ephemeral and not shared.
 
-For local Postgres, set `DATABASE_URL`, run `npm run db:migrate`, then run `npm run dev` and `npm run dev:ingest` in separate terminals. The API defaults to no embedded collector when Postgres is configured. Redis is optional locally. Do not enable an embedded collector while intentionally running another collector against the same local store.
+For local Postgres, set both `DATABASE_URL` and `REDIS_URL`, run `npm run db:migrate`, then run `npm run dev` and `npm run dev:ingest` in separate terminals. The API defaults to no embedded collector when Postgres is configured. Redis is required with Postgres so API replicas and the worker share one upstream request budget. Single-process SQLite development can use the in-process coordinator. Do not enable an embedded collector while intentionally running another collector against the same local store.
 
 Production builds use `npm run build`; API and worker commands are `npm run start:api` and `npm run start:ingest`. `npm run db:migrate` is idempotent and serializes database migrations. Secrets belong in environment variables or the hosting dashboard. All `VITE_*` variables are public browser build inputs.
 
 ## Render deployment
 
-The authoritative deployment file is [render.yaml](../render.yaml); [infra/render.blueprint.yaml](../infra/render.blueprint.yaml) is an identical convenience copy. CI verifies both against the saved official Render schema. Use a Pro workspace for database HA. All stateful/backend resources must stay in the same region; Oregon is a starting assumption to verify before creation. Creating these files does not provision anything.
+The authoritative deployment file is [render.yaml](../render.yaml); [infra/render.blueprint.yaml](../infra/render.blueprint.yaml) is an identical convenience copy. CI verifies both against the saved official Render schema. Use the dedicated Paperdash Pro workspace for database HA and separate billing from unrelated projects. All stateful/backend resources must stay in the same region; the Blueprint uses Oregon. Creating these files does not provision anything.
 
 | Resource | Configuration | Monthly fixed estimate |
 | --- | --- | ---: |
@@ -37,14 +37,14 @@ The authoritative deployment file is [render.yaml](../render.yaml); [infra/rende
 
 Prices checked October 9, 2026. An illustrative beta budget adds $35 streaming egress and a $5 external backup/archive allowance, totaling **about $340/month**. A future $49/month archive RPC subscription would bring that example to **$389/month**, but the current app neither requires nor consumes that subscription. External archive upload automation is not implemented yet: the $5 line is an allowance, not an active service. Taxes, domains, exceptional build minutes and traffic/storage growth are additional. [Render pricing](https://render.com/pricing), [workspace fees](https://render.com/docs/new-workspace-plans), [HA billing](https://render.com/docs/postgresql-high-availability).
 
-The $35 egress example assumes 100 average concurrent viewers receiving 1 decimal KB/second for 30 days: 259.2 GB, less Pro's 25 GB included, at $0.15/GB. Page loads, downloads and external backup uploads add traffic. This is a workload estimate, not a measured rate or a price cap. At 1,000 average concurrent viewers that same stream costs roughly $385 in overages alone. [Bandwidth billing](https://render.com/docs/outbound-bandwidth).
+The $35 egress example assumes 100 average concurrent viewers receiving 1 decimal KB/second for 30 days: 259.2 GB, less Pro's 25 GB included, at $0.15/GB. Page loads, downloads and external backup uploads add traffic. This is a workload estimate, not a measured rate or a price cap. At 1,000 average concurrent viewers that same stream costs roughly $385 in overages alone. These estimates include only Paperdash and its dedicated workspace; unrelated projects are outside this budget. [Bandwidth billing](https://render.com/docs/outbound-bandwidth).
 
 Deploy steps:
 
-1. Run the build, tests, and `render blueprints validate render.yaml`. Schema validation does not verify available account plans, repository access, runtime behavior or load capacity.
-2. Connect the repository and review the Blueprint cost in the selected Pro workspace. The definition keeps automatic deployment and preview environments off. Do not turn on automatic deployments until CI passes on the production branch.
+1. Run the build and tests, check the Blueprint against the saved JSON schema, then use `render blueprints validate render.yaml` with an authenticated CLI or the dashboard's Blueprint review for account-aware validation. Schema validation alone does not verify available account plans, repository access, runtime behavior or load capacity.
+2. Connect `carlislejd/paperdash`, select the tested `main` commit's `render.yaml`, and review the Blueprint cost in the selected Pro workspace. Check all active and suspended resources for an existing Paperdash deployment before creating one. The definition keeps service auto-deploy and preview environments off. Blueprint auto-sync is a separate setting: it defaults on and can apply infrastructure changes when `render.yaml` changes. Set the Blueprint's Settings → Auto Sync to No for controlled manual releases. [Blueprint setup and sync](https://render.com/docs/infrastructure-as-code).
 3. Deploy the Blueprint. Database connections and Redis URLs are internal references; their public IP allowlists are empty. The API runs the migration as a pre-deploy command. Initial API/worker startup also runs the idempotent migration so first-deploy ordering does not leave the worker behind.
-4. Confirm `/health/ready`, the first stored protocol snapshot, collector status, wallet lookup and a browser stream connection. No upstream trade activity is a valid empty state, not an excuse to insert fixtures into production.
+4. Confirm `/health/ready`, the first stored protocol snapshot, `/api/indexing`, wallet lookup and a browser stream connection. Check `npm run ingest:status` from the worker environment and verify that checkpoints and retained row counts advance, including after a worker restart. No upstream trade activity is a valid empty state, not an excuse to insert fixtures into production.
 5. If custom domains are used, update the API's `CORS_ORIGIN` to the exact frontend origin, set the static site's `VITE_API_URL` to the public API origin and `VITE_SITE_URL` to the public frontend origin, then rebuild the static site. Multiple allowed origins are comma separated. Blueprint URL references initially use Render's `onrender.com` URLs. Keep these changes in the Blueprint so a future sync does not replace them.
 6. Complete the role hardening and recovery checks below before a broad public launch. Confirm the upstream operator's allowance for sustained polling of these undocumented public endpoints.
 
@@ -55,7 +55,7 @@ The API binds `HOST=0.0.0.0` and Render's provided `PORT`. `EMBEDDED_COLLECTOR=f
 | Variable | Meaning |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection; omitted only for local SQLite |
-| `REDIS_URL` | Optional cache/fan-out connection; enabled in Render |
+| `REDIS_URL` | Required with Postgres; shared request coordination, cache locks and stream fan-out |
 | `AUTO_MIGRATE` | `true` for initial owner bootstrap; `false` after runtime roles are restricted |
 | `HOST`, `PORT` | API bind address and port; local port 8787 |
 | `CORS_ORIGIN` | Exact, comma-separated allowed frontend origins |
@@ -67,19 +67,26 @@ The API binds `HOST=0.0.0.0` and Render's provided `PORT`. `EMBEDDED_COLLECTOR=f
 | `SUMMARY_INTERVAL_MS` | Summary cadence; default 2000 |
 | `RECENT_INTERVAL_MS` | Recent-trade fallback cadence; default 10000 |
 | `DIRECTORY_INTERVAL_MS` | Account directory cadence; default 30000 |
-| `HISTORY_INTERVAL_MS` | Protocol history cadence; default 60000 |
+| `HISTORY_INTERVAL_MS` | Source TVL history reconciliation cadence; default 3600000; minute samples are recorded between reconciliations |
+| `WALLET_INDEX_INTERVAL_MS` | Background wallet-history indexing tick; default 1000 |
+| `WALLET_INDEX_REQUESTS_PER_TICK` | Maximum source history requests per indexing tick; default 2, also constrained by the shared budget |
+| `UPSTREAM_REQUEST_SPACING_MS` | Shared minimum spacing between upstream request starts; default 250 |
+| `UPSTREAM_CONCURRENCY` | Shared maximum concurrent upstream requests; default 3 |
+| `UPSTREAM_QUEUE_TIMEOUT_MS` | Maximum request-budget wait; default 8000 |
 | `DATA_DIR` | Local SQLite directory; use `.data` |
 | `LOCAL_MAX_BYTES` | Local collection limit; default 536870912 bytes |
 
 Polling values are configuration, not permission to exceed upstream rate limits. Increase intervals when upstream requests throttle or operator guidance requires it; verify that any app freshness thresholds remain appropriate. Chain RPC URLs, contract manifests and archive credentials are deliberately absent from the runtime configuration because the current collector does not implement those adapters.
 
+Keep the dedicated Key Value instance on `noeviction`: evicting coordination or lock keys would break the shared request limits. The keys have short expirations, but memory/error alerts are still required. A Redis interruption stops fresh upstream requests rather than allowing each replica to poll independently; database-backed history remains available with its last source timestamps. Restore Redis before expecting collection to resume, and verify the worker heartbeat and indexing progress afterward.
+
 Favicons and link-preview metadata are included in the initial HTML, so crawlers do not need to run React. Builds use `VITE_SITE_URL`, then Render's automatic `RENDER_EXTERNAL_URL`, for absolute page/image URLs. Outside Render, an unset origin falls back to `http://localhost:5173` with a build warning; configure the real public origin before publishing. Supply an HTTP(S) origin without a path, query, credentials or fragment. The public preview image is `/art/paperdash-social.jpg` (1200 × 630). Social platforms cache previews; after changing it, use the platform's preview refresh tooling when available.
 
 ## Runtime database roles
 
-The initial Blueprint injects the managed database owner's connection into both services. This makes schema bootstrap runnable, but grants more permission than a public API should retain. **It is not a least-privilege production setup.** The API writes on-demand wallet snapshots, so a strictly read-only role would break its cache.
+The initial Blueprint injects the managed database owner's connection into both services. This makes schema bootstrap runnable, but grants more permission than a public API should retain. **It is not a least-privilege production setup.** The API writes current account/directory caches and prioritizes wallet indexing, so a strictly read-only role would break those operations.
 
-Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands match the current four-table schema; the `\password` commands prompt without putting passwords in shell history:
+Before broad launch, create separate API and ingestion login roles from an owner session on the private network. The following `psql` commands cover the four original tables and eight history tables; the `\password` commands prompt without putting passwords in shell history:
 
 ```sql
 CREATE ROLE paperdash_api LOGIN;
@@ -89,17 +96,44 @@ CREATE ROLE paperdash_ingest LOGIN;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO paperdash_api, paperdash_ingest;
 GRANT SELECT ON paperdash_snapshots, paperdash_trade_observations,
-  paperdash_samples, paperdash_stream_events TO paperdash_api, paperdash_ingest;
-GRANT INSERT, UPDATE ON paperdash_snapshots TO paperdash_api;
+  paperdash_samples, paperdash_stream_events,
+  paperdash_history_wallets, paperdash_history_jobs, paperdash_history_records,
+  paperdash_history_pages, paperdash_history_visits, paperdash_history_points,
+  paperdash_history_portfolio_batches, paperdash_history_corrections
+  TO paperdash_api, paperdash_ingest;
+GRANT INSERT, UPDATE ON paperdash_snapshots,
+  paperdash_history_wallets, paperdash_history_jobs TO paperdash_api;
+GRANT UPDATE ON paperdash_history_corrections TO paperdash_api;
 GRANT INSERT, UPDATE ON paperdash_snapshots, paperdash_samples TO paperdash_ingest;
 GRANT INSERT ON paperdash_trade_observations, paperdash_stream_events TO paperdash_ingest;
 GRANT DELETE ON paperdash_stream_events TO paperdash_ingest;
 GRANT USAGE, SELECT ON SEQUENCE paperdash_stream_events_id_seq TO paperdash_ingest;
+GRANT INSERT, UPDATE ON paperdash_history_wallets, paperdash_history_jobs,
+  paperdash_history_records, paperdash_history_visits, paperdash_history_points,
+  paperdash_history_corrections TO paperdash_ingest;
+GRANT INSERT ON paperdash_history_pages, paperdash_history_portfolio_batches
+  TO paperdash_ingest;
+GRANT DELETE ON paperdash_history_visits, paperdash_history_corrections,
+  paperdash_history_points TO paperdash_ingest;
 ```
 
 Neither runtime role needs `CREATE`, `ALTER`, `DROP`, ownership or access to unrelated schemas. New tables/sequences require explicit reviewed grants. Store the two role URLs separately in Render, replace the two `fromDatabase` entries with `sync: false`, and set `AUTO_MIGRATE=false` in both services. Keep the database's internal host/database name; only the URL-encoded username/password change.
 
-Move migrations to a one-off deployment step that receives the owner connection separately; remove the API's `preDeployCommand` once its runtime URL is restricted. Run the migration before rolling out compatible API/worker code, then deploy with runtime roles and smoke-test wallet reads and cache writes. Never keep a schema-owner secret in an API runtime merely to run migrations. PostgreSQL `LISTEN` or session advisory locks require direct connections; API query pools may later use managed PgBouncer independently. [Connection pooling](https://render.com/docs/postgresql-connection-pooling).
+Move migrations to a one-off deployment step that receives the owner connection separately; remove the API's `preDeployCommand` once its runtime URL is restricted. Run the migration before rolling out compatible API/worker code, then deploy with runtime roles and smoke-test wallet reads, cache writes, indexing priority updates and worker checkpoints. Never keep a schema-owner secret in an API runtime merely to run migrations. PostgreSQL `LISTEN` or session advisory locks require direct connections; API query pools may later use managed PgBouncer independently. [Connection pooling](https://render.com/docs/postgresql-connection-pooling).
+
+## Retained history and indexing
+
+The worker repeatedly sweeps the mutable wallet directory and discovers active wallets through trade observations. A wallet lookup also enrolls and temporarily prioritizes that address. Three durable jobs per wallet cover cashflows, trades and portfolio history. The indexer alternates priority work with older due work so browsing does not indefinitely starve the background queue. The shared Redis budget limits all HTTP request starts and in-flight requests across API replicas and ingestion; it does not count WebSocket messages as HTTP polling.
+
+Cashflow/trade pages commit normalized records, the original source page and a fenced checkpoint in one database transaction. A 120-second job lease expires if the process dies; its successor can resume from the saved cursor. Replaying a committed page does not blindly append another copy. Source-field/occurrence identities remain provisional, especially for cashflows with no unique source event ID. Changed source pages remain as raw variants even when a projection is updated. `backfillComplete` means the available source pages reached their end, not that we proved lifetime or canonical completeness.
+
+New activity is refreshed from the head while deep backfill continues. A dedicated retry revisits observed pending cashflows for later status changes. If a main backfill cursor expires with a 400/404, indexing restarts that bounded scan from the head while keeping retained records. An invalid pending-correction cursor remains an explicit error with backoff; it must not silently become an unrelated head scan. Repeated cursors and malformed ordering are errors. Inspect them before resetting any checkpoint, and never delete retained records to force a retry.
+
+Portfolio history begins with an available full-range fetch, then refreshes supported recent windows, expanding after gaps and periodically reconciling the full range. Raw batches are retained. A newer source generation can replace the active chart projection without deleting the earlier raw batches. Older/invalid revisions are rejected. The API limits a portfolio response to 10,000 timestamp groups and preserves incomplete/gap coverage instead of claiming the truncated chart is complete. Source money values remain integer decimal strings; plotted values are display projections.
+
+Wallet history endpoints use local keyset cursors, not expiring upstream cursors. Current account snapshots and directory results can still refresh through the shared source cache. There is no per-visitor upstream wallet-history download. TVL history is reconciled hourly by default and extended with continuously recorded minute samples. Global public trade observations are kept separately from wallet trade history; they are not merged into a falsely exact global execution ledger.
+
+From a worker shell with its existing environment, run `npm run ingest:status` for heartbeat, queue counts and the oldest due job. Add `--` followed by a full wallet address for that wallet's checkpoints. The command exits nonzero if the saved collector heartbeat is older than 30 seconds. `/api/indexing` reads the worker's periodically saved aggregate and reports its timestamp; it does not perform a full queue scan for every caller. A healthy heartbeat alone does not establish that every history job is progressing: watch pending/failed counts, oldest due time, per-wallet last success and retained counts together. Full backfill time depends on source limits, wallet count and history depth.
 
 ## Freshness, incidents and recovery
 
@@ -109,7 +143,7 @@ For an upstream failure, keep cached content readable with its timestamp, inspec
 
 Before launch, prove the following with the deployed topology: collector restart, overlapping worker deploy, API instance restart while a browser is streaming, replay after a browser reconnect, slow-client disconnection, Redis interruption, database failover and backup restoration. A configured topology is not evidence these production paths have passed. Keep the source-backed coverage status visible throughout recovery.
 
-Paid Postgres on Pro provides seven days of point-in-time recovery. Restore to a **new** database, verify stored snapshots/trade observations and migrations, then switch both API and worker connections together. Stop the old worker before activating the new database's worker so only one database accepts new observations. Preserve the old database until validation is complete; deletion also removes its associated recovery material. Do not use production as a restore target. [Render backups](https://render.com/docs/postgresql-backups).
+Paid Postgres on Pro provides seven days of point-in-time recovery. Restore to a **new** database, verify stored observations, wallet records, raw pages/batches and indexing checkpoints, then switch both API and worker connections together. Stop the old worker before activating the new database's worker so only one database accepts new observations. Allow restored job leases to expire before expecting those jobs to resume. Preserve the old database until validation is complete; deletion also removes its associated recovery material. Do not use production as a restore target. [Render backups](https://render.com/docs/postgresql-backups).
 
 PITR and the HA standby are not independent long-term backups. Before public launch, configure encrypted logical exports in an external bucket with restricted credentials and retention, then test a restore. Record the last successful backup time and tested recovery time. No external backup scheduler or object store is created by this Blueprint. Do not export credentials or user-supplied identifying data into public buckets.
 
@@ -117,7 +151,7 @@ PITR and the HA standby are not independent long-term backups. Before public lau
 
 Database storage autoscaling is disabled for predictable billing. Alert at **70% and 85% disk utilization**, compute days remaining from recent growth, and expand before a backfill or projected week of ingestion exhausts space. Never silently delete wallet history to meet a limit. Render can suspend a full database. Storage increases are permanent and HA adds storage to both copies. [Render storage](https://render.com/docs/postgresql-creating-connecting#adding-storage).
 
-Track API p95 latency, slow queries, pool waits, CPU/RAM, live connections, slow consumers, collector heartbeat/source age, upstream 429/5xx responses, stream reconnects, observation ingestion rate, database growth and egress per active viewer. Alert on projected monthly spend at $350 and $450 against the current $500 ceiling. These thresholds are operating requirements; external alert delivery is not wired up by the app or Blueprint.
+Track API p95 latency, slow queries, pool waits, CPU/RAM, live connections, slow consumers, collector heartbeat/source age, history queue age and failures, upstream 429/5xx responses, stream reconnects, observation ingestion rate, database growth and egress per active viewer. Raw page/batch variants also consume storage; measure their growth during backfill. Alert on projected monthly spend at $350 and $450 against the current $500 ceiling. These thresholds are operating requirements; external alert delivery is not wired up by the app or Blueprint.
 
 Before claiming launch capacity, test at least 500 browser streams, 10 million realistic observation rows and the greater of 100 representative incoming events/second or 10 times measured peak. Include history/backfill traffic while live traffic continues. Profile before increasing plans. The frontend targets a responsive shell and efficient batched updates; publish measured browser/device/network results rather than presenting these targets as achieved guarantees.
 

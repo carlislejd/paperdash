@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24.0.0 <25" },
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
   "scripts": {
     "dev": "concurrently -k -n api,web 'npm run dev:api' 'npm run dev:web'",
     "dev:web": "vite --host 127.0.0.1",
@@ -18,7 +20,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "db:migrate": "tsx apps/server/src/migrate.ts"
+    "db:migrate": "tsx apps/server/src/migrate.ts",
+    "ingest:status": "tsx apps/server/src/status.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.0",

@@ -19,6 +19,7 @@ import {
 import { type Store, visibleTrades } from "./store.js";
 import { canonicalPath, Upstream } from "./upstream.js";
 import { ChangeBus } from "./bus.js";
+import { HistoryIndexer } from "./history.js";
 
 export function emptyOverview(kind: Store["kind"]): Overview {
   return {
@@ -40,6 +41,32 @@ export function emptyOverview(kind: Store["kind"]): Overview {
 }
 export async function readOverview(store: Store): Promise<Overview> {
   return (await readOverviewSnapshot(store)).overview;
+}
+export async function retainProtocolHistory(
+  store: Store,
+  history: z.infer<typeof protocolHistorySchema>,
+): Promise<void> {
+  const previous = await store.get<{ source: typeof history.source }>(
+    "protocol-history",
+  );
+  if (
+    previous &&
+    (history.source.asOfMs < previous.value.source.asOfMs ||
+      (history.source.generation === previous.value.source.generation &&
+        BigInt(history.source.revision) <
+          BigInt(previous.value.source.revision)))
+  )
+    throw new Error(
+      "Protocol history source moved backward; retaining saved samples.",
+    );
+  const points = history.columns.tvl.flatMap((value, i) =>
+    value === null
+      ? []
+      : [{ time: history.startMs + i * history.intervalMs, value }],
+  );
+  await store.history.retainProtocol(points);
+  await store.put("protocol-history", { points, source: history.source });
+  await store.put("protocol-history-raw", history);
 }
 export async function readOverviewSnapshot(
   store: Store,
@@ -146,17 +173,53 @@ export class Collector {
       const accounts = await this.upstream.request(path, accountsSchema);
       await this.store.put("account-count", accounts.summary.uniqueAccounts);
       await this.store.put(`cache:${path}`, accounts);
+      await this.store.history.discoverWallets(
+        accounts.accounts.map((account) => account.address),
+      );
+    });
+    this.loop("directory-sweep", config.directoryInterval, async () => {
+      const savedPage = await this.store.get<number>("directory-scan-page");
+      const page =
+        Number.isSafeInteger(savedPage?.value) && savedPage!.value >= 1
+          ? savedPage!.value
+          : 1;
+      const path = canonicalPath("/state/leaderboard/accounts", {
+        window: "all",
+        sortKey: "currentBalance",
+        sortDir: "desc",
+        page,
+        pageSize: 25,
+      });
+      const accounts = await this.upstream.request(path, accountsSchema);
+      await this.store.put("account-count", accounts.summary.uniqueAccounts);
+      await this.store.put(`cache:${path}`, accounts);
+      await this.store.history.discoverWallets(
+        accounts.accounts.map((account) => account.address),
+      );
+      // Directory ordering can move during a sweep; repeat bounded sweeps and
+      // also discover active wallets from the trade stream. This is not an
+      // assertion that a mutable paginated directory has perfect coverage.
+      await this.store.put(
+        "directory-scan-page",
+        page + 1 < accounts.pageInfo.totalPages ? page + 1 : 1,
+      );
     });
     this.loop("history", config.historyInterval, async () => {
       const h = await this.upstream.request(
         "/query/protocol/history?interval=1m",
         protocolHistorySchema,
       );
-      const points = h.columns.tvl.flatMap((value, i) =>
-        value === null ? [] : [{ time: h.startMs + i * h.intervalMs, value }],
-      );
-      await this.store.put("protocol-history", { points, source: h.source });
-      await this.store.put("protocol-history-raw", h);
+      await retainProtocolHistory(this.store, h);
+    });
+    const historyIndexer = new HistoryIndexer(
+      this.store.history,
+      (path, schema) => this.upstream.request(path, schema),
+    );
+    this.loop("wallet-indexer", config.walletIndexInterval, async () => {
+      await historyIndexer.tick({ maxRequests: config.walletIndexRequests });
+    });
+    this.loop("indexing-status", 30000, async () => {
+      await this.store.put("indexing-status", await this.store.history.stats());
     });
     this.loop("recent", config.recentInterval, async () => {
       const r = await this.upstream.request(
@@ -257,7 +320,10 @@ export class Collector {
   }
   private accept(trade: TradeEvent) {
     const task = this.ingestion.then(async () => {
-      if (await this.store.recordTrade(trade)) this.bus.notify();
+      if (await this.store.recordTrade(trade)) {
+        await this.store.history.ensureWallet(trade.wallet, 20);
+        this.bus.notify();
+      }
     });
     this.ingestion = task.catch(() => {});
     return task;
@@ -268,34 +334,36 @@ export class Collector {
       // Any financial notification at or below this cursor committed before all
       // following reads, so a client can replay strictly after this watermark.
       const eventCursor = (await this.store.eventBounds()).latest ?? "0";
-      const [summary, accountCount, history, trades] = await Promise.all([
-        this.store.get<ProtocolSummary>("summary"),
-        this.store.get<number>("account-count"),
-        this.store.get<{
-          points: Overview["history"];
-          source: { asOfMs: number };
-        }>("protocol-history"),
-        this.store.trades(100),
-      ]);
-      const historyFresh = history && Date.now() - history.receivedAt < 180000;
-      const observed =
-        historyFresh && history.value.points.length
-          ? []
-          : await this.store.samples();
+      const [summary, accountCount, upstreamPoints, observed, trades] =
+        await Promise.all([
+          this.store.get<ProtocolSummary>("summary"),
+          this.store.get<number>("account-count"),
+          this.store.history.protocolPoints(),
+          this.store.samples(),
+          this.store.trades(100),
+        ]);
+      const points = new Map(
+        upstreamPoints.map((point) => [point.time, point]),
+      );
+      const sourceTail = upstreamPoints.at(-1)?.time ?? 0;
+      // Keep the retained historical baseline while appending minute samples
+      // observed since it. Hourly reconciliation no longer erases the chart
+      // after a three-minute freshness timer.
+      for (const point of observed)
+        if (point.time >= sourceTail || !points.has(point.time))
+          points.set(point.time, point);
+      const history = [...points.values()]
+        .sort((a, b) => a.time - b.time)
+        .slice(-1440);
       const overview: Overview = {
         summary: summary?.value ?? null,
         accountCount: accountCount?.value ?? null,
-        history: downsample(
-          historyFresh && history.value.points.length
-            ? history.value.points
-            : observed,
-        ),
-        historyCoverage:
-          historyFresh && history.value.points.length
-            ? "upstream"
-            : observed.length
-              ? "observed"
-              : "unavailable",
+        history: downsample(history),
+        historyCoverage: upstreamPoints.length
+          ? "upstream"
+          : observed.length
+            ? "observed"
+            : "unavailable",
         trades: visibleTrades(trades),
         status: {
           receivedAt: summary?.receivedAt ?? null,

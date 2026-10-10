@@ -20,6 +20,7 @@ async function close() {
   closing = true;
   await app.close();
   await collector?.stop();
+  await upstream.close();
   bus.close();
   await store.close();
 }

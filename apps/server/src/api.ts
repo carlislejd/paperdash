@@ -13,6 +13,7 @@ import { readOverview, readOverviewSnapshot } from "./collector.js";
 import { type Store, type StreamRecord } from "./store.js";
 import { ChangeBus } from "./bus.js";
 import { Upstream, UpstreamError } from "./upstream.js";
+import { HistoryCursorError } from "./history-store.js";
 
 interface Client {
   response: ServerResponse;
@@ -185,16 +186,18 @@ export async function buildApi(
   });
   const hub = new EventHub(store, bus);
   app.setErrorHandler((error, _request, reply) => {
-    if (error instanceof z.ZodError)
+    if (error instanceof HistoryCursorError)
       return reply
         .code(400)
-        .send({
-          error: "Invalid request parameters.",
-          details: error.issues.map((i) => ({
-            field: i.path.join("."),
-            message: i.message,
-          })),
-        });
+        .send({ error: "Invalid retained-history cursor." });
+    if (error instanceof z.ZodError)
+      return reply.code(400).send({
+        error: "Invalid request parameters.",
+        details: error.issues.map((i) => ({
+          field: i.path.join("."),
+          message: i.message,
+        })),
+      });
     if (error instanceof UpstreamError) {
       if (error.retryAt)
         reply.header(
@@ -213,14 +216,12 @@ export async function buildApi(
       error.statusCode >= 400 &&
       error.statusCode < 500
     )
-      return reply
-        .code(error.statusCode)
-        .send({
-          error:
-            error.statusCode === 429
-              ? "Too many requests. Please try again shortly."
-              : "Invalid request.",
-        });
+      return reply.code(error.statusCode).send({
+        error:
+          error.statusCode === 429
+            ? "Too many requests. Please try again shortly."
+            : "Invalid request.",
+      });
     app.log.error(error, "API request failed");
     return reply
       .code(500)
@@ -240,13 +241,11 @@ export async function buildApi(
           .send({ ready: false, reason: "storage_unavailable" });
       const overview = await readOverview(store);
       if (!overview.summary)
-        return reply
-          .code(503)
-          .send({
-            ready: false,
-            reason: "waiting_for_first_observation",
-            persistence: store.kind,
-          });
+        return reply.code(503).send({
+          ready: false,
+          reason: "waiting_for_first_observation",
+          persistence: store.kind,
+        });
       return {
         ready: true,
         degraded: overview.status.stale,
@@ -257,6 +256,23 @@ export async function buildApi(
   app.get("/api/overview", async (_req, reply) => {
     reply.header("Cache-Control", "no-store");
     return readOverview(store);
+  });
+  app.get("/api/indexing", async (_req, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const [indexing, heartbeat] = await Promise.all([
+      store.get("indexing-status"),
+      store.get<{ at: number; errors: Record<string, string> }>(
+        "collector-heartbeat",
+      ),
+    ]);
+    return {
+      indexing: indexing?.value ?? null,
+      receivedAt: indexing?.receivedAt ?? null,
+      collectorAt: heartbeat?.value.at ?? null,
+      stale: !heartbeat || Date.now() - heartbeat.value.at > 30000,
+      // The source does not promise a complete global execution archive.
+      coverage: "available-source-history-and-retained-observations",
+    };
   });
   app.get("/api/accounts", async (req, reply) => {
     const q = accountsQuerySchema.parse(req.query);
@@ -295,11 +311,9 @@ export async function buildApi(
     { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
     async (req, reply) => {
       if (hub.size >= 500)
-        return reply
-          .code(503)
-          .send({
-            error: "Live stream capacity reached. Please reconnect shortly.",
-          });
+        return reply.code(503).send({
+          error: "Live stream capacity reached. Please reconnect shortly.",
+        });
       const rawId = req.headers["last-event-id"];
       const id =
         typeof rawId === "string" && /^\d{1,18}$/.test(rawId)

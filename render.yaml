@@ -79,6 +79,12 @@ services:
           envVarKey: RENDER_EXTERNAL_URL
       - key: UPSTREAM_ORIGIN
         value: https://exchange.papertrade.xyz
+      - key: UPSTREAM_REQUEST_SPACING_MS
+        value: "250"
+      - key: UPSTREAM_CONCURRENCY
+        value: "3"
+      - key: UPSTREAM_QUEUE_TIMEOUT_MS
+        value: "8000"
 
   - type: worker
     name: paperdash-ingest
@@ -109,6 +115,12 @@ services:
           property: connectionString
       - key: UPSTREAM_ORIGIN
         value: https://exchange.papertrade.xyz
+      - key: UPSTREAM_REQUEST_SPACING_MS
+        value: "250"
+      - key: UPSTREAM_CONCURRENCY
+        value: "3"
+      - key: UPSTREAM_QUEUE_TIMEOUT_MS
+        value: "8000"
       - key: STREAM_URL
         value: wss://stream.papertrade.xyz/connection/websocket
       - key: SUMMARY_INTERVAL_MS
@@ -118,14 +130,18 @@ services:
       - key: DIRECTORY_INTERVAL_MS
         value: "30000"
       - key: HISTORY_INTERVAL_MS
-        value: "60000"
+        value: "3600000"
+      - key: WALLET_INDEX_INTERVAL_MS
+        value: "1000"
+      - key: WALLET_INDEX_REQUESTS_PER_TICK
+        value: "2"
 
   - type: keyvalue
     name: paperdash-cache
     region: oregon
     plan: 1g
     ipAllowList: []
-    maxmemoryPolicy: allkeys-lru
+    maxmemoryPolicy: noeviction
 
 databases:
   - name: paperdash-db

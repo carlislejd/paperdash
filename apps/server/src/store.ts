@@ -8,6 +8,11 @@ import type {
 } from "../../../packages/shared/src/types.js";
 import { config } from "./config.js";
 import { digest } from "./schemas.js";
+import {
+  createHistoryStore,
+  historySchemaSql,
+  type HistoryStore,
+} from "./history-store.js";
 
 export interface Saved<T> {
   value: T;
@@ -19,6 +24,7 @@ export interface StreamRecord {
 }
 export interface Store {
   kind: "postgres" | "local";
+  history: HistoryStore;
   get<T>(key: string): Promise<Saved<T> | null>;
   put(key: string, value: unknown, receivedAt?: number): Promise<void>;
   trade(value: TradeEvent): Promise<boolean>;
@@ -47,6 +53,7 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(74481231, 0)");
     await client.query(PG_SCHEMA);
+    await client.query(historySchemaSql("paperdash_", true));
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -80,15 +87,48 @@ export async function createStore(
     if (options.autoMigrate ?? config.autoMigrate) await migrate(pool);
     else
       await pool
-        .query("SELECT 1 FROM paperdash_snapshots LIMIT 0")
+        .query(
+          "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0",
+        )
         .catch(() => {
           throw new Error(
             "Database schema is unavailable; run npm run db:migrate with the schema owner.",
           );
         });
     let leaseClient: PoolClient | null = null;
+    const sql = (text: string) => {
+      let i = 0;
+      return text.replace(/\?/g, () => `$${++i}`);
+    };
+    const history = createHistoryStore({
+      prefix: "paperdash_",
+      async rows<T>(statement: string, params: unknown[] = []) {
+        return (await pool.query(sql(statement), params)).rows as T[];
+      },
+      async batch(statements) {
+        const c = await pool.connect();
+        try {
+          await c.query("BEGIN");
+          for (const statement of statements) {
+            const result = await c.query(sql(statement.sql), statement.params);
+            if (
+              statement.requireChanges !== undefined &&
+              result.rowCount !== statement.requireChanges
+            )
+              throw new Error("History job lease changed");
+          }
+          await c.query("COMMIT");
+        } catch (error) {
+          await c.query("ROLLBACK");
+          throw error;
+        } finally {
+          c.release();
+        }
+      },
+    });
     return {
       kind: "postgres",
+      history,
       async get<T>(key: string) {
         const r = await pool.query(
           "SELECT payload,received_at FROM paperdash_snapshots WHERE key=$1",
@@ -251,6 +291,7 @@ export async function createStore(
     CREATE TABLE IF NOT EXISTS stream_events(id INTEGER PRIMARY KEY AUTOINCREMENT,payload TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS collector_lease(id INTEGER PRIMARY KEY,pid INTEGER NOT NULL);
   `);
+  db.exec(historySchemaSql("", false));
   const maxBytes = options.maxBytes ?? config.localMaxBytes;
   let checkAt = 0;
   async function writable() {
@@ -272,6 +313,36 @@ export async function createStore(
   }
   return {
     kind: "local",
+    history: createHistoryStore({
+      prefix: "",
+      async rows<T>(sql: string, params: unknown[] = []) {
+        return db
+          .prepare(sql)
+          .all(...(params as (string | number | null)[])) as T[];
+      },
+      async batch(statements) {
+        await writable();
+        // No await inside this transaction: the synchronous SQLite connection
+        // cannot interleave another collector write between these statements.
+        db.exec("BEGIN IMMEDIATE");
+        try {
+          for (const statement of statements) {
+            const result = db
+              .prepare(statement.sql)
+              .run(...((statement.params ?? []) as (string | number | null)[]));
+            if (
+              statement.requireChanges !== undefined &&
+              result.changes !== statement.requireChanges
+            )
+              throw new Error("History job lease changed");
+          }
+          db.exec("COMMIT");
+        } catch (error) {
+          db.exec("ROLLBACK");
+          throw error;
+        }
+      },
+    }),
     async get<T>(key: string) {
       const r = db
         .prepare("SELECT payload,received_at FROM snapshots WHERE key=?")

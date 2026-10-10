@@ -15,6 +15,7 @@ import type {
   WalletResponse,
 } from "../../../../packages/shared/src/types";
 import { fetchJson } from "../lib/api";
+import { mergeHistory } from "../lib/wallet-history";
 import {
   formatRawUsd,
   formatUsd,
@@ -89,44 +90,15 @@ export function prefetchWallet(address: string): () => void {
 }
 
 function cashflowKey(item: Cashflow) {
-  return `${item.kind}:${item.txHash}:${item.timestampMs}:${item.amountRaw}`;
+  return (
+    item.id ??
+    `${item.kind}:${item.txHash}:${item.timestampMs}:${item.amountRaw}`
+  );
 }
 function tradeKey(item: ClosedTrade) {
-  return `${String(item.positionId)}:${String(item.txHash)}:${String(item.timestampMs)}`;
-}
-
-/** Preserve the loaded tail only when the refreshed head overlaps it. No guessed joins. */
-function mergeHistory<T>(
-  current: HistoryPage<T>,
-  latest: HistoryPage<T>,
-  key: (item: T) => string,
-): { page: HistoryPage<T>; newActivity: boolean } {
-  if (!current.items.length) return { page: latest, newActivity: false };
-  if (!latest.items.length) return { page: current, newActivity: false };
-  const last = key(latest.items[latest.items.length - 1]);
-  for (let anchor = current.items.length - 1; anchor >= 0; anchor--) {
-    if (key(current.items[anchor]) !== last) continue;
-    const overlap = Math.min(latest.items.length, anchor + 1);
-    let consistent = true;
-    for (let offset = 1; offset < overlap; offset++) {
-      if (
-        key(current.items[anchor - offset]) !==
-        key(latest.items[latest.items.length - 1 - offset])
-      ) {
-        consistent = false;
-        break;
-      }
-    }
-    if (consistent)
-      return {
-        page: {
-          items: [...latest.items, ...current.items.slice(anchor + 1)],
-          nextCursor: current.nextCursor,
-        },
-        newActivity: false,
-      };
-  }
-  return { page: current, newActivity: true };
+  return typeof item.id === "string"
+    ? item.id
+    : `${String(item.positionId)}:${String(item.txHash)}:${String(item.timestampMs)}`;
 }
 
 /** A display-only decimal expansion. Financial totals always remain raw integer strings. */
@@ -940,10 +912,13 @@ export function WalletDrawer({
                       </button>
                     ))}
                   </div>
-                  {newActivity && (
+                  {(newActivity ||
+                    loadedPages.current.cashflows ||
+                    loadedPages.current.trades) && (
                     <button
                       type="button"
                       className="wd-new-activity"
+                      disabled={Boolean(paging) || loading}
                       onClick={() => {
                         loadedPages.current = {
                           cashflows: false,
@@ -953,7 +928,9 @@ export function WalletDrawer({
                         setAttempt((value) => value + 1);
                       }}
                     >
-                      New activity available · return to latest ↑
+                      {newActivity
+                        ? "History updated · refresh"
+                        : "Refresh history"}
                     </button>
                   )}
                   <div
@@ -967,13 +944,20 @@ export function WalletDrawer({
                         {tab === "cashflows"
                           ? wallet.cashflows.items.map((item, index) => (
                               <CashflowRow
-                                key={`${item.txHash}-${item.kind}-${index}`}
+                                key={
+                                  item.id ??
+                                  `${item.txHash}-${item.kind}-${index}`
+                                }
                                 item={item}
                               />
                             ))
                           : wallet.trades.items.map((item, index) => (
                               <TradeRow
-                                key={`${String(item.txHash)}-${String(item.positionId)}-${index}`}
+                                key={
+                                  typeof item.id === "string"
+                                    ? item.id
+                                    : `${String(item.txHash)}-${String(item.positionId)}-${index}`
+                                }
                                 item={item}
                               />
                             ))}
@@ -984,20 +968,30 @@ export function WalletDrawer({
                           {tab === "cashflows" ? "↙" : "〰"}
                         </span>
                         <h4>
-                          {wallet.errors.some((message) =>
-                            message
-                              .toLowerCase()
-                              .includes(
-                                tab === "cashflows" ? "cashflow" : "trade",
-                              ),
-                          )
-                            ? "This history is unavailable."
-                            : tab === "cashflows"
-                              ? "No cashflows to show yet."
-                              : "No closed trades to show yet."}
+                          {selectedHistory?.coverage?.indexing
+                            ? "Indexing account history…"
+                            : wallet.errors.some((message) =>
+                                  message
+                                    .toLowerCase()
+                                    .includes(
+                                      tab === "cashflows"
+                                        ? "cashflow"
+                                        : "trade",
+                                    ),
+                                )
+                              ? "This history is unavailable."
+                              : tab === "cashflows"
+                                ? "No cashflows to show yet."
+                                : "No closed trades to show yet."}
                         </h4>
                       </div>
                     )}
+                    {selectedHistory?.items.length &&
+                    selectedHistory.coverage?.indexing ? (
+                      <p className="wd-coverage wd-coverage-partial">
+                        Older history is being indexed.
+                      </p>
+                    ) : null}
                     {pageError && (
                       <p className="wd-page-error" role="alert">
                         {pageError}

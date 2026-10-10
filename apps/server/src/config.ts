@@ -40,7 +40,12 @@ export const config = {
   summaryInterval: integer("SUMMARY_INTERVAL_MS", 2000, 1000, 300000),
   recentInterval: integer("RECENT_INTERVAL_MS", 10000, 3000, 300000),
   directoryInterval: integer("DIRECTORY_INTERVAL_MS", 30000, 5000, 300000),
-  historyInterval: integer("HISTORY_INTERVAL_MS", 60000, 10000, 3600000),
+  historyInterval: integer("HISTORY_INTERVAL_MS", 3600000, 60000, 86400000),
+  walletIndexInterval: integer("WALLET_INDEX_INTERVAL_MS", 1000, 500, 60000),
+  walletIndexRequests: integer("WALLET_INDEX_REQUESTS_PER_TICK", 2, 1, 10),
+  requestSpacing: integer("UPSTREAM_REQUEST_SPACING_MS", 250, 100, 10000),
+  requestConcurrency: integer("UPSTREAM_CONCURRENCY", 3, 1, 10),
+  requestQueueTimeout: integer("UPSTREAM_QUEUE_TIMEOUT_MS", 8000, 1000, 15000),
 };
 
 export function errorMessage(error: unknown): string {

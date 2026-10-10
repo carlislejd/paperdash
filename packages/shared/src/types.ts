@@ -89,6 +89,7 @@ export interface WalletSnapshot {
   openPositions: unknown[];
 }
 export interface Cashflow {
+  id?: string;
   timestampMs: number;
   txHash: string;
   amountRaw: Raw;
@@ -103,6 +104,19 @@ export interface ClosedTrade {
 export interface HistoryPage<T> {
   items: T[];
   nextCursor: string | null;
+  receivedAt?: number | null;
+  stale?: boolean;
+  coverage?: {
+    backfillComplete: boolean;
+    sourceComplete: boolean | null;
+    identity: string;
+    identityAmbiguous: boolean;
+    retainedCount: number;
+    retainedCountCapped?: boolean;
+    indexing: boolean;
+    lastIndexedAt: number | null;
+    error?: string;
+  };
 }
 export interface PortfolioHistory {
   baseTimeMs: number;

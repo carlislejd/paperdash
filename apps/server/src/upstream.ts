@@ -9,16 +9,17 @@ import type {
   WalletSnapshot,
 } from "../../../packages/shared/src/types.js";
 import { config, errorMessage } from "./config.js";
-import {
-  accountsSchema,
-  addressSchema,
-  cashflowSchema,
-  closedTradeSchema,
-  historySchema,
-  portfolioSchema,
-  walletSchema,
-} from "./schemas.js";
+import { accountsSchema, addressSchema, walletSchema } from "./schemas.js";
 import type { Store } from "./store.js";
+import {
+  CoordinationError,
+  LocalCoordinator,
+  RedisCoordinator,
+  SharedCooldownError,
+  type RequestCoordinator,
+} from "./coordination.js";
+
+const localCoordinators = new WeakMap<Store, RequestCoordinator>();
 
 export class UpstreamError extends Error {
   constructor(
@@ -59,6 +60,7 @@ export class RequestGate {
     private concurrency = 3,
     private spacing = 250,
     private maxQueue = 48,
+    private queueTimeout = config.requestQueueTimeout,
   ) {}
   async run<T>(fn: () => Promise<T>): Promise<T> {
     if (Date.now() < this.cooldown)
@@ -70,9 +72,13 @@ export class RequestGate {
     if (this.queue.length >= this.maxQueue)
       throw new UpstreamError("Upstream request queue is full.", 503);
     return new Promise<T>((resolve, reject) => {
-      this.queue.push({
-        reject,
+      const entry = {
+        reject: (error: Error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
         run: () => {
+          clearTimeout(timeout);
           this.active++;
           fn()
             .then(resolve, reject)
@@ -81,7 +87,13 @@ export class RequestGate {
               this.drain();
             });
         },
-      });
+      };
+      const timeout = setTimeout(() => {
+        const at = this.queue.indexOf(entry);
+        if (at !== -1) this.queue.splice(at, 1);
+        reject(new UpstreamError("Upstream request queue wait expired.", 503));
+      }, this.queueTimeout);
+      this.queue.push(entry);
       this.drain();
     });
   }
@@ -121,37 +133,85 @@ export interface Cached<T> {
 }
 export class Upstream {
   readonly gate: RequestGate;
+  readonly coordinator: RequestCoordinator;
   private inflight = new Map<string, Promise<Cached<unknown>>>();
-  private failures = new Map<string, { until: number; message: string }>();
-  private memory = new Map<string, Cached<unknown>>();
   constructor(
     readonly store: Store,
     private fetcher: typeof fetch = fetch,
     private origin = config.upstream,
     gate?: RequestGate,
+    coordinator?: RequestCoordinator,
   ) {
-    this.gate = gate ?? new RequestGate();
+    this.gate =
+      gate ?? new RequestGate(config.requestConcurrency, config.requestSpacing);
+    if (!coordinator && store.kind === "postgres" && !config.redisUrl)
+      throw new Error(
+        "REDIS_URL is required with PostgreSQL to coordinate upstream requests across instances.",
+      );
+    if (coordinator) this.coordinator = coordinator;
+    else if (config.redisUrl)
+      this.coordinator = new RedisCoordinator(config.redisUrl, origin, {
+        concurrency: config.requestConcurrency,
+        spacing: config.requestSpacing,
+        wait: config.requestQueueTimeout,
+      });
+    else {
+      if (!localCoordinators.has(store))
+        localCoordinators.set(store, new LocalCoordinator());
+      this.coordinator = localCoordinators.get(store)!;
+    }
+  }
+
+  async close() {
+    await Promise.allSettled(this.inflight.values());
+    this.coordinator.close();
+  }
+
+  private async limited<T>(work: () => Promise<T>): Promise<T> {
+    return this.gate.run(async () => {
+      let release: (() => Promise<void>) | undefined;
+      try {
+        release = await this.coordinator.acquire();
+        return await work();
+      } catch (error) {
+        if (error instanceof SharedCooldownError) {
+          this.gate.cooldown = Math.max(this.gate.cooldown, error.retryAt);
+          throw new UpstreamError(error.message, 429, error.retryAt);
+        }
+        if (error instanceof CoordinationError)
+          throw new UpstreamError(error.message, 503);
+        throw error;
+      } finally {
+        await release?.();
+      }
+    });
+  }
+
+  private async rateLimited(
+    response: Response,
+    message: string,
+  ): Promise<never> {
+    this.gate.cooldown = retryAfter(response.headers.get("Retry-After"));
+    await response.body?.cancel();
+    await this.coordinator.defer(Math.max(1, this.gate.cooldown - Date.now()));
+    throw new UpstreamError(message, 429, this.gate.cooldown);
   }
 
   async request<T>(path: string, schema: z.ZodType<T>): Promise<T> {
     if (!path.startsWith("/") || path.startsWith("//"))
       throw new Error("Only upstream relative paths are allowed");
-    return this.gate.run(async () => {
-      for (let attempt = 0; ; attempt++) {
-        try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.limited(async () => {
           const response = await this.fetcher(new URL(path, this.origin), {
             headers: { Accept: "application/json" },
             redirect: "error",
             signal: AbortSignal.timeout(10000),
           });
           if (response.status === 429) {
-            this.gate.cooldown = retryAfter(
-              response.headers.get("Retry-After"),
-            );
-            throw new UpstreamError(
+            return this.rateLimited(
+              response,
               "Papertrade rate limit; serving saved observations when available.",
-              429,
-              this.gate.cooldown,
             );
           }
           if (!response.ok) {
@@ -168,17 +228,18 @@ export class Upstream {
               `Papertrade response schema changed (${parsed.error.issues[0]?.path.join(".") || "root"}).`,
             );
           return parsed.data;
-        } catch (error) {
-          const retryable =
-            error instanceof TypeError ||
-            (error instanceof UpstreamError &&
-              error.status >= 500 &&
-              error.status !== 502);
-          if (attempt >= 1 || !retryable) throw error;
-          await sleep(300);
-        }
+        });
+      } catch (error) {
+        const retryable =
+          error instanceof TypeError ||
+          (error instanceof UpstreamError &&
+            error.status >= 500 &&
+            error.status !== 502 &&
+            error.status !== 503);
+        if (attempt >= 1 || !retryable) throw error;
+        await sleep(300);
       }
-    });
+    }
   }
 
   async cached<T>(
@@ -187,12 +248,17 @@ export class Upstream {
     loader: () => Promise<T>,
     options: { wait?: boolean; staleAfter?: number } = {},
   ): Promise<Cached<T>> {
-    let saved = this.memory.get(key) as Cached<T> | undefined;
-    if (!saved) {
-      const row = await this.store.get<T>(`cache:${key}`);
-      if (row) saved = { ...row, stale: Date.now() - row.receivedAt > ttl };
-    }
-    const failure = this.failures.get(key);
+    // Read the shared cache on every lookup. A local entry must not hide a newer
+    // refresh performed by another API instance or by the collector.
+    const row = await this.store.get<T>(`cache:${key}`);
+    const saved = row
+      ? { ...row, stale: Date.now() - row.receivedAt > ttl }
+      : undefined;
+    const failure = (
+      await this.store.get<{ until: number; message: string }>(
+        `cache-error:${key}`,
+      )
+    )?.value;
     if (saved && Date.now() - saved.receivedAt <= ttl)
       return { ...saved, stale: false };
     if (failure && Date.now() < failure.until) {
@@ -202,23 +268,70 @@ export class Upstream {
     let promise = this.inflight.get(key) as Promise<Cached<T>> | undefined;
     if (!promise) {
       promise = (async () => {
-        const value = await loader();
-        const result = { value, receivedAt: Date.now(), stale: false };
-        await this.store.put(`cache:${key}`, value, result.receivedAt);
-        this.memory.delete(key);
-        this.memory.set(key, result);
-        if (this.memory.size > 500)
-          this.memory.delete(this.memory.keys().next().value!);
-        this.failures.delete(key);
-        return result;
+        const deadline = Date.now() + 14000;
+        do {
+          const lease = await this.coordinator.lock(key);
+          if (lease) {
+            try {
+              const current = await this.store.get<T>(`cache:${key}`);
+              if (current && Date.now() - current.receivedAt <= ttl)
+                return { ...current, stale: false };
+              const sharedFailure = (
+                await this.store.get<{ until: number; message: string }>(
+                  `cache-error:${key}`,
+                )
+              )?.value;
+              if (sharedFailure && sharedFailure.until > Date.now())
+                throw new UpstreamError(
+                  sharedFailure.message,
+                  503,
+                  sharedFailure.until,
+                );
+              const value = await loader();
+              await lease.assertOwned();
+              const result = { value, receivedAt: Date.now(), stale: false };
+              await this.store.put(`cache:${key}`, value, result.receivedAt);
+              return result;
+            } finally {
+              await lease.release();
+            }
+          }
+          const current = await this.store.get<T>(`cache:${key}`);
+          if (current && Date.now() - current.receivedAt <= ttl)
+            return { ...current, stale: false };
+          const sharedFailure = (
+            await this.store.get<{ until: number; message: string }>(
+              `cache-error:${key}`,
+            )
+          )?.value;
+          if (sharedFailure && sharedFailure.until > Date.now())
+            throw new UpstreamError(
+              sharedFailure.message,
+              503,
+              sharedFailure.until,
+            );
+          await sleep(100);
+        } while (Date.now() < deadline);
+        throw new UpstreamError(
+          "Another instance is refreshing this data; retry shortly.",
+          503,
+        );
       })()
-        .catch((error) => {
-          this.failures.set(key, {
-            until: Math.max(Date.now() + 5000, this.gate.cooldown),
-            message: errorMessage(error),
-          });
-          if (this.failures.size > 1000)
-            this.failures.delete(this.failures.keys().next().value!);
+        .catch(async (error) => {
+          const previousFailure = await this.store
+            .get<{ until: number }>(`cache-error:${key}`)
+            .catch(() => null);
+          await this.store
+            .put(`cache-error:${key}`, {
+              until: Math.max(
+                Date.now() + 5000,
+                this.gate.cooldown,
+                error instanceof UpstreamError ? error.retryAt : 0,
+                previousFailure?.value.until ?? 0,
+              ),
+              message: errorMessage(error).slice(0, 500),
+            })
+            .catch(() => {});
           throw error;
         })
         .finally(() => this.inflight.delete(key));
@@ -269,27 +382,22 @@ export class Upstream {
     address: string,
     kind: "cashflows" | "trades",
     cursor?: string,
+    enqueue = true,
   ): Promise<Cached<HistoryPage<T>>> {
-    const parsed = addressSchema.parse(address);
-    const path = canonicalPath(`/query/accounts/${parsed}/${kind}`, {
-      cursor,
-      limit: 75,
-      ...(kind === "trades" ? { filter: "all" } : {}),
-    });
-    const schema = historySchema(
-      kind === "cashflows" ? cashflowSchema : closedTradeSchema,
-    );
-    return this.cached(path, cursor ? 3600000 : 15000, async () => {
-      const result = await this.request(path, schema);
-      if (cursor && result.nextCursor === cursor)
-        throw new UpstreamError("Upstream history returned a repeated cursor.");
-      return result as HistoryPage<T>;
-    });
+    address = addressSchema.parse(address);
+    if (enqueue) await this.store.history.ensureWallet(address, 10);
+    const page = await this.store.history.readPage<T>(address, kind, cursor);
+    return {
+      value: page,
+      receivedAt: page.receivedAt ?? 0,
+      stale: page.stale,
+      ...(page.coverage.error ? { error: page.coverage.error } : {}),
+    };
   }
   async snapshot(address: string): Promise<Cached<WalletSnapshot>> {
     address = addressSchema.parse(address);
     return this.cached(`wallet:${address}`, 5000, () =>
-      this.gate.run(async () => {
+      this.limited(async () => {
         const controller = new AbortController();
         try {
           const response = await this.fetcher(
@@ -307,14 +415,7 @@ export class Upstream {
             },
           );
           if (response.status === 429) {
-            this.gate.cooldown = retryAfter(
-              response.headers.get("Retry-After"),
-            );
-            throw new UpstreamError(
-              "Wallet stream rate limited.",
-              429,
-              this.gate.cooldown,
-            );
+            return this.rateLimited(response, "Wallet stream rate limited.");
           }
           if (!response.ok || !response.body)
             throw new UpstreamError(
@@ -322,6 +423,19 @@ export class Upstream {
               response.status,
             );
           const value = await firstWalletEvent(response.body, address);
+          const previous = await this.store.get<WalletSnapshot>(
+            `cache:wallet:${address}`,
+          );
+          if (
+            previous &&
+            (value.accountRevision < previous.value.accountRevision ||
+              value.indexedThroughBlock < previous.value.indexedThroughBlock ||
+              value.indexedThroughTimestamp <
+                previous.value.indexedThroughTimestamp)
+          )
+            throw new UpstreamError(
+              "Papertrade returned an older account revision; retaining the saved snapshot.",
+            );
           return value;
         } finally {
           controller.abort();
@@ -331,14 +445,21 @@ export class Upstream {
   }
   async wallet(address: string): Promise<WalletResponse> {
     address = addressSchema.parse(address);
-    const path = canonicalPath(`/query/accounts/${address}/portfolio-history`, {
-      range: "all",
-    });
+    await this.store.history.ensureWallet(address, 10);
     const results = await Promise.allSettled([
       this.snapshot(address),
-      this.history<Cashflow>(address, "cashflows"),
-      this.history<ClosedTrade>(address, "trades"),
-      this.cached(path, 30000, () => this.request(path, portfolioSchema)),
+      this.history<Cashflow>(address, "cashflows", undefined, false),
+      this.history<ClosedTrade>(address, "trades", undefined, false),
+      (async (): Promise<Cached<PortfolioHistory>> => {
+        const saved = await this.store.history.readPortfolio(address);
+        if (!saved)
+          throw new UpstreamError("Portfolio history is being indexed.", 503);
+        return {
+          ...saved,
+          stale: Date.now() - saved.receivedAt > 600000,
+          ...(saved.coverage.error ? { error: saved.coverage.error } : {}),
+        };
+      })(),
     ] as const);
     const errors: string[] = [];
     const labels = ["Live account", "Cashflows", "Closed trades", "Portfolio"];

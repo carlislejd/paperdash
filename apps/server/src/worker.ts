@@ -6,13 +6,15 @@ import { config } from "./config.js";
 
 const store = await createStore();
 const bus = new ChangeBus(config.redisUrl);
-const collector = new Collector(store, new Upstream(store), bus);
+const upstream = new Upstream(store);
+const collector = new Collector(store, upstream, bus);
 if (!(await collector.start())) {
   // Render deploy overlap: let the old worker finish rather than running two feeds.
   console.error(
     "Another collector currently holds the ingestion lease. Retry after its shutdown.",
   );
   bus.close();
+  await upstream.close();
   await store.close();
   process.exit(1);
 }
@@ -24,6 +26,7 @@ async function close() {
   if (closing) return;
   closing = true;
   await collector.stop();
+  await upstream.close();
   bus.close();
   await store.close();
 }
