@@ -12,7 +12,7 @@ function shareMetadata(siteUrl: string, usingLocalOrigin: boolean): Plugin {
       }
     },
     transformIndexHtml() {
-      const imageUrl = new URL("/art/paperdash-social.jpg", siteUrl).href;
+      const imageUrl = new URL("/art/paperclub-social-v1.jpg", siteUrl).href;
       return [
         { tag: "link", attrs: { rel: "canonical", href: siteUrl } },
         { tag: "meta", attrs: { property: "og:url", content: siteUrl } },

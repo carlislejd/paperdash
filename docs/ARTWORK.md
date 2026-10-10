@@ -1,4 +1,4 @@
-# Paperdash artwork
+# paperclub artwork
 
 The community banner is original artwork generated with the built-in image-generation tool on October 9, 2026. The production asset is `apps/web/public/art/community-manga.webp`, encoded at 1,400 pixels wide for a fast initial page load. Source output remains in the local Codex generated-images directory; the website depends only on its tracked production asset.
 
@@ -27,7 +27,8 @@ The character remains in the larger shared-link preview, while the dashboard its
 - `apps/web/public/art/observer-avatar.webp`: retained 512px portrait master.
 - `apps/web/public/favicon-16.png`, `favicon-32.png`, `favicon-192.png`, and `favicon.ico`: browser icons.
 - `apps/web/public/apple-touch-icon.png`: 180px icon for saved home-screen links.
-- `apps/web/public/art/paperdash-social.jpg`: shared-link preview artwork.
+- `apps/web/public/art/paperclub-social-v1.jpg`: current shared-link preview artwork, 1200 × 630 JPEG.
+- `apps/web/public/art/paperdash-social.jpg`: retained earlier preview so cached image links remain valid.
 
 ### Portrait edit prompt
 
@@ -36,3 +37,17 @@ Use case: identity-preserve. Edit target: attached original adult manga woman. A
 ### Shared-link edit prompt
 
 Use case: compositing. Edit target: attached original manga illustration. Asset: polished social sharing / Open Graph link preview for the Paperdash website, wide landscape 1200 by 630 layout (1.91:1). Preserve the original adult woman at her desk on the RIGHT half: same face, short dark hair, lavender headphones, chin resting on hand, delicate expressive manga penwork, paper crane and subtle city scene behind her. On the LEFT half create generous clean warm ivory #f5f2e9 negative space for crisp typography; let faint city linework remain only at the very bottom left. Put exactly two text lines in the clean left space: large bold lowercase geometric sans-serif 'paperdash.' and underneath much smaller regular sans-serif 'Papertrade analytics'. Dark charcoal #252922 lettering. Give the large brand name the strongest hierarchy and comfortable left margin around 70 pixels at 1200px width. The woman is a supporting brand illustration, her entire head fits inside the top/right margins. Overall premium ink manga editorial identity, cream paper, black ink, very restrained lavender. No extra slogan or narrative copy, no fake statistics, no other text, no UI, no device mockup, no outer frame, no watermark. This is the actual flat image asset, not a screenshot of a browser card.
+
+### paperclub wordmark update — October 10, 2026
+
+Edited the existing shared-link preview with the built-in image-generation tool, then encoded it as a 1200 × 630 JPEG. The new filename lets social crawlers fetch the updated artwork without reusing the earlier image URL. Final prompt:
+
+Use case: text-localization.
+
+Asset type: website Open Graph and social link preview, wide landscape 1200 by 630 pixels.
+
+Input image: the provided paperdash-social.jpg is the edit target.
+
+Primary request: Replace ONLY the large top-left wordmark "paperdash." with exactly "paperclub." in the same bold lowercase geometric sans-serif style, ink color, scale and left alignment. Keep the smaller subtitle exactly "Papertrade analytics".
+
+Constraints: Preserve the original composition, illustration, face, adult woman with short dark hair and lavender headphones, her seated pose, desk, paper crane, sleeping cat, hanging plants, city skyline, mountain, manga linework, warm ivory paper background and lavender accents. Preserve all existing illustrated details and placement as closely as possible. Do not add anything or crop the scene. Only the wordmark changes. Output opaque wide landscape 1200x630.
