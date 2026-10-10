@@ -27,7 +27,8 @@ The character remains in the larger shared-link preview, while the dashboard its
 - `apps/web/public/art/observer-avatar.webp`: retained 512px portrait master.
 - `apps/web/public/favicon-16.png`, `favicon-32.png`, `favicon-192.png`, and `favicon.ico`: browser icons.
 - `apps/web/public/apple-touch-icon.png`: 180px icon for saved home-screen links.
-- `apps/web/public/art/paperclub-social-v1.jpg`: current shared-link preview artwork, 1200 × 630 JPEG.
+- `apps/web/public/art/paperclub-social-v2.jpg`: current shared-link preview artwork with the lavender origami crane, 1200 × 630 JPEG.
+- `apps/web/public/art/paperclub-social-v1.jpg`: retained earlier paperclub preview so cached image links remain valid.
 - `apps/web/public/art/paperdash-social.jpg`: retained earlier preview so cached image links remain valid.
 
 ### Portrait edit prompt
@@ -51,3 +52,9 @@ Input image: the provided paperdash-social.jpg is the edit target.
 Primary request: Replace ONLY the large top-left wordmark "paperdash." with exactly "paperclub." in the same bold lowercase geometric sans-serif style, ink color, scale and left alignment. Keep the smaller subtitle exactly "Papertrade analytics".
 
 Constraints: Preserve the original composition, illustration, face, adult woman with short dark hair and lavender headphones, her seated pose, desk, paper crane, sleeping cat, hanging plants, city skyline, mountain, manga linework, warm ivory paper background and lavender accents. Preserve all existing illustrated details and placement as closely as possible. Do not add anything or crop the scene. Only the wordmark changes. Output opaque wide landscape 1200x630.
+
+### Origami identity update — October 10, 2026
+
+Edited the existing paperclub preview with the built-in image-generation tool, using a rendered website lockup as the logo reference. Encoded the result as a 1200 × 630 JPEG. The versioned v2 filename refreshes the image URL in Open Graph and Twitter metadata. Final prompt:
+
+Use case: compositing. Asset type: production Open Graph/social preview, opaque wide landscape 1200 by 630 layout. Image 1 is the edit target: the existing paperclub manga social card. Image 2 is the exact current website brand lockup and crane geometry reference. Update only the left brand treatment in image 1 so it includes the lavender origami crane from image 2. Place a modest, crisp lavender crane above the existing large paperclub. wordmark, left-aligned with the wordmark, using the available ivory space above it; the crane should be about 76px wide at 1200px output and clearly resemble the five-facet angular crane in image 2, not a paper airplane. Preserve the wordmark exact text "paperclub." and subtitle exact text "Papertrade analytics" and their existing size, style and position. Keep every illustrated part of image 1 unchanged as closely as possible: same adult woman, face, short black hair, lavender headphones, pose, desk, physical paper crane on desk, cat, plants, city, warm ivory background, ink hatching and restrained lavender accents. Preserve composition and margins, no cropping, no extra wording, no statistics, no frame, no watermark. This is an edit of the actual flat image asset, not a mockup.
