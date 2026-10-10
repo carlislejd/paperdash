@@ -71,12 +71,17 @@ function PaperMark({ size = 30 }: { size?: number }) {
     <svg
       width={size}
       height={size}
-      viewBox="0 0 40 40"
+      viewBox="0 0 48 48"
       fill="none"
       aria-hidden="true"
     >
-      <path d="m3 14 33-9-13 29-5-14z" fill="currentColor" />
-      <path d="M18 20 36 5" stroke="var(--paper)" strokeWidth="1.5" />
+      <g transform="translate(0 3.5)" fill="currentColor">
+        <path d="M8 12 27 25 19 31Z" opacity=".55" />
+        <path d="M2 22 18 28 23 36 14 31Z" opacity=".75" />
+        <path d="m23 5 7 22-8 7-6-5Z" />
+        <path d="m16 29 14-2 6-11h3l7 7-8-2-3 10-12 5Z" opacity=".85" />
+        <path d="m16 29 14-2-7 9Z" opacity=".75" />
+      </g>
     </svg>
   );
 }

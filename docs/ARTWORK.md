@@ -20,7 +20,7 @@ Use case: background-extraction. Edit target: the attached original manga illust
 
 ## Browser identity and link previews
 
-Browser and saved-link icons use the site's paper-plane mark in lavender on an ink tile. The canonical source is `apps/web/public/favicon.svg`, with the same plane geometry as the header mark. Run `node scripts/generate-icons.mjs` to regenerate PNG/ICO variants with the installed Playwright Chromium. Explicit icon URLs are versioned to refresh older cached portraits.
+Browser and saved-link icons use an origami crane in lavender on an ink tile. The angular wing, bent neck and broad folded facets keep the silhouette legible at small sizes. The canonical icon source is `apps/web/public/favicon.svg`, with the same crane geometry as the header and empty-state marks. Run `node scripts/generate-icons.mjs` to regenerate PNG/ICO variants with the installed Playwright Chromium. Explicit icon URLs are versioned to refresh older cached marks.
 
 The character remains in the larger shared-link preview, while the dashboard itself stays compact. That illustration was edited with the built-in image-generation tool using the existing original illustration and cutout, then encoded as a 1200 × 630 JPEG. The earlier portrait is retained as source artwork and is no longer used as an icon.
 
