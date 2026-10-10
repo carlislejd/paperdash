@@ -31,7 +31,10 @@ export async function migratePgAnalyticsIndexes(pool: Pool): Promise<void> {
   client.on("error", () => {}); // active queries still reject; no unhandled idle error
   try {
     await client.connect();
-    await client.query("SELECT pg_advisory_lock(74481231, 1)");
+    // Advisory namespace 74481231: 0 = transactional schema migration,
+    // 1 = live collector ownership, 2 = concurrent index migration. This
+    // owner-only build must never wait for the long-lived collector lease.
+    await client.query("SELECT pg_advisory_lock(74481231, 2)");
     const current = (await client.query(walletAssetIndexStatusSql)).rows[0];
     if (current && !current.expected)
       throw new Error(

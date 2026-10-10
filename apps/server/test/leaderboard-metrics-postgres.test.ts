@@ -42,6 +42,47 @@ describe.skipIf(!databaseUrl)(
           .statement_timeout;
         expect(timeout).not.toBe("2min"); // owner session budget never mutates the normal pool
 
+        // Exercise the real collector lease, not a mirrored lock-key fixture.
+        // Even an actual index build must finish while that lease stays held.
+        const collector = await createStore({
+          databaseUrl: url.toString(),
+          autoMigrate: false,
+        });
+        let releaseLease: (() => Promise<void>) | null = null;
+        let migration: Promise<void> | undefined;
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        try {
+          releaseLease = await collector.lease();
+          expect(releaseLease).not.toBeNull();
+          await pool.query(`DROP INDEX ${index}`);
+          migration = migratePgAnalyticsIndexes(pool);
+          await Promise.race([
+            migration,
+            new Promise<never>((_, reject) => {
+              deadline = setTimeout(
+                () =>
+                  reject(
+                    new Error("Index migration waited for the collector lease"),
+                  ),
+                3000,
+              );
+            }),
+          ]);
+          expect((await pool.query(walletAssetIndexStatusSql)).rows[0]).toEqual(
+            {
+              valid: true,
+              expected: true,
+            },
+          );
+        } finally {
+          clearTimeout(deadline);
+          // On regression the timeout releases ownership first, unblocking the
+          // pending build immediately instead of waiting its 120-second budget.
+          await releaseLease?.();
+          await migration?.catch(() => {});
+          await collector.close();
+        }
+
         await pool.query(`DROP INDEX ${index}`);
         const writer = await pool.connect(),
           builder = await pool.connect();
