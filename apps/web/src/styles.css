@@ -5,13 +5,6 @@
   font-display: swap;
   src: url("/fonts/dm-sans-latin.woff2") format("woff2");
 }
-@font-face {
-  font-family: "DM Serif Display";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/dm-serif-display-latin.woff2") format("woff2");
-}
 
 :root {
   --paper: #f5f2e9;
@@ -334,9 +327,9 @@ button svg {
 }
 .section-heading h2,
 .community-heading h2 {
-  font-family: "DM Serif Display", Georgia, serif;
+  font-family: var(--font);
   font-size: 27px;
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: -0.55px;
   line-height: 1.2;
   margin-top: 7px;
@@ -424,7 +417,7 @@ button svg {
   color: #868c79;
 }
 .chart-empty p {
-  font-family: "DM Serif Display", Georgia, serif;
+  font-family: var(--font);
   font-size: 20px;
   margin-top: 9px;
   color: #68725d;
@@ -542,8 +535,8 @@ button svg {
   color: #8d819e;
 }
 .activity-empty h3 {
-  font-family: "DM Serif Display", Georgia, serif;
-  font-weight: 400;
+  font-family: var(--font);
+  font-weight: 700;
   font-size: 18px;
   color: #59644f;
 }
@@ -821,9 +814,9 @@ button svg {
   color: #748267;
 }
 .table-empty h3 {
-  font-family: "DM Serif Display", Georgia, serif;
+  font-family: var(--font);
   font-size: 24px;
-  font-weight: 400;
+  font-weight: 700;
   margin-bottom: 8px;
 }
 .table-empty > svg {
@@ -930,10 +923,10 @@ button svg {
   box-shadow: 8px 8px 0 #23292322;
 }
 .info-modal h2 {
-  font-family: "DM Serif Display", Georgia, serif;
+  font-family: var(--font);
   font-size: 35px;
   line-height: 1.05;
-  font-weight: 400;
+  font-weight: 700;
   margin: 17px 0 22px;
 }
 .info-modal p {

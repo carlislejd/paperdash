@@ -11,10 +11,7 @@
 }
 .analytics-heading h2 {
   margin: 5px 0 0;
-  font:
-    400 36px/1.1 "DM Serif Display",
-    Georgia,
-    serif;
+  font: 700 36px/1.1 var(--font);
   letter-spacing: -0.8px;
 }
 .analytics-eyebrow {
@@ -141,10 +138,7 @@
   margin-bottom: 18px;
 }
 .asset-detail-heading h3 {
-  font:
-    400 29px/1.2 "DM Serif Display",
-    Georgia,
-    serif;
+  font: 700 29px/1.2 var(--font);
   letter-spacing: -0.5px;
 }
 .asset-detail-heading > span {
@@ -234,10 +228,7 @@
 }
 .analytics-subheading {
   margin: 0 0 15px;
-  font:
-    400 25px/1.2 "DM Serif Display",
-    Georgia,
-    serif;
+  font: 700 25px/1.2 var(--font);
   letter-spacing: -0.4px;
 }
 .asset-chart-legend {
