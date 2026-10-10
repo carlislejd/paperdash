@@ -23,7 +23,7 @@
   grid-template-columns: 1fr auto;
   align-items: start;
   gap: 12px 18px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .data-info-details dt {
@@ -32,7 +32,7 @@
 .data-info-details dd {
   margin: 0;
   text-align: right;
-  font-weight: 550;
+  font-weight: 650;
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }

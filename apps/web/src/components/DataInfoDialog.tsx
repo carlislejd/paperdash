@@ -11,7 +11,6 @@ interface DataInfoDialogProps {
 
 export function DataInfoDialog({ open, onClose, status }: DataInfoDialogProps) {
   const titleId = useId();
-  const descriptionId = useId();
   const backdropRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -111,7 +110,6 @@ export function DataInfoDialog({ open, onClose, status }: DataInfoDialogProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        aria-describedby={descriptionId}
         tabIndex={-1}
       >
         <button
@@ -135,16 +133,6 @@ export function DataInfoDialog({ open, onClose, status }: DataInfoDialogProps) {
           </svg>
         </button>
         <h2 id={titleId}>Data &amp; sources</h2>
-        <p id={descriptionId}>
-          Paperdash reads Papertrade’s public protocol and wallet data. TVL and
-          wallet counts are reported by that source and have not been
-          independently reconciled against custody.
-        </p>
-        <p>
-          The live tape shows observed executions. It is a recent feed, not a
-          complete historical ledger. Wallet charts show the coverage supplied
-          by Papertrade; a gap never means zero.
-        </p>
         <dl className="source-details data-info-details">
           <dt>Last protocol update</dt>
           <dd>{updatedLabel}</dd>
@@ -153,27 +141,6 @@ export function DataInfoDialog({ open, onClose, status }: DataInfoDialogProps) {
           <dt>Trade connection</dt>
           <dd>{status?.stream ?? "Connecting"}</dd>
         </dl>
-        <a
-          className="text-button"
-          href="https://docs.papertrade.xyz/"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Read the protocol docs{" "}
-          <span className="sr-only">(opens in a new tab)</span>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M6 18 18 6M6 6h12v12" />
-          </svg>
-        </a>
       </section>
     </div>,
     document.body,

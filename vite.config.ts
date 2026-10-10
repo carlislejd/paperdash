@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
     root: "apps/web",
     envDir: process.cwd(),
     plugins: [react(), shareMetadata(`${origin.origin}/`, !configuredOrigin)],
-    build: { outDir: "dist", sourcemap: true },
+    build: { outDir: "dist", sourcemap: false },
     server: {
       port: 5173,
       proxy: {

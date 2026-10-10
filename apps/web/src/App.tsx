@@ -725,7 +725,7 @@ function App() {
                 <span className="metric-label">
                   TVL{" "}
                   <button
-                    aria-label="How TVL is sourced"
+                    aria-label="View data status"
                     onClick={() => setInfo(true)}
                   >
                     <Icon name="circle" size={13} />
@@ -1077,13 +1077,6 @@ function App() {
               rel="noreferrer"
             >
               Open Papertrade <Icon name="northeast" size={12} />
-            </a>
-            <a
-              href="https://github.com/carlislejd/paperdash"
-              target="_blank"
-              rel="noreferrer"
-            >
-              GitHub <Icon name="northeast" size={12} />
             </a>
           </div>
         </footer>

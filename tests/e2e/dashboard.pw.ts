@@ -93,13 +93,13 @@ test('wallet refresh preserves loaded history and stops when closed', async ({ p
 test('data information traps keyboard focus and restores its trigger', async ({ page }) => {
   await mockSources(page);
   await page.goto('/');
-  const trigger = page.getByRole('button', { name: 'How TVL is sourced' });
+  const trigger = page.getByRole('button', { name: 'View data status' });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: 'Data & sources' });
   const close = dialog.getByRole('button', { name: 'Close data information' });
   await expect(close).toBeFocused();
   await page.keyboard.press('Shift+Tab');
-  await expect(dialog.getByRole('link', { name: /Read the protocol docs/ })).toBeFocused();
+  await expect(close).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(close).toBeFocused();
   await page.keyboard.press('Escape');
