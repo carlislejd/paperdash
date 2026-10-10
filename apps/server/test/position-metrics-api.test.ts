@@ -61,7 +61,8 @@ describe("position metric responses", () => {
     }
   });
 
-  it("enrolls a valid wallet without claiming its empty history is complete or using zero averages", async () => {
+  it("reads an unindexed wallet without duplicate enrollment writes or claiming empty means are zero", async () => {
+    const enroll = vi.spyOn(store.history, "ensureWallet");
     const app = await buildApi(store, undefined, undefined, { logger: false });
     try {
       const result = await app.inject(
@@ -74,7 +75,8 @@ describe("position metric responses", () => {
         avgLeverage: null,
         coverage: { historyBackfillComplete: false },
       });
-      expect(await store.history.getStatus(address)).toHaveLength(3);
+      expect(await store.history.getStatus(address)).toHaveLength(0);
+      expect(enroll).not.toHaveBeenCalled();
       expect(
         (await app.inject("/api/wallets/invalid/position-metrics")).statusCode,
       ).toBe(400);

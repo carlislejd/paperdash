@@ -290,7 +290,6 @@ export async function buildApi(
   });
   app.get("/api/wallets/:address/position-metrics", async (req, reply) => {
     const { address } = z.object({ address: addressSchema }).parse(req.params);
-    await store.history.ensureWallet(address, 10);
     return analyticsResponse(
       req,
       reply,
