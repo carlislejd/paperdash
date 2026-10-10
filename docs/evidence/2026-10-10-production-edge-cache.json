@@ -1,0 +1,1833 @@
+{
+  "startedAt": "2026-10-10T17:09:26.039Z",
+  "endedAt": "2026-10-10T17:09:34.882Z",
+  "passed": true,
+  "abortReason": null,
+  "plan": {
+    "origin": "https://paperdash-api.onrender.com",
+    "allowedOrigins": [
+      "https://papertrade.club",
+      "https://www.papertrade.club",
+      "https://paperdash-web.onrender.com"
+    ],
+    "requestCap": 65,
+    "bodyByteCap": 16777216,
+    "deadlineMs": 60000,
+    "requestTimeoutMs": 5000,
+    "sseDurationMs": 3000,
+    "retries": 0,
+    "minimumRequestSpacingMs": 100,
+    "externalUpstreamRequests": 0,
+    "walletChecks": "Retained position metrics and cashflow/trade pages only",
+    "excludedFullWalletSnapshot": true,
+    "stages": [
+      "Alternating allowed/no/denied Origin within measured one-second windows",
+      "Identity/gzip decode and ETag 304",
+      "Expiry after 1.25 seconds",
+      "Exact allowlist and no-store exclusions",
+      "Credentials after anonymous warm cache",
+      "One three-second SSE header check"
+    ]
+  },
+  "requests": 36,
+  "responseBytes": 882237,
+  "timingWindows": [
+    {
+      "label": "origin round0",
+      "elapsedMs": 645,
+      "withinOneSecond": true
+    },
+    {
+      "label": "origin round1",
+      "elapsedMs": 510,
+      "withinOneSecond": true
+    }
+  ],
+  "checks": [
+    {
+      "name": "origin round0: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round0: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 1,
+        "durationMs": 241,
+        "bytes": 28969,
+        "cfCacheStatus": "MISS",
+        "age": null,
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "origin round0: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round0: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "origin round0: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "origin round0: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "origin round0: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round0: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://www.papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 245,
+        "durationMs": 99,
+        "bytes": 28969,
+        "cfCacheStatus": "MISS",
+        "age": null,
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://www.papertrade.club",
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "origin round0: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round0: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "origin round0: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "origin round0: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "origin round0: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round0: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://paperdash-web.onrender.com",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 345,
+        "durationMs": 89,
+        "bytes": 28969,
+        "cfCacheStatus": "MISS",
+        "age": null,
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://paperdash-web.onrender.com",
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "origin round0: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round0: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "origin round0: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "origin round0: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "origin round0: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round0: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": null,
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 447,
+        "durationMs": 104,
+        "bytes": 28969,
+        "cfCacheStatus": "MISS",
+        "age": null,
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": null,
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "origin round0: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round0: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "origin round0: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "origin round0: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "origin round0: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round0: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://edge-validation.invalid",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 552,
+        "durationMs": 93,
+        "bytes": 28969,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": null,
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "denied origin round0: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://edge-validation.invalid",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 552,
+        "durationMs": 93,
+        "bytes": 28969,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": null,
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "denied origin round0: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "origin round1: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round1: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 653,
+        "durationMs": 49,
+        "bytes": 28969,
+        "cfCacheStatus": "HIT",
+        "age": "0",
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "origin round1: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round1: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "origin round1: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "origin round1: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "origin round1: Age is at most one second",
+      "passed": true,
+      "details": "0"
+    },
+    {
+      "name": "origin round1: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round1: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://www.papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 755,
+        "durationMs": 41,
+        "bytes": 28969,
+        "cfCacheStatus": "HIT",
+        "age": "0",
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://www.papertrade.club",
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "origin round1: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round1: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "origin round1: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "origin round1: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "origin round1: Age is at most one second",
+      "passed": true,
+      "details": "0"
+    },
+    {
+      "name": "origin round1: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round1: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://paperdash-web.onrender.com",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 856,
+        "durationMs": 52,
+        "bytes": 28969,
+        "cfCacheStatus": "HIT",
+        "age": "0",
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://paperdash-web.onrender.com",
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "origin round1: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round1: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "origin round1: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "origin round1: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "origin round1: Age is at most one second",
+      "passed": true,
+      "details": "0"
+    },
+    {
+      "name": "origin round1: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round1: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": null,
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 957,
+        "durationMs": 46,
+        "bytes": 28969,
+        "cfCacheStatus": "HIT",
+        "age": "0",
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": null,
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "origin round1: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round1: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "origin round1: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "origin round1: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "origin round1: Age is at most one second",
+      "passed": true,
+      "details": "0"
+    },
+    {
+      "name": "origin round1: 200",
+      "passed": true
+    },
+    {
+      "name": "origin round1: exact CORS",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://edge-validation.invalid",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 1059,
+        "durationMs": 96,
+        "bytes": 28969,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": null,
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "denied origin round1: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://edge-validation.invalid",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 1059,
+        "durationMs": 96,
+        "bytes": 28969,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": null,
+        "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+      }
+    },
+    {
+      "name": "denied origin round1: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "identity: 200",
+      "passed": true
+    },
+    {
+      "name": "identity: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "identity: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "identity: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "gzip: 200",
+      "passed": true
+    },
+    {
+      "name": "gzip: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "gzip: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "gzip: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "gzip: Age is at most one second",
+      "passed": true,
+      "details": "0"
+    },
+    {
+      "name": "identity/gzip both decode expected JSON",
+      "passed": true
+    },
+    {
+      "name": "ETag revalidation returns 304",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://papertrade.club",
+        "encoding": "gzip",
+        "method": "GET",
+        "status": 304,
+        "atMs": 1371,
+        "durationMs": 51,
+        "bytes": 0,
+        "cfCacheStatus": "HIT",
+        "age": "0",
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "\"bfce892c261460ab5871994ddce6a54397d9be07a206c07f212b946706415c69-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": null
+      }
+    },
+    {
+      "name": "304 response is empty",
+      "passed": true
+    },
+    {
+      "name": "after 1.25s: 200",
+      "passed": true
+    },
+    {
+      "name": "after 1.25s: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "after 1.25s: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "after 1.25s: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "/api/assets: 200",
+      "passed": true
+    },
+    {
+      "name": "/api/assets: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "/api/assets: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "/api/assets: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "/api/assets/0/market: 200",
+      "passed": true
+    },
+    {
+      "name": "/api/assets/0/market: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "/api/assets/0/market: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "/api/assets/0/market: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "/api/assets/1/market: 200",
+      "passed": true
+    },
+    {
+      "name": "/api/assets/1/market: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "/api/assets/1/market: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "/api/assets/1/market: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "/api/house: 200",
+      "passed": true
+    },
+    {
+      "name": "/api/house: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "/api/house: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "/api/house: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "/api/position-metrics: 200",
+      "passed": true
+    },
+    {
+      "name": "/api/position-metrics: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "/api/position-metrics: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "/api/position-metrics: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "/api/liquidations/stats: 200",
+      "passed": true
+    },
+    {
+      "name": "/api/liquidations/stats: one-second edge policy",
+      "passed": true
+    },
+    {
+      "name": "/api/liquidations/stats: browser revalidation",
+      "passed": true
+    },
+    {
+      "name": "/api/liquidations/stats: Vary Origin/encoding",
+      "passed": true
+    },
+    {
+      "name": "/api/overview?edge_validation=1: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/overview?edge_validation=1",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 3880,
+        "durationMs": 122,
+        "bytes": 28958,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "W/\"1b7a2aaf144d0a4e7555e15e09aa5405b2a44ee525c0c5fb7f6d0c342fcbd177-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "1b7a2aaf144d0a4e7555e15e09aa5405b2a44ee525c0c5fb7f6d0c342fcbd177"
+      }
+    },
+    {
+      "name": "/api/overview?edge_validation=1: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "/api/assets/0/market?range=1h: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/assets/0/market?range=1h",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 4004,
+        "durationMs": 101,
+        "bytes": 83302,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "W/\"4432414bc3a48583880d97c4daf6600791e5681f380d9cfbf86ad1297aa117f8-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "4432414bc3a48583880d97c4daf6600791e5681f380d9cfbf86ad1297aa117f8"
+      }
+    },
+    {
+      "name": "/api/assets/0/market?range=1h: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "/api/liquidations/stats?instrument=0: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/liquidations/stats?instrument=0",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 4107,
+        "durationMs": 104,
+        "bytes": 437,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin, Accept-Encoding",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "W/\"8020934835f566f33332b982b76129e87fdcc5ba002c6ab2393b74bf044d8f12\"",
+        "contentEncoding": null,
+        "bodyHash": "8020934835f566f33332b982b76129e87fdcc5ba002c6ab2393b74bf044d8f12"
+      }
+    },
+    {
+      "name": "/api/liquidations/stats?instrument=0: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "/health/ready: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/health/ready",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 4212,
+        "durationMs": 124,
+        "bytes": 180,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-store",
+        "vary": "Origin, accept-encoding",
+        "allowOrigin": "https://papertrade.club",
+        "etag": null,
+        "contentEncoding": null,
+        "bodyHash": "1a86cb324df19e26d0be3f1c9b472d67167fcdb382135d1bdab3ec2de102d3c1"
+      }
+    },
+    {
+      "name": "/health/ready: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "/api/edge-cache-validation-not-found: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/edge-cache-validation-not-found",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 404,
+        "atMs": 4337,
+        "durationMs": 112,
+        "bytes": 107,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-store",
+        "vary": "Origin, accept-encoding",
+        "allowOrigin": "https://papertrade.club",
+        "etag": null,
+        "contentEncoding": null,
+        "bodyHash": "00a2b22ccadb596c3e3860432d01d4742d57e7b00692c422b95eac7cd478180f"
+      }
+    },
+    {
+      "name": "/api/edge-cache-validation-not-found: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "/api/assets/2/market: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/assets/2/market",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 400,
+        "atMs": 4450,
+        "durationMs": 106,
+        "bytes": 130,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-store",
+        "vary": "Origin, accept-encoding",
+        "allowOrigin": "https://papertrade.club",
+        "etag": null,
+        "contentEncoding": null,
+        "bodyHash": "3ee072703b651341cae719066ea735637f3ea8bb3e68febf17afbeef839a156c"
+      }
+    },
+    {
+      "name": "/api/assets/2/market: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "/api/indexing: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/indexing",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 4558,
+        "durationMs": 112,
+        "bytes": 280,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin, Accept-Encoding",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "W/\"1cac38aedb967749902a14bd8b09273bd324a9a8de93a508b5b43d41d329d473\"",
+        "contentEncoding": null,
+        "bodyHash": "1cac38aedb967749902a14bd8b09273bd324a9a8de93a508b5b43d41d329d473"
+      }
+    },
+    {
+      "name": "/api/indexing: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "/api/liquidations?cursor=invalid: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/liquidations?cursor=invalid",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 400,
+        "atMs": 4672,
+        "durationMs": 138,
+        "bytes": 28,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-store",
+        "vary": "Origin, accept-encoding",
+        "allowOrigin": "https://papertrade.club",
+        "etag": null,
+        "contentEncoding": null,
+        "bodyHash": "8a92cb70489574538eeb2157507c4a6c474eac1970cc5947ca0f14657ee3095e"
+      }
+    },
+    {
+      "name": "/api/liquidations?cursor=invalid: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "OPTIONS: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/overview",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "OPTIONS",
+        "status": 204,
+        "atMs": 4812,
+        "durationMs": 153,
+        "bytes": 0,
+        "cfCacheStatus": "DYNAMIC",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-store",
+        "vary": "Origin, Access-Control-Request-Headers",
+        "allowOrigin": "https://papertrade.club",
+        "etag": null,
+        "contentEncoding": null,
+        "bodyHash": null
+      }
+    },
+    {
+      "name": "OPTIONS: not served from shared cache",
+      "passed": true,
+      "details": "DYNAMIC"
+    },
+    {
+      "name": "retained wallet position-metrics: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/wallets/[retained-wallet]/position-metrics",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 4966,
+        "durationMs": 136,
+        "bytes": 339,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin, Accept-Encoding",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "W/\"003b9f97091117e4004648cf8b8c976090065cc88852cc61ceb6ec1bcb972055\"",
+        "contentEncoding": null,
+        "bodyHash": "003b9f97091117e4004648cf8b8c976090065cc88852cc61ceb6ec1bcb972055"
+      }
+    },
+    {
+      "name": "retained wallet position-metrics: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "retained wallet cashflows: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/wallets/[retained-wallet]/cashflows",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 5104,
+        "durationMs": 166,
+        "bytes": 594,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin, Accept-Encoding",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "W/\"002a4705fab2537161b9a4281278366581c88684d2b9a53a40c8a62773f7f261\"",
+        "contentEncoding": null,
+        "bodyHash": "002a4705fab2537161b9a4281278366581c88684d2b9a53a40c8a62773f7f261"
+      }
+    },
+    {
+      "name": "retained wallet cashflows: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "retained wallet trades: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/wallets/[retained-wallet]/trades",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 5272,
+        "durationMs": 141,
+        "bytes": 6024,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-cache",
+        "vary": "Accept-Encoding, Origin",
+        "allowOrigin": "https://papertrade.club",
+        "etag": "W/\"6b358664a33e2484f1bd5372f723e09ff0d51c368c1e27332ca8cd75774c0694-gzip\"",
+        "contentEncoding": null,
+        "bodyHash": "6b358664a33e2484f1bd5372f723e09ff0d51c368c1e27332ca8cd75774c0694"
+      }
+    },
+    {
+      "name": "retained wallet trades: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "credential request remains a public snapshot",
+      "passed": true
+    },
+    {
+      "name": "credential check does not set a cookie",
+      "passed": true
+    },
+    {
+      "name": "credential check retains the anonymous overview schema",
+      "passed": true
+    },
+    {
+      "name": "credential request remains a public snapshot",
+      "passed": true
+    },
+    {
+      "name": "credential check does not set a cookie",
+      "passed": true
+    },
+    {
+      "name": "credential check retains the anonymous overview schema",
+      "passed": true
+    },
+    {
+      "name": "SSE: CDN no-store",
+      "passed": true,
+      "details": {
+        "path": "/api/events?topics=overview",
+        "origin": "https://papertrade.club",
+        "encoding": "identity",
+        "method": "GET",
+        "status": 200,
+        "atMs": 5731,
+        "durationMs": 3110,
+        "bytes": 48647,
+        "cfCacheStatus": "BYPASS",
+        "age": null,
+        "cdnCacheControl": "no-store",
+        "cacheControl": "no-store, no-transform",
+        "vary": "Origin, accept-encoding",
+        "allowOrigin": "https://papertrade.club",
+        "etag": null,
+        "contentEncoding": null,
+        "bodyHash": null
+      }
+    },
+    {
+      "name": "SSE: not served from shared cache",
+      "passed": true,
+      "details": "BYPASS"
+    },
+    {
+      "name": "SSE browser no-store",
+      "passed": true
+    },
+    {
+      "name": "SSE MIME type",
+      "passed": true
+    },
+    {
+      "name": "SSE exact CORS",
+      "passed": true
+    }
+  ],
+  "rows": [
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 1,
+      "durationMs": 241,
+      "bytes": 28969,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://www.papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 245,
+      "durationMs": 99,
+      "bytes": 28969,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://www.papertrade.club",
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://paperdash-web.onrender.com",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 345,
+      "durationMs": 89,
+      "bytes": 28969,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://paperdash-web.onrender.com",
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": null,
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 447,
+      "durationMs": 104,
+      "bytes": 28969,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": null,
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://edge-validation.invalid",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 552,
+      "durationMs": 93,
+      "bytes": 28969,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": null,
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 653,
+      "durationMs": 49,
+      "bytes": 28969,
+      "cfCacheStatus": "HIT",
+      "age": "0",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://www.papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 755,
+      "durationMs": 41,
+      "bytes": 28969,
+      "cfCacheStatus": "HIT",
+      "age": "0",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://www.papertrade.club",
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://paperdash-web.onrender.com",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 856,
+      "durationMs": 52,
+      "bytes": 28969,
+      "cfCacheStatus": "HIT",
+      "age": "0",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://paperdash-web.onrender.com",
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": null,
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 957,
+      "durationMs": 46,
+      "bytes": 28969,
+      "cfCacheStatus": "HIT",
+      "age": "0",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": null,
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://edge-validation.invalid",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 1059,
+      "durationMs": 96,
+      "bytes": 28969,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": null,
+      "etag": "W/\"41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "41155784e5625ee0a0ac918b65297a67a779bfae0871144b9fc013b54395705a"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 1159,
+      "durationMs": 110,
+      "bytes": 28958,
+      "cfCacheStatus": "EXPIRED",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"bfce892c261460ab5871994ddce6a54397d9be07a206c07f212b946706415c69-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "bfce892c261460ab5871994ddce6a54397d9be07a206c07f212b946706415c69"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "gzip",
+      "method": "GET",
+      "status": 200,
+      "atMs": 1270,
+      "durationMs": 39,
+      "bytes": 6883,
+      "cfCacheStatus": "HIT",
+      "age": "0",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "\"bfce892c261460ab5871994ddce6a54397d9be07a206c07f212b946706415c69-gzip\"",
+      "contentEncoding": "gzip",
+      "bodyHash": "bfce892c261460ab5871994ddce6a54397d9be07a206c07f212b946706415c69"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "gzip",
+      "method": "GET",
+      "status": 304,
+      "atMs": 1371,
+      "durationMs": 51,
+      "bytes": 0,
+      "cfCacheStatus": "HIT",
+      "age": "0",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "\"bfce892c261460ab5871994ddce6a54397d9be07a206c07f212b946706415c69-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": null
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 2673,
+      "durationMs": 100,
+      "bytes": 28958,
+      "cfCacheStatus": "EXPIRED",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"1b7a2aaf144d0a4e7555e15e09aa5405b2a44ee525c0c5fb7f6d0c342fcbd177-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "1b7a2aaf144d0a4e7555e15e09aa5405b2a44ee525c0c5fb7f6d0c342fcbd177"
+    },
+    {
+      "path": "/api/assets",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 2774,
+      "durationMs": 248,
+      "bytes": 97698,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"1914b5ddbff8f48dbf07749a71a572e81d5a3b47b384d6a5b4682fa1c0e09a2a-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "1914b5ddbff8f48dbf07749a71a572e81d5a3b47b384d6a5b4682fa1c0e09a2a"
+    },
+    {
+      "path": "/api/assets/0/market",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 3024,
+      "durationMs": 190,
+      "bytes": 83302,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"4432414bc3a48583880d97c4daf6600791e5681f380d9cfbf86ad1297aa117f8-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "4432414bc3a48583880d97c4daf6600791e5681f380d9cfbf86ad1297aa117f8"
+    },
+    {
+      "path": "/api/assets/1/market",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 3215,
+      "durationMs": 184,
+      "bytes": 87367,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"af94a5eec045a28bd69d5f790634d74f1b08df051bdb378df8c8b707b6c0a830-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "af94a5eec045a28bd69d5f790634d74f1b08df051bdb378df8c8b707b6c0a830"
+    },
+    {
+      "path": "/api/house",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 3400,
+      "durationMs": 138,
+      "bytes": 2692,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"8e7720a8d2e6a573104432153a0887a245a4abfc3cfeab0ac2a6654132a7d71d-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "8e7720a8d2e6a573104432153a0887a245a4abfc3cfeab0ac2a6654132a7d71d"
+    },
+    {
+      "path": "/api/position-metrics",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 3540,
+      "durationMs": 222,
+      "bytes": 349,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin, Accept-Encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"4b6fe9c325acfd6add607dc594d55f02a7c6aebbd25edfb6b81b829266855cdd\"",
+      "contentEncoding": null,
+      "bodyHash": "4b6fe9c325acfd6add607dc594d55f02a7c6aebbd25edfb6b81b829266855cdd"
+    },
+    {
+      "path": "/api/liquidations/stats",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 3764,
+      "durationMs": 114,
+      "bytes": 437,
+      "cfCacheStatus": "MISS",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin, Accept-Encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"4f5233f148e09173cc4f11c0f7f539a0a96cb892b9200df077de8ba9f4cdce00\"",
+      "contentEncoding": null,
+      "bodyHash": "4f5233f148e09173cc4f11c0f7f539a0a96cb892b9200df077de8ba9f4cdce00"
+    },
+    {
+      "path": "/api/overview?edge_validation=1",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 3880,
+      "durationMs": 122,
+      "bytes": 28958,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"1b7a2aaf144d0a4e7555e15e09aa5405b2a44ee525c0c5fb7f6d0c342fcbd177-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "1b7a2aaf144d0a4e7555e15e09aa5405b2a44ee525c0c5fb7f6d0c342fcbd177"
+    },
+    {
+      "path": "/api/assets/0/market?range=1h",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 4004,
+      "durationMs": 101,
+      "bytes": 83302,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"4432414bc3a48583880d97c4daf6600791e5681f380d9cfbf86ad1297aa117f8-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "4432414bc3a48583880d97c4daf6600791e5681f380d9cfbf86ad1297aa117f8"
+    },
+    {
+      "path": "/api/liquidations/stats?instrument=0",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 4107,
+      "durationMs": 104,
+      "bytes": 437,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin, Accept-Encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"8020934835f566f33332b982b76129e87fdcc5ba002c6ab2393b74bf044d8f12\"",
+      "contentEncoding": null,
+      "bodyHash": "8020934835f566f33332b982b76129e87fdcc5ba002c6ab2393b74bf044d8f12"
+    },
+    {
+      "path": "/health/ready",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 4212,
+      "durationMs": 124,
+      "bytes": 180,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-store",
+      "vary": "Origin, accept-encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": null,
+      "contentEncoding": null,
+      "bodyHash": "1a86cb324df19e26d0be3f1c9b472d67167fcdb382135d1bdab3ec2de102d3c1"
+    },
+    {
+      "path": "/api/edge-cache-validation-not-found",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 404,
+      "atMs": 4337,
+      "durationMs": 112,
+      "bytes": 107,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-store",
+      "vary": "Origin, accept-encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": null,
+      "contentEncoding": null,
+      "bodyHash": "00a2b22ccadb596c3e3860432d01d4742d57e7b00692c422b95eac7cd478180f"
+    },
+    {
+      "path": "/api/assets/2/market",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 400,
+      "atMs": 4450,
+      "durationMs": 106,
+      "bytes": 130,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-store",
+      "vary": "Origin, accept-encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": null,
+      "contentEncoding": null,
+      "bodyHash": "3ee072703b651341cae719066ea735637f3ea8bb3e68febf17afbeef839a156c"
+    },
+    {
+      "path": "/api/indexing",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 4558,
+      "durationMs": 112,
+      "bytes": 280,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin, Accept-Encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"1cac38aedb967749902a14bd8b09273bd324a9a8de93a508b5b43d41d329d473\"",
+      "contentEncoding": null,
+      "bodyHash": "1cac38aedb967749902a14bd8b09273bd324a9a8de93a508b5b43d41d329d473"
+    },
+    {
+      "path": "/api/liquidations?cursor=invalid",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 400,
+      "atMs": 4672,
+      "durationMs": 138,
+      "bytes": 28,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-store",
+      "vary": "Origin, accept-encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": null,
+      "contentEncoding": null,
+      "bodyHash": "8a92cb70489574538eeb2157507c4a6c474eac1970cc5947ca0f14657ee3095e"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "OPTIONS",
+      "status": 204,
+      "atMs": 4812,
+      "durationMs": 153,
+      "bytes": 0,
+      "cfCacheStatus": "DYNAMIC",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-store",
+      "vary": "Origin, Access-Control-Request-Headers",
+      "allowOrigin": "https://papertrade.club",
+      "etag": null,
+      "contentEncoding": null,
+      "bodyHash": null
+    },
+    {
+      "path": "/api/wallets/[retained-wallet]/position-metrics",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 4966,
+      "durationMs": 136,
+      "bytes": 339,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin, Accept-Encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"003b9f97091117e4004648cf8b8c976090065cc88852cc61ceb6ec1bcb972055\"",
+      "contentEncoding": null,
+      "bodyHash": "003b9f97091117e4004648cf8b8c976090065cc88852cc61ceb6ec1bcb972055"
+    },
+    {
+      "path": "/api/wallets/[retained-wallet]/cashflows",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 5104,
+      "durationMs": 166,
+      "bytes": 594,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin, Accept-Encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"002a4705fab2537161b9a4281278366581c88684d2b9a53a40c8a62773f7f261\"",
+      "contentEncoding": null,
+      "bodyHash": "002a4705fab2537161b9a4281278366581c88684d2b9a53a40c8a62773f7f261"
+    },
+    {
+      "path": "/api/wallets/[retained-wallet]/trades",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 5272,
+      "durationMs": 141,
+      "bytes": 6024,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"6b358664a33e2484f1bd5372f723e09ff0d51c368c1e27332ca8cd75774c0694-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "6b358664a33e2484f1bd5372f723e09ff0d51c368c1e27332ca8cd75774c0694"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 5414,
+      "durationMs": 114,
+      "bytes": 28959,
+      "cfCacheStatus": "EXPIRED",
+      "age": null,
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"40c90097fd61b2f88030f7a7f8063060381c24ba99898a38f355f2665216db22-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "40c90097fd61b2f88030f7a7f8063060381c24ba99898a38f355f2665216db22"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 5529,
+      "durationMs": 46,
+      "bytes": 28959,
+      "cfCacheStatus": "HIT",
+      "age": "0",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"40c90097fd61b2f88030f7a7f8063060381c24ba99898a38f355f2665216db22-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "40c90097fd61b2f88030f7a7f8063060381c24ba99898a38f355f2665216db22"
+    },
+    {
+      "path": "/api/overview",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 5630,
+      "durationMs": 41,
+      "bytes": 28959,
+      "cfCacheStatus": "HIT",
+      "age": "0",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "cacheControl": "no-cache",
+      "vary": "Accept-Encoding, Origin",
+      "allowOrigin": "https://papertrade.club",
+      "etag": "W/\"40c90097fd61b2f88030f7a7f8063060381c24ba99898a38f355f2665216db22-gzip\"",
+      "contentEncoding": null,
+      "bodyHash": "40c90097fd61b2f88030f7a7f8063060381c24ba99898a38f355f2665216db22"
+    },
+    {
+      "path": "/api/events?topics=overview",
+      "origin": "https://papertrade.club",
+      "encoding": "identity",
+      "method": "GET",
+      "status": 200,
+      "atMs": 5731,
+      "durationMs": 3110,
+      "bytes": 48647,
+      "cfCacheStatus": "BYPASS",
+      "age": null,
+      "cdnCacheControl": "no-store",
+      "cacheControl": "no-store, no-transform",
+      "vary": "Origin, accept-encoding",
+      "allowOrigin": "https://papertrade.club",
+      "etag": null,
+      "contentEncoding": null,
+      "bodyHash": null
+    }
+  ],
+  "notes": [
+    {
+      "label": "Representation comparison",
+      "sameDecodedBody": true,
+      "explanation": "Different bodies can be valid if a newer collector snapshot arrived between requests."
+    },
+    {
+      "label": "Expiry observation",
+      "previousEtag": "\"bfce892c261460ab5871994ddce6a54397d9be07a206c07f212b946706415c69-gzip\"",
+      "etagChanged": true,
+      "cacheStatus": "EXPIRED",
+      "age": null,
+      "explanation": "Other visitors may refill an expired key; HIT alone does not prove stale service or an origin revalidation."
+    },
+    {
+      "label": "Credential request after anonymous warm cache",
+      "credential": "Authorization",
+      "cacheStatus": "HIT",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "originGuardObserved": false,
+      "inheritedPublicObject": true,
+      "setCookiePresent": false,
+      "sensitiveContent": false,
+      "explanation": "A cached anonymous public snapshot can bypass origin response-header guards. This is observation, not a guaranteed edge bypass."
+    },
+    {
+      "label": "Credential request after anonymous warm cache",
+      "credential": "Cookie",
+      "cacheStatus": "HIT",
+      "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+      "originGuardObserved": false,
+      "inheritedPublicObject": true,
+      "setCookiePresent": false,
+      "sensitiveContent": false,
+      "explanation": "A cached anonymous public snapshot can bypass origin response-header guards. This is observation, not a guaranteed edge bypass."
+    }
+  ],
+  "edgeHitObserved": true,
+  "caveats": [
+    "Low-volume single-region validation, not a capacity test",
+    "No upstream URLs or full wallet snapshot refreshes",
+    "Headers/local tests cannot prove provider cache-key policy; inspect actual CORS and encoding results",
+    "Credential requests may inherit anonymous public cache hits; guaranteed bypass is not claimed",
+    "Concurrent users may refill entries during the expiry interval"
+  ]
+}

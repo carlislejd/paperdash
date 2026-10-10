@@ -1,0 +1,100 @@
+{
+  "startedAt": "2026-10-10T17:11:52.549Z",
+  "durationMs": 20015,
+  "bytes": 144521,
+  "bytesPerSecond": 7220.634524106919,
+  "types": {
+    "overview": {
+      "count": 1,
+      "bytes": 15761,
+      "firstAtMs": 219,
+      "lastAtMs": 219,
+      "minBytes": 15761,
+      "maxBytes": 15761,
+      "fieldBytes": {
+        "status": 139,
+        "trades": 2,
+        "history": 14637,
+        "summary": 845,
+        "accountCount": 5,
+        "historyCoverage": 10
+      },
+      "sampleShape": {
+        "status": "object",
+        "trades": {
+          "arrayLength": 0,
+          "firstItemBytes": 0
+        },
+        "history": {
+          "arrayLength": 299,
+          "firstItemBytes": 45
+        },
+        "summary": "object",
+        "accountCount": "number",
+        "historyCoverage": "string"
+      },
+      "historyLastKeys": [
+        "time",
+        "value"
+      ],
+      "historyTimes": {
+        "first": 1791565920000,
+        "last": 1791652260000
+      }
+    },
+    "metrics": {
+      "count": 10,
+      "bytes": 10710,
+      "firstAtMs": 821,
+      "lastAtMs": 18234,
+      "minBytes": 1071,
+      "maxBytes": 1071,
+      "fieldBytes": {
+        "status": 1390,
+        "summary": 8450,
+        "accountCount": 50
+      },
+      "sampleShape": {
+        "status": "object",
+        "summary": "object",
+        "accountCount": "number"
+      },
+      "nestedFieldBytes": {
+        "ok": 4,
+        "fees": 75,
+        "paper": 456,
+        "source": 63,
+        "activity": 55,
+        "balances": 134
+      }
+    },
+    "history": {
+      "count": 8,
+      "bytes": 118012,
+      "firstAtMs": 846,
+      "lastAtMs": 18256,
+      "minBytes": 14722,
+      "maxBytes": 14781,
+      "fieldBytes": {
+        "history": 117332,
+        "historyCoverage": 80
+      },
+      "sampleShape": {
+        "history": {
+          "arrayLength": 300,
+          "firstItemBytes": 49
+        },
+        "historyCoverage": "string"
+      },
+      "historyLastKeys": [
+        "time",
+        "value"
+      ],
+      "historyTimes": {
+        "first": 1791565980000,
+        "last": 1791652320000
+      }
+    }
+  },
+  "errors": []
+}

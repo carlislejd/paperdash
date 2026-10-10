@@ -1,0 +1,71 @@
+{
+  "checkedAt": 1791652033.2265348,
+  "endpoints": {
+    "/health/ready": {
+      "http": 200,
+      "elapsedMs": 257,
+      "data": {
+        "ready": true,
+        "degraded": false,
+        "status": {
+          "stale": false,
+          "stream": "connected",
+          "sourceAt": 1791652031000,
+          "receivedAt": 1791652032930,
+          "persistence": "postgres",
+          "indexedBlock": "48185281"
+        }
+      }
+    },
+    "/api/indexing": {
+      "http": 200,
+      "elapsedMs": 410,
+      "data": {
+        "indexing": {
+          "jobs": 32319,
+          "failed": 0,
+          "pending": 12782,
+          "wallets": 10758,
+          "oldestDueAt": 1791644711371,
+          "backfillComplete": 30080,
+          "pendingCorrections": 45
+        },
+        "receivedAt": 1791652020714,
+        "collectorAt": 1791652032935,
+        "stale": false,
+        "coverage": "available-source-history-and-retained-observations"
+      }
+    },
+    "/api/liquidations/stats": {
+      "http": 200,
+      "elapsedMs": 335,
+      "data": {
+        "stale": false,
+        "stats": {
+          "day": {
+            "count": 2323,
+            "longCount": 1298,
+            "shortCount": 1025,
+            "notionalUsd": 11184756378.399998
+          },
+          "hour": {
+            "count": 722,
+            "longCount": 610,
+            "shortCount": 112,
+            "notionalUsd": 1501029765.61
+          }
+        },
+        "coverage": {
+          "source": "retained-public-observations",
+          "partial": true,
+          "observedFrom": 1791641012000,
+          "latestObservedAt": 1791651797000,
+          "identityAmbiguous": true,
+          "projectionBackfillComplete": true
+        },
+        "windowTo": 1791652032288,
+        "receivedAt": 1791652032288
+      }
+    }
+  }
+}

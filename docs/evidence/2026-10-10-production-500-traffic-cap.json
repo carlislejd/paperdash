@@ -1,0 +1,203 @@
+{
+  "startedAt": "2026-10-10T17:09:58.380Z",
+  "endedAt": "2026-10-10T17:10:51.250Z",
+  "passed": false,
+  "plan": {
+    "origin": "https://paperdash-api.onrender.com",
+    "profile": "overview",
+    "topicMix": {
+      "overview": 100
+    },
+    "stages": [
+      {
+        "connections": 500,
+        "holdSeconds": 20
+      },
+      {
+        "connections": 1000,
+        "holdSeconds": 20
+      }
+    ],
+    "newConnectionsPerSecond": 20,
+    "totalNewConnectionCap": 1000,
+    "maximumNewConnectionsPerMinute": 1200,
+    "maximumPendingConnections": 20,
+    "connectionBootstrapTimeoutMs": 10000,
+    "restRequestTimeoutMs": 5000,
+    "sharedRestIntervalMs": 4000,
+    "restPaths": [
+      "/health/ready",
+      "/api/overview",
+      "/api/assets"
+    ],
+    "hardDurationSeconds": 120,
+    "responseByteCap": 104857600,
+    "bodyEgressCostUpperEstimateUsdBeforeAllowance": 0.01572864,
+    "retry": false,
+    "spoofedForwardingHeaders": false
+  },
+  "generatorOpenFileLimits": {
+    "soft": 1048575,
+    "hard": "unlimited"
+  },
+  "elapsedMs": 52869.341,
+  "attemptedConnections": 508,
+  "readyConnections": 500,
+  "peakActiveConnections": 500,
+  "responseBytes": 104867180,
+  "unintendedErrors": 0,
+  "abortReason": "Response byte budget exceeded",
+  "stages": [
+    {
+      "connections": 500,
+      "holdMs": 20003.235250000005,
+      "generatorCpuCorePercent": 2.9965052778149968,
+      "generatorRssMiB": 183.1875,
+      "collectorObservationAgeP99Ms": 1131,
+      "quoteSourceAgeP99Ms": null,
+      "tradeSourceAgeP99Ms": null,
+      "responseBytes": 50275507,
+      "bytesPerViewerPerSecond": 5026.737562365066,
+      "restRequests": 5,
+      "unintendedErrors": 0,
+      "activeAtEnd": 500
+    }
+  ],
+  "statusCounts": {
+    "/health/ready:200": 5,
+    "/api/overview:200": 5,
+    "/api/assets:200": 4,
+    "SSE:200": 501
+  },
+  "eventTypes": {
+    "overview": 500,
+    "metrics": 9046,
+    "history": 5879
+  },
+  "topicStats": {
+    "overview": {
+      "attempted": 508,
+      "ready": 500,
+      "bytes": 104330428,
+      "eventTypes": {
+        "overview": 500,
+        "metrics": 9046,
+        "history": 5879
+      }
+    }
+  },
+  "generator": {
+    "cpuCorePercent": 8.83287921361119,
+    "peakSampledCpuCorePercent": 31.51484293494271,
+    "peakRssMiB": 183.265625,
+    "finalRssMiB": 184.046875,
+    "eventLoopP99Ms": 22.953983,
+    "eventLoopMaxMs": 26.951679
+  },
+  "bootstrapP95Ms": 359.5330830000021,
+  "bootstrapP99Ms": 486.4121249999989,
+  "restP95Ms": 2603.7322919999997,
+  "restP99Ms": 2603.7322919999997,
+  "collectorObservationAgeP95Ms": 1129,
+  "collectorObservationAgeP99Ms": 2348,
+  "restSamples": [
+    {
+      "path": "/health/ready",
+      "status": 200,
+      "durationMs": 698.353292,
+      "bytes": 180
+    },
+    {
+      "path": "/api/overview",
+      "status": 200,
+      "durationMs": 109.2645829999999,
+      "bytes": 29088
+    },
+    {
+      "path": "/api/assets",
+      "status": 200,
+      "durationMs": 2603.7322919999997,
+      "bytes": 97686
+    },
+    {
+      "path": "/health/ready",
+      "status": 200,
+      "durationMs": 88.20958299999984,
+      "bytes": 180
+    },
+    {
+      "path": "/api/overview",
+      "status": 200,
+      "durationMs": 98.13212499999827,
+      "bytes": 28935
+    },
+    {
+      "path": "/api/assets",
+      "status": 200,
+      "durationMs": 121.04920800000036,
+      "bytes": 97767
+    },
+    {
+      "path": "/health/ready",
+      "status": 200,
+      "durationMs": 80.53712500000256,
+      "bytes": 180
+    },
+    {
+      "path": "/api/overview",
+      "status": 200,
+      "durationMs": 106.24533299999894,
+      "bytes": 28959
+    },
+    {
+      "path": "/api/assets",
+      "status": 200,
+      "durationMs": 148.75804199999766,
+      "bytes": 97770
+    },
+    {
+      "path": "/health/ready",
+      "status": 200,
+      "durationMs": 104.47654100000364,
+      "bytes": 180
+    },
+    {
+      "path": "/api/overview",
+      "status": 200,
+      "durationMs": 117.33258300000307,
+      "bytes": 28950
+    },
+    {
+      "path": "/api/assets",
+      "status": 200,
+      "durationMs": 324.0881669999944,
+      "bytes": 97760
+    },
+    {
+      "path": "/health/ready",
+      "status": 200,
+      "durationMs": 101.69029099999898,
+      "bytes": 180
+    },
+    {
+      "path": "/api/overview",
+      "status": 200,
+      "durationMs": 264.57145799999853,
+      "bytes": 28937
+    }
+  ],
+  "errors": [
+    {
+      "atMs": 52863,
+      "stage": "ramp-to-1000",
+      "reason": "Response byte budget exceeded"
+    }
+  ],
+  "caveats": [
+    "One real public IP and one generator region; no spoofed forwarding headers",
+    "Profile overview, short plateaus at the configured cap; no sustained or distributed capacity guarantee",
+    "No deliberate instance loss, slow readers, source failures or long soak",
+    "Body bytes exclude TLS/TCP/header and static-asset overhead",
+    "Per-instance distribution and resource utilization require separate Render observation"
+  ]
+}

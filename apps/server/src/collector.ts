@@ -29,6 +29,7 @@ import { MarketFeed } from "./market-feed.js";
 import { refreshMarkets } from "./market.js";
 import { retainHouseSource, refreshHouse } from "./house.js";
 import { refreshLiquidations } from "./liquidations.js";
+import { readLiveTvl } from "../../../packages/shared/src/live-tvl.js";
 
 export interface StreamDiagnostics {
   at: number;
@@ -161,6 +162,27 @@ export function downsample(
   }
   result.push(points.at(-1)!);
   return result;
+}
+
+export function protocolHistoryDigest(
+  history: Pick<Overview, "history" | "historyCoverage">,
+  summary: Overview["summary"],
+): string {
+  const live = readLiveTvl(summary);
+  const tail = history.history.at(-1);
+  if (
+    !live ||
+    tail?.time !== live.point.time ||
+    tail.value !== live.point.value
+  )
+    return digest(history);
+  // Every metrics frame already carries this exact active-minute value. Keep
+  // every historical value, timestamp, length and coverage change significant.
+  return digest({
+    ...history,
+    activeTailFromSummary: true,
+    history: [...history.history.slice(0, -1), { ...tail, value: null }],
+  });
 }
 
 export class Collector {
@@ -623,7 +645,10 @@ export class Collector {
         history: overview.history,
         historyCoverage: overview.historyCoverage,
       };
-      const historySignature = digest(historyData);
+      const historySignature = protocolHistoryDigest(
+        historyData,
+        overview.summary,
+      );
       if (historySignature !== this.historySignature) {
         await this.emit({ type: "history", data: historyData });
         this.historySignature = historySignature;

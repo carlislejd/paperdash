@@ -5,6 +5,7 @@ import type {
 } from "../../../../packages/shared/src/types";
 import { API_BASE, fetchJson, pollDelay } from "./api";
 import { publishLiveEvent } from "./live-events";
+import { mergeOverviewUpdate } from "./overview-data";
 
 /** One connection for the visible view. REST is a fallback, not a second live feed. */
 export function useOverview(topics: string) {
@@ -23,11 +24,7 @@ export function useOverview(topics: string) {
     let failures = 0;
     let revision = 0;
     const merge = (next: Overview) =>
-      setData((old) =>
-        old && (old.status.sourceAt ?? 0) > (next.status.sourceAt ?? 0)
-          ? old
-          : next,
-      );
+      setData((old) => mergeOverviewUpdate(old, next));
     const refresh = async () => {
       if (controller.signal.aborted) return;
       if (document.hidden || pending || (connected && receivedSnapshot)) {
@@ -95,7 +92,7 @@ export function useOverview(topics: string) {
             merge(message.data);
             setError("");
           } else if (message.type === "metrics" || message.type === "history") {
-            setData((old) => (old ? { ...old, ...message.data } : old));
+            setData((old) => mergeOverviewUpdate(old, message.data));
           } else if (message.type === "trade") {
             setData((old) =>
               old

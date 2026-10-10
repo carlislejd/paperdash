@@ -1,0 +1,179 @@
+{
+  "startedAt": "2026-10-10T17:24:32.237Z",
+  "finishedAt": "2026-10-10T17:24:53.279Z",
+  "target": "https://paperdash-api.onrender.com",
+  "mode": "four passive concurrent SSE streams; 20 seconds after bootstrap; 8 MiB cap each; 30 second overall deadline each",
+  "estimate": "Hypothetical matching-tail digest optimization only; exact raw history frames deemed redundant against previous signature; not an observed optimized deployment or future event-rate guarantee.",
+  "results": [
+    {
+      "topics": "overview",
+      "status": 200,
+      "elapsedMs": 20002,
+      "totalBytes": 145198,
+      "bootstrapBytes": 15883,
+      "steadyBytes": 129315,
+      "steadyBytesPerSecond": 6465.1034896510355,
+      "types": {
+        "comment": {
+          "frames": 2,
+          "bytes": 26,
+          "minFrameBytes": 13,
+          "maxFrameBytes": 13
+        },
+        "metrics": {
+          "frames": 10,
+          "bytes": 10905,
+          "minFrameBytes": 1089,
+          "maxFrameBytes": 1092
+        },
+        "history": {
+          "frames": 8,
+          "bytes": 118384,
+          "minFrameBytes": 14798,
+          "maxFrameBytes": 14798
+        }
+      },
+      "historyFrames": 8,
+      "removableHistoryFrames": 8,
+      "redundantHistoryBytes": 118384,
+      "estimatedSteadyBytesWithoutMatchedRedundantHistory": 10931,
+      "estimatedBytesPerSecondWithoutMatchedRedundantHistory": 546.4953504649535,
+      "error": null
+    },
+    {
+      "topics": "overview,trades",
+      "status": 200,
+      "elapsedMs": 20000,
+      "totalBytes": 182818,
+      "bootstrapBytes": 29096,
+      "steadyBytes": 153722,
+      "steadyBytesPerSecond": 7686.099999999999,
+      "types": {
+        "trade": {
+          "frames": 80,
+          "bytes": 24420,
+          "minFrameBytes": 302,
+          "maxFrameBytes": 309
+        },
+        "metrics": {
+          "frames": 10,
+          "bytes": 10905,
+          "minFrameBytes": 1089,
+          "maxFrameBytes": 1092
+        },
+        "history": {
+          "frames": 8,
+          "bytes": 118384,
+          "minFrameBytes": 14798,
+          "maxFrameBytes": 14798
+        },
+        "comment": {
+          "frames": 1,
+          "bytes": 13,
+          "minFrameBytes": 13,
+          "maxFrameBytes": 13
+        }
+      },
+      "historyFrames": 8,
+      "removableHistoryFrames": 8,
+      "redundantHistoryBytes": 118384,
+      "estimatedSteadyBytesWithoutMatchedRedundantHistory": 35338,
+      "estimatedBytesPerSecondWithoutMatchedRedundantHistory": 1766.8999999999999,
+      "error": null
+    },
+    {
+      "topics": "overview,asset:0",
+      "status": 200,
+      "elapsedMs": 20001,
+      "totalBytes": 174192,
+      "bootstrapBytes": 25406,
+      "steadyBytes": 148786,
+      "steadyBytesPerSecond": 7438.92805359732,
+      "types": {
+        "asset-price": {
+          "frames": 19,
+          "bytes": 2679,
+          "minFrameBytes": 141,
+          "maxFrameBytes": 141
+        },
+        "trade": {
+          "frames": 55,
+          "bytes": 16805,
+          "minFrameBytes": 302,
+          "maxFrameBytes": 309
+        },
+        "metrics": {
+          "frames": 10,
+          "bytes": 10905,
+          "minFrameBytes": 1089,
+          "maxFrameBytes": 1092
+        },
+        "history": {
+          "frames": 8,
+          "bytes": 118384,
+          "minFrameBytes": 14798,
+          "maxFrameBytes": 14798
+        },
+        "comment": {
+          "frames": 1,
+          "bytes": 13,
+          "minFrameBytes": 13,
+          "maxFrameBytes": 13
+        }
+      },
+      "historyFrames": 8,
+      "removableHistoryFrames": 8,
+      "redundantHistoryBytes": 118384,
+      "estimatedSteadyBytesWithoutMatchedRedundantHistory": 30402,
+      "estimatedBytesPerSecondWithoutMatchedRedundantHistory": 1520.0239988000599,
+      "error": null
+    },
+    {
+      "topics": "overview,asset:1",
+      "status": 200,
+      "elapsedMs": 20001,
+      "totalBytes": 158604,
+      "bootstrapBytes": 19572,
+      "steadyBytes": 139032,
+      "steadyBytesPerSecond": 6951.252437378132,
+      "types": {
+        "asset-price": {
+          "frames": 15,
+          "bytes": 2115,
+          "minFrameBytes": 141,
+          "maxFrameBytes": 141
+        },
+        "metrics": {
+          "frames": 10,
+          "bytes": 10905,
+          "minFrameBytes": 1089,
+          "maxFrameBytes": 1092
+        },
+        "history": {
+          "frames": 8,
+          "bytes": 118384,
+          "minFrameBytes": 14798,
+          "maxFrameBytes": 14798
+        },
+        "trade": {
+          "frames": 25,
+          "bytes": 7615,
+          "minFrameBytes": 302,
+          "maxFrameBytes": 308
+        },
+        "comment": {
+          "frames": 1,
+          "bytes": 13,
+          "minFrameBytes": 13,
+          "maxFrameBytes": 13
+        }
+      },
+      "historyFrames": 8,
+      "removableHistoryFrames": 8,
+      "redundantHistoryBytes": 118384,
+      "estimatedSteadyBytesWithoutMatchedRedundantHistory": 20648,
+      "estimatedBytesPerSecondWithoutMatchedRedundantHistory": 1032.348382580871,
+      "error": null
+    }
+  ]
+}

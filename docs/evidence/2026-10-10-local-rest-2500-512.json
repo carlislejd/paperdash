@@ -1,0 +1,226 @@
+{
+  "synthetic": true,
+  "localhostOnly": true,
+  "externalProviderRequests": 0,
+  "sourceHashes": {
+    "local-rest-capacity.ts": "e3debb69d606a75285d5b7924ea45681942ba52f5511fae888be238c2bb1554a",
+    "cache-fixtures.ts": "d2e270c040e71b16586d0bc2ae6db6eec944c0e6d3861cf472f6684355fbef35"
+  },
+  "storage": "in-memory SQLite; synthetic materialized position rollup",
+  "scope": "single-host shared-cache HTTP and SSE; excludes PostgreSQL/Redis/Render/CDN/TLS/cold-wallet capacity",
+  "requestedClients": 10000,
+  "connectedClients": 10000,
+  "requestedRestRps": 2500,
+  "configuredSeconds": 20,
+  "offeredWindowMs": 20002.355832999998,
+  "connectElapsedMs": 1360.8997499999998,
+  "bootstrapP95Ms": 7.526207999999997,
+  "maxInflight": 512,
+  "peakInflight": 512,
+  "offered": 49989,
+  "started": 49952,
+  "completed": 49952,
+  "dropped": 37,
+  "schedulerDrops": 0,
+  "requestErrors": 0,
+  "httpFailures": 0,
+  "offeredRps": 2499.155620335874,
+  "completedRps": 2497.305838224761,
+  "restP95Ms": 6.004249999998137,
+  "restP99Ms": 34.61650000000009,
+  "restWarmupCompressedBytes": 81704,
+  "etagPolicy": "real warmup ETags seed loaded viewers; subsequent ETags retained per viewer/route; each viewer rotates three panels; snapshots change every5s",
+  "routes": {
+    "/api/house": {
+      "offered": 6248,
+      "started": 6244,
+      "completed": 6244,
+      "dropped": 4,
+      "errors": 0,
+      "statuses": {
+        "200": 4992,
+        "304": 1252
+      },
+      "bodyBytes": 16798042,
+      "headerBytes": 3330284,
+      "requestHeaderBytes": 1344444,
+      "gzip": 4992,
+      "revalidated": 1252,
+      "p95Ms": 6.044459000000643,
+      "p99Ms": 34.612709000000905
+    },
+    "/api/position-metrics": {
+      "offered": 6248,
+      "started": 6244,
+      "completed": 6244,
+      "dropped": 4,
+      "errors": 0,
+      "statuses": {
+        "200": 4990,
+        "304": 1254
+      },
+      "bodyBytes": 1631730,
+      "headerBytes": 3174148,
+      "requestHeaderBytes": 1381908,
+      "gzip": 0,
+      "revalidated": 1254,
+      "p95Ms": 6.046458000000712,
+      "p99Ms": 34.644209000000046
+    },
+    "/api/liquidations/stats": {
+      "offered": 6249,
+      "started": 6245,
+      "completed": 6245,
+      "dropped": 4,
+      "errors": 0,
+      "statuses": {
+        "200": 4991,
+        "304": 1254
+      },
+      "bodyBytes": 2141139,
+      "headerBytes": 3174668,
+      "requestHeaderBytes": 1394622,
+      "gzip": 0,
+      "revalidated": 1254,
+      "p95Ms": 5.940708000000086,
+      "p99Ms": 34.63395800000035
+    },
+    "/api/assets": {
+      "offered": 9375,
+      "started": 9368,
+      "completed": 9368,
+      "dropped": 7,
+      "errors": 0,
+      "statuses": {
+        "200": 7487,
+        "304": 1881
+      },
+      "bodyBytes": 124726782,
+      "headerBytes": 5003764,
+      "requestHeaderBytes": 2026462,
+      "gzip": 7487,
+      "revalidated": 1881,
+      "p95Ms": 5.876000000000204,
+      "p99Ms": 34.58812500000022
+    },
+    "/api/assets/0/market": {
+      "offered": 6249,
+      "started": 6243,
+      "completed": 6243,
+      "dropped": 6,
+      "errors": 0,
+      "statuses": {
+        "200": 4987,
+        "304": 1256
+      },
+      "bodyBytes": 118468807,
+      "headerBytes": 3334389,
+      "requestHeaderBytes": 1406663,
+      "gzip": 4987,
+      "revalidated": 1256,
+      "p95Ms": 5.88012499999968,
+      "p99Ms": 27.481416999999055
+    },
+    "/api/assets/1/market": {
+      "offered": 6248,
+      "started": 6242,
+      "completed": 6242,
+      "dropped": 6,
+      "errors": 0,
+      "statuses": {
+        "200": 4986,
+        "304": 1256
+      },
+      "bodyBytes": 121626130,
+      "headerBytes": 3333838,
+      "requestHeaderBytes": 1406436,
+      "gzip": 4986,
+      "revalidated": 1256,
+      "p95Ms": 6.004249999998137,
+      "p99Ms": 27.497042000000874
+    },
+    "/api/liquidations": {
+      "offered": 3124,
+      "started": 3122,
+      "completed": 3122,
+      "dropped": 2,
+      "errors": 0,
+      "statuses": {
+        "200": 2494,
+        "304": 628
+      },
+      "bodyBytes": 10398518,
+      "headerBytes": 1580682,
+      "requestHeaderBytes": 694082,
+      "gzip": 2494,
+      "revalidated": 628,
+      "p95Ms": 6.010541999999987,
+      "p99Ms": 34.63249999999971
+    },
+    "/api/overview": {
+      "offered": 3124,
+      "started": 3122,
+      "completed": 3122,
+      "dropped": 2,
+      "errors": 0,
+      "statuses": {
+        "200": 2494,
+        "304": 628
+      },
+      "bodyBytes": 19738708,
+      "headerBytes": 1664976,
+      "requestHeaderBytes": 681585,
+      "gzip": 2494,
+      "revalidated": 628,
+      "p95Ms": 6.004000000000815,
+      "p99Ms": 34.62745900000118
+    },
+    "/api/accounts?page=0&pageSize=10": {
+      "offered": 3124,
+      "started": 3122,
+      "completed": 3122,
+      "dropped": 2,
+      "errors": 0,
+      "statuses": {
+        "200": 2494,
+        "304": 628
+      },
+      "bodyBytes": 1843850,
+      "headerBytes": 1571944,
+      "requestHeaderBytes": 740913,
+      "gzip": 2494,
+      "revalidated": 628,
+      "p95Ms": 6.037667000000511,
+      "p99Ms": 34.61920800000007
+    }
+  },
+  "sse": {
+    "sequenceErrors": 0,
+    "streamFailures": 0,
+    "streamFailureReasons": {},
+    "steadyBytes": 249130000,
+    "steadyMessages": 726000,
+    "latencyP95Ms": 42,
+    "latencyP99Ms": 100,
+    "latencySampleViewers": 64
+  },
+  "server": {
+    "elapsedMs": 20073.613125,
+    "peakRssMiB": 497.90625,
+    "finalRssMiB": 497.90625,
+    "eventLoopWorstP99Ms": 54.788095,
+    "eventLoopMaxMs": 54.788095,
+    "cpuCorePercent": 40.355839028854454,
+    "readCalls": 520,
+    "tailReads": 150,
+    "aggregateReads": 20,
+    "accountLoads": 20
+  },
+  "generator": {
+    "peakRssMiB": 578.40625,
+    "eventLoopP99Ms": 13.877247,
+    "eventLoopMaxMs": 238.551039,
+    "cpuCorePercent": 38.4394992152226
+  },
+  "aborted": null
+}

@@ -1,0 +1,220 @@
+{
+  "synthetic": true,
+  "localhostOnly": true,
+  "externalProviderRequests": 0,
+  "storage": "in-memory SQLite; synthetic materialized position rollup",
+  "scope": "single-host shared-cache HTTP and SSE; excludes PostgreSQL/Redis/Render/CDN/TLS/cold-wallet capacity",
+  "requestedClients": 10000,
+  "connectedClients": 10000,
+  "requestedRestRps": 500,
+  "configuredSeconds": 20,
+  "offeredWindowMs": 20000.181,
+  "connectElapsedMs": 1287.962541,
+  "bootstrapP95Ms": 7.5189580000001115,
+  "maxInflight": 256,
+  "peakInflight": 50,
+  "offered": 9997,
+  "started": 9997,
+  "completed": 9997,
+  "dropped": 0,
+  "schedulerDrops": 0,
+  "requestErrors": 0,
+  "offeredRps": 499.84547639843856,
+  "completedRps": 499.84547639843856,
+  "restP95Ms": 5.0578749999995125,
+  "restP99Ms": 9.371290999999928,
+  "restWarmupCompressedBytes": 51013,
+  "etagPolicy": "real warmup ETags seed already-loaded viewers; subsequent ETags retained per viewer/route; snapshots change every5s",
+  "routes": {
+    "/api/house": {
+      "offered": 1250,
+      "started": 1250,
+      "completed": 1250,
+      "dropped": 0,
+      "errors": 0,
+      "statuses": {
+        "200": 994,
+        "304": 256
+      },
+      "bodyBytes": 3332984,
+      "headerBytes": 596252,
+      "requestHeaderBytes": 269146,
+      "gzip": 994,
+      "revalidated": 256,
+      "p95Ms": 5.017791999999645,
+      "p99Ms": 9.981583999997383
+    },
+    "/api/position-metrics": {
+      "offered": 1250,
+      "started": 1250,
+      "completed": 1250,
+      "dropped": 0,
+      "errors": 0,
+      "statuses": {
+        "200": 994,
+        "304": 256
+      },
+      "bodyBytes": 325038,
+      "headerBytes": 565152,
+      "requestHeaderBytes": 276646,
+      "gzip": 0,
+      "revalidated": 256,
+      "p95Ms": 5.102791999999681,
+      "p99Ms": 10.34270800000013
+    },
+    "/api/liquidations/stats": {
+      "offered": 1250,
+      "started": 1250,
+      "completed": 1250,
+      "dropped": 0,
+      "errors": 0,
+      "statuses": {
+        "200": 994,
+        "304": 256
+      },
+      "bodyBytes": 426426,
+      "headerBytes": 565152,
+      "requestHeaderBytes": 279148,
+      "gzip": 0,
+      "revalidated": 256,
+      "p95Ms": 4.905499999999847,
+      "p99Ms": 9.618332999999893
+    },
+    "/api/assets": {
+      "offered": 1875,
+      "started": 1875,
+      "completed": 1875,
+      "dropped": 0,
+      "errors": 0,
+      "statuses": {
+        "200": 1491,
+        "304": 384
+      },
+      "bodyBytes": 22925988,
+      "headerBytes": 895869,
+      "requestHeaderBytes": 405592,
+      "gzip": 1491,
+      "revalidated": 384,
+      "p95Ms": 5.234415999999328,
+      "p99Ms": 9.303249999999935
+    },
+    "/api/assets/0/market": {
+      "offered": 1250,
+      "started": 1250,
+      "completed": 1250,
+      "dropped": 0,
+      "errors": 0,
+      "statuses": {
+        "200": 994,
+        "304": 256
+      },
+      "bodyBytes": 12028292,
+      "headerBytes": 597246,
+      "requestHeaderBytes": 281648,
+      "gzip": 994,
+      "revalidated": 256,
+      "p95Ms": 5.269000000000233,
+      "p99Ms": 9.217875000000276
+    },
+    "/api/assets/1/market": {
+      "offered": 1250,
+      "started": 1250,
+      "completed": 1250,
+      "dropped": 0,
+      "errors": 0,
+      "statuses": {
+        "200": 994,
+        "304": 256
+      },
+      "bodyBytes": 12675590,
+      "headerBytes": 597246,
+      "requestHeaderBytes": 281648,
+      "gzip": 994,
+      "revalidated": 256,
+      "p95Ms": 5.122792000000118,
+      "p99Ms": 9.842040999999881
+    },
+    "/api/liquidations": {
+      "offered": 624,
+      "started": 624,
+      "completed": 624,
+      "dropped": 0,
+      "errors": 0,
+      "statuses": {
+        "200": 496,
+        "304": 128
+      },
+      "bodyBytes": 629200,
+      "headerBytes": 297632,
+      "requestHeaderBytes": 138731,
+      "gzip": 496,
+      "revalidated": 128,
+      "p95Ms": 4.918666999999914,
+      "p99Ms": 8.553291000000172
+    },
+    "/api/overview": {
+      "offered": 624,
+      "started": 624,
+      "completed": 624,
+      "dropped": 0,
+      "errors": 0,
+      "statuses": {
+        "200": 496,
+        "304": 128
+      },
+      "bodyBytes": 2428128,
+      "headerBytes": 297632,
+      "requestHeaderBytes": 136225,
+      "gzip": 496,
+      "revalidated": 128,
+      "p95Ms": 5.020708000000013,
+      "p99Ms": 7.966459000001123
+    },
+    "/api/accounts?page=0&pageSize=10": {
+      "offered": 624,
+      "started": 624,
+      "completed": 624,
+      "dropped": 0,
+      "errors": 0,
+      "statuses": {
+        "200": 496,
+        "304": 128
+      },
+      "bodyBytes": 244688,
+      "headerBytes": 295888,
+      "requestHeaderBytes": 148091,
+      "gzip": 496,
+      "revalidated": 128,
+      "p95Ms": 5.4707500000004075,
+      "p99Ms": 8.574874999999338
+    }
+  },
+  "sse": {
+    "sequenceErrors": 0,
+    "streamFailures": 0,
+    "steadyBytes": 216578000,
+    "steadyMessages": 726000,
+    "latencyP95Ms": 20,
+    "latencyP99Ms": 65,
+    "latencySampleViewers": 64
+  },
+  "server": {
+    "elapsedMs": 20108.4525,
+    "peakRssMiB": 420.1875,
+    "finalRssMiB": 420.1875,
+    "eventLoopWorstP99Ms": 88.014847,
+    "eventLoopMaxMs": 88.014847,
+    "cpuCorePercent": 29.178098115705325,
+    "readCalls": 520,
+    "tailReads": 154,
+    "aggregateReads": 20,
+    "accountLoads": 20
+  },
+  "generator": {
+    "peakRssMiB": 429.375,
+    "eventLoopP99Ms": 12.591103,
+    "eventLoopMaxMs": 179.306495,
+    "cpuCorePercent": 29.051742775941165
+  },
+  "aborted": null
+}
