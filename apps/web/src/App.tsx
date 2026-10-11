@@ -297,6 +297,7 @@ function App() {
   const cancelPrefetch = useRef<(() => void) | undefined>(undefined);
   const summary = data?.summary;
   const tvl = rawToNumber(summary?.balances.tvl);
+  const paperSupply = rawToNumber(summary?.paper.supply);
   const sourceOld =
     !data?.status.sourceAt ||
     clock - data.status.sourceAt > 60000 ||
@@ -548,6 +549,22 @@ function App() {
                   {summary?.activity.open.toLocaleString("en-US") ?? "—"}
                 </strong>
                 <span className="metric-note">Across BTC & ETH</span>
+              </div>
+              <div className="metric">
+                <span className="metric-label">PAPER supply</span>
+                <strong
+                  title={
+                    paperSupply === null
+                      ? undefined
+                      : `${paperSupply.toLocaleString("en-US", { maximumFractionDigits: 2 })} PAPER`
+                  }
+                >
+                  {paperSupply?.toLocaleString("en-US", {
+                    notation: "compact",
+                    maximumFractionDigits: 2,
+                  }) ?? "—"}
+                </strong>
+                <span className="metric-note">PAPER · total supply</span>
               </div>
             </div>
             <div className="board-status">
