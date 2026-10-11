@@ -96,6 +96,12 @@ describe("public CLI arguments and command contracts", () => {
         .url,
     ).toBe(`${DEFAULT_BASE_URL}/api/accounts?page=2&sort=currentOpenNotional`);
     expect(
+      parseArgs(
+        ["wallets", "--sort", "currentUnrealizedPnl", "--page", "1"],
+        {},
+      ).url,
+    ).toBe(`${DEFAULT_BASE_URL}/api/accounts?page=1&sort=currentUnrealizedPnl`);
+    expect(
       parseArgs(["leaderboard", "--metric", "trades", "--q", "0xab"], {}).url,
     ).toBe(`${DEFAULT_BASE_URL}/api/leaderboard?page=0&metric=trades&q=0xab`);
     expect(parseArgs(["assets", "eth"], {}).url).toBe(
@@ -121,6 +127,7 @@ describe("public CLI arguments and command contracts", () => {
         env: { PAPERDASH_API_URL: "bad" },
       }),
     ).toBe(0);
+    expect(io.text()).toContain("Paperclub public, read-only CLI");
     expect(io.text()).toContain("Raw money/token strings");
     expect(fetch).not.toHaveBeenCalled();
   });

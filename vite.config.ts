@@ -1,5 +1,22 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFile } from "node:fs/promises";
+
+function publicCli(): Plugin {
+  return {
+    name: "paperclub-public-cli",
+    apply: "build",
+    async generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "paperclub.mjs",
+        source: await readFile(
+          new URL("./scripts/paperdash.mjs", import.meta.url),
+        ),
+      });
+    },
+  };
+}
 
 function shareMetadata(siteUrl: string, usingLocalOrigin: boolean): Plugin {
   return {
@@ -59,7 +76,11 @@ export default defineConfig(({ mode }) => {
   return {
     root: "apps/web",
     envDir: process.cwd(),
-    plugins: [react(), shareMetadata(`${origin.origin}/`, !configuredOrigin)],
+    plugins: [
+      react(),
+      shareMetadata(`${origin.origin}/`, !configuredOrigin),
+      publicCli(),
+    ],
     define: {
       "import.meta.env.VITE_SITE_URL": JSON.stringify(`${origin.origin}/`),
       "import.meta.env.VITE_CF_WEB_ANALYTICS_TOKEN":

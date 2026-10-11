@@ -8,6 +8,7 @@ const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const SORTS = [
   "currentBalance",
+  "currentUnrealizedPnl",
   "lastActiveTs",
   "totalWindowedPnl",
   "realizedPnl",
@@ -37,9 +38,10 @@ const COMMAND_FLAGS = {
   health: [],
 };
 const BOOL_FLAGS = new Set(["pretty", "json", "require-fresh", "help"]);
-export const HELP = `Paperdash public, read-only CLI (Node.js 24+)
+export const HELP = `Paperclub public, read-only CLI (Node.js 24+)
 
-Usage: node scripts/paperdash.mjs COMMAND [ARGUMENT] [OPTIONS]
+Usage: node paperclub.mjs COMMAND [ARGUMENT] [OPTIONS]
+From the repository: node scripts/paperdash.mjs COMMAND [ARGUMENT] [OPTIONS]
 
 Commands:
   tvl                         Exact raw TVL, source and freshness

@@ -1,22 +1,27 @@
-# Public Paperdash CLI
+# Public Paperclub CLI
 
-Run with Node.js 24. No build, account, API key, wallet connection or package installation is needed:
+Run with Node.js 24. No build, account, API key, wallet connection or package installation is needed. Download the public CLI, then run it locally:
 
 ```sh
-node scripts/paperdash.mjs --help
-node scripts/paperdash.mjs tvl --pretty
-node scripts/paperdash.mjs overview
-node scripts/paperdash.mjs wallets --page 0 --sort currentBalance
-node scripts/paperdash.mjs wallet 0x1234567890123456789012345678901234567890
-node scripts/paperdash.mjs positions 0x1234567890123456789012345678901234567890
-node scripts/paperdash.mjs assets
-node scripts/paperdash.mjs assets ETH
-node scripts/paperdash.mjs leaderboard --metric pnl --page 0
-node scripts/paperdash.mjs house
-node scripts/paperdash.mjs liquidations --asset ETH
-node scripts/paperdash.mjs indexing
-node scripts/paperdash.mjs health --require-fresh
+curl --fail --show-error --silent --location https://papertrade.club/paperclub.mjs --output paperclub.mjs
+node paperclub.mjs --help
+node paperclub.mjs tvl --pretty
+node paperclub.mjs overview
+node paperclub.mjs wallets --page 0 --sort currentBalance
+node paperclub.mjs wallets --page 0 --sort currentUnrealizedPnl
+node paperclub.mjs wallet 0x1234567890123456789012345678901234567890
+node paperclub.mjs positions 0x1234567890123456789012345678901234567890
+node paperclub.mjs assets
+node paperclub.mjs assets ETH
+node paperclub.mjs leaderboard --metric pnl --page 0
+node paperclub.mjs leaderboard --metric trades --page 0
+node paperclub.mjs house
+node paperclub.mjs liquidations --asset ETH
+node paperclub.mjs indexing
+node paperclub.mjs health --require-fresh
 ```
+
+The production web build publishes the exact source from `scripts/paperdash.mjs` at `/paperclub.mjs`; there is no separately maintained copy. From a repository checkout, use `node scripts/paperdash.mjs` in place of `node paperclub.mjs`. The script path and `PAPERDASH_API_URL` environment variable remain compatible.
 
 The example address is a placeholder, not a seeded account. Every command makes public GET requests only. The default API is `https://paperdash-api.onrender.com`; `PAPERDASH_API_URL=http://127.0.0.1:8787` or `--base-url URL` overrides it. A base URL may include a deployment prefix, but not credentials, query parameters or fragments.
 
@@ -30,13 +35,15 @@ Stdout contains one JSON object: `{command,url,fetchedAt,data}`. `data` preserve
 
 Freshness is separate from completeness. By default stale/partial observations remain usable and exit successfully. `--require-fresh` returns exit 3 for stale, unavailable or degraded results, while still printing the result to stdout. It does **not** establish complete history or a gap-free feed. The leaderboard's volume/trade modes count retained public execution observations, including opens, closes and liquidations; PnL uses the source rolling-24h ranking. Retained coverage remains partial.
 
+`wallets --sort currentUnrealizedPnl` orders the directory by current unrealized PnL from account snapshots. It is not a time-window PnL ranking. `leaderboard --metric pnl` uses the source rolling 24-hour PnL ranking; `--metric trades` and `--metric volume` rank retained observations in the past 24 hours. Custom start/end times and other leaderboard windows are not supported.
+
 ## History and pagination
 
 ```sh
-node scripts/paperdash.mjs wallet ADDRESS --history cashflows
-node scripts/paperdash.mjs wallet ADDRESS --history trades --cursor 'CURSOR_FROM_PREVIOUS_RESPONSE'
-node scripts/paperdash.mjs wallets --page 1 --q 0xabc
-node scripts/paperdash.mjs leaderboard --metric volume --page 0 --q 0xabc
+node paperclub.mjs wallet ADDRESS --history cashflows
+node paperclub.mjs wallet ADDRESS --history trades --cursor 'CURSOR_FROM_PREVIOUS_RESPONSE'
+node paperclub.mjs wallets --page 1 --q 0xabc
+node paperclub.mjs leaderboard --metric volume --page 0 --q 0xabc
 ```
 
 Replace `ADDRESS` with a full hexadecimal address. Each call reads only one page. Cursors are opaque and URL-encoded. No command silently traverses every wallet/history page; inspect `nextCursor`, `pageInfo` and coverage before requesting another page. Directory and leaderboard ranks can move between requests. Volume/trade search accepts only a wallet prefix, while the source PnL ranking also accepts names.

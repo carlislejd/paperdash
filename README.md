@@ -6,6 +6,8 @@ The [live beta](https://paperdash-web.onrender.com) uses real public Papertrade 
 
 ## Run locally
 
+For read-only data access without running the dashboard, use the [public agent guide](https://papertrade.club/agents.md) or [CLI guide](docs/CLI.md). The production web build also publishes the standalone client at [paperclub.mjs](https://papertrade.club/paperclub.mjs). Supported all-execution counts use a rolling 24-hour window; arbitrary time ranges are not exposed.
+
 Requires Node 24 and npm. From the repository root:
 
 ```sh
