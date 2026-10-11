@@ -27,7 +27,7 @@ function closed(at: number, pnl = 1250) {
   };
 }
 
-test("closed receipt freezes independently of polling, exports exact values and returns keyboard focus to its row", async ({
+test("closed receipt freezes independently of polling, exports frozen values and returns keyboard focus to its row", async ({
   page,
 }) => {
   const at = Date.now();
@@ -74,8 +74,10 @@ test("closed receipt freezes independently of polling, exports exact values and 
   await expect(receipt).toBeVisible();
   await expect(
     receipt.getByRole("region", { name: "Adjusted P&L" }),
-  ).toContainText("1,250 USDC");
-  await expect(receipt).toContainText("10,000,000,000,000 USD");
+  ).toContainText("1,250.00 USDC");
+  await expect(receipt.locator(".receipt-fields")).toContainText(
+    "10,000,000,000,000.00 USD",
+  );
   await expect(receipt).not.toContainText("Last available");
   await expect(
     receipt.locator(".receipt-fields").getByText("Cash", { exact: true }),
@@ -89,7 +91,7 @@ test("closed receipt freezes independently of polling, exports exact values and 
   await expect.poll(() => reads).toBeGreaterThan(before);
   await expect(
     receipt.getByRole("region", { name: "Adjusted P&L" }),
-  ).toContainText("1,250 USDC");
+  ).toContainText("1,250.00 USDC");
   await page.evaluate(() => {
     (window as unknown as { receiptText: string[] }).receiptText = [];
   });
@@ -105,8 +107,8 @@ test("closed receipt freezes independently of polling, exports exact values and 
   const labels = await page.evaluate(
     () => (window as unknown as { receiptText: string[] }).receiptText,
   );
-  expect(labels).toContain("1,250 USDC");
-  expect(labels).not.toContain("9,999 USDC");
+  expect(labels).toContain("1,250.00 USDC");
+  expect(labels).not.toContain("9,999.00 USDC");
   await receipt.evaluate((element) => {
     element.scrollTop = 0;
   });
@@ -125,7 +127,7 @@ test("closed receipt freezes independently of polling, exports exact values and 
     page
       .getByRole("dialog", { name: "BTC Long" })
       .getByRole("region", { name: "Adjusted P&L" }),
-  ).toContainText("9,999 USDC");
+  ).toContainText("9,999.00 USDC");
   expect(
     paths.filter((p) => p.includes("receipt") || p.includes("/positions/")),
   ).toEqual([]);

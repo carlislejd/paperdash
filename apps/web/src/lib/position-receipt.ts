@@ -10,6 +10,8 @@ export interface ReceiptField {
   label: string;
   value: string;
   exact: string;
+  /** Rounded monetary presentation for images; exact values remain inspectable. */
+  exportValue?: string;
 }
 export interface PositionReceiptModel {
   title: string;
@@ -60,7 +62,21 @@ function amount(
 ): ReceiptField {
   const exact = scale === null ? null : exactScaledValue(raw, scale);
   if (exact === null) return { label, value: "—", exact: "Unavailable" };
-  // Keep the entire number available in the details and exported receipt.
+  // Round currency using integer arithmetic, including instrument-scaled prices.
+  // Preserve full precision in the separate exact-value view.
+  if (unit === "USD" || unit === "USDC") {
+    const signed = BigInt(raw!),
+      absolute = signed < 0n ? -signed : signed,
+      divisor = BigInt(scale ?? "1000000000000000000"),
+      cents = (absolute * 200n + divisor) / (divisor * 2n);
+    const display = `${signed < 0n && cents !== 0n ? "−" : ""}${group((cents / 100n).toString())}.${(cents % 100n).toString().padStart(2, "0")} ${unit}`;
+    return {
+      label,
+      value: display,
+      exportValue: display,
+      exact: `${exact} ${unit}`,
+    };
+  }
   const parts = exact.split(".");
   const display =
     parts.length === 2 && parts[1].length > 6

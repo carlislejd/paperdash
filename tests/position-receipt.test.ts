@@ -52,7 +52,7 @@ describe("frozen position receipt presentation", () => {
     const model = positionReceiptModel(
       freezePositionReceipt(closed(), null, false),
     );
-    expect(model.headline.value).toBe("−10,000,000,000 USDC");
+    expect(model.headline.value).toBe("−10,000,000,000.00 USDC");
     expect(model.fields.find((f) => f.label === "Entry notional")?.exact).toBe(
       "10,000,000,000,000 USD",
     );
@@ -65,6 +65,31 @@ describe("frozen position receipt presentation", () => {
     expect(
       model.fields.find((f) => f.label === "Eligible loss basis")?.exact,
     ).toBe("10,000,000,000 USD");
+    const position = closed();
+    position.adjustedPnlRaw = "449264341827924961576";
+    position.userPaidFeeRaw = "8985286836558499231";
+    const rounded = positionReceiptModel(
+      freezePositionReceipt(position, null, false),
+    );
+    expect(rounded.headline.value).toBe("449.26 USDC");
+    expect(rounded.headline.exact).toBe("449.264341827924961576 USDC");
+    expect(rounded.fields.find((f) => f.label === "User fee")?.value).toBe(
+      "8.99 USDC",
+    );
+    expect(rounded.fields.find((f) => f.label === "Entry price")?.value).toBe(
+      "80,000.10 USD",
+    );
+    for (const [raw, expected] of [
+      ["999995000000000000000", "1,000.00 USDC"],
+      ["-125000000000000000", "−0.13 USDC"],
+      ["-1", "0.00 USDC"],
+    ]) {
+      position.adjustedPnlRaw = raw;
+      expect(
+        positionReceiptModel(freezePositionReceipt(position, null, false))
+          .headline.value,
+      ).toBe(expected);
+    }
   });
   it("freezes selected source state and keeps clocks, queued balance and unknown prices truthful", () => {
     const source = closed(),
@@ -98,7 +123,7 @@ describe("frozen position receipt presentation", () => {
       ),
     ).toBe(`https://papertrade.club/?wallet=${wallet}`);
   });
-  it("exports the same frozen exact values, unavailable fields and source clock without clipping large digits", async () => {
+  it("exports rounded money, unavailable fields and source clock without clipping large digits", async () => {
     const p = closed();
     p.initialMarginRaw = (2n ** 256n - 1n).toString();
     p.entryNotionalRaw = (BigInt(p.initialMarginRaw) * 1000n).toString();
@@ -138,8 +163,9 @@ describe("frozen position receipt presentation", () => {
       expect(labels).toContain("paperclub");
       expect(labels).toContain("Unavailable");
       expect(labels.some((t) => t.startsWith("History checked"))).toBe(true);
-      const exact = exactScaledValue(p.entryNotionalRaw)! + " USD";
-      expect(labels.join("")).toContain(exact);
+      expect(labels.join("")).toContain(
+        "115,792,089,237,316,195,423,570,985,008,687,907,853,269,984,665,640,564,039,457,584.01 USD",
+      );
       expect(Math.max(...boxes.map((b) => b.y))).toBeLessThan(canvas.height);
       expect(canvas.width).toBe(1200);
     } finally {

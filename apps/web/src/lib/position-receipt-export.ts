@@ -2,7 +2,10 @@ import { canvasPng, fittedText, imageCanvas } from "./image-export";
 import {
   positionReceiptModel,
   type PositionReceiptSnapshot,
+  type ReceiptField,
 } from "./position-receipt";
+
+const imageValue = (field: ReceiptField) => field.exportValue ?? field.exact;
 
 /** Character wrapping also preserves very large exact numbers without clipping digits. */
 function lines(
@@ -38,14 +41,15 @@ export async function renderPositionReceiptPng(
         height: Math.max(
           120,
           ...fields.map(
-            (field) => 64 + lines(field.exact, 488, ctx).length * 30,
+            (field) => 64 + lines(imageValue(field), 488, ctx).length * 30,
           ),
         ),
       };
     },
   );
   ctx.font = '500 28px "DM Sans", sans-serif';
-  const headlineLines = lines(model.headline.exact, 1040, ctx),
+  const headline = imageValue(model.headline),
+    headlineLines = lines(headline, 1040, ctx),
     heroHeight = Math.max(210, 140 + headlineLines.length * 34);
   const warningHeight = model.warnings.length ? 75 : 0;
   canvas.height =
@@ -88,11 +92,11 @@ export async function renderPositionReceiptPng(
   ctx.fillStyle = snapshot.position.adjustedPnlRaw?.startsWith("-")
     ? "#965957"
     : "#262925";
-  if (model.headline.exact.length < 36)
-    fittedText(ctx, model.headline.exact, 72, y + 122, 1040, 60, 550);
+  if (headline.length < 36)
+    fittedText(ctx, headline, 72, y + 122, 1040, 60, 550);
   else {
     ctx.font = '500 28px "DM Sans", sans-serif';
-    lines(model.headline.exact, 1040, ctx).forEach((line, i) =>
+    lines(headline, 1040, ctx).forEach((line, i) =>
       ctx.fillText(line, 72, y + 90 + i * 34),
     );
   }
@@ -104,7 +108,7 @@ export async function renderPositionReceiptPng(
       fittedText(ctx, field.label, x, y + 24, 488, 19, 400);
       ctx.fillStyle = "#262925";
       ctx.font = '500 24px "DM Sans", sans-serif';
-      lines(field.exact, 488, ctx).forEach((line, lineIndex) =>
+      lines(imageValue(field), 488, ctx).forEach((line, lineIndex) =>
         ctx.fillText(line, x, y + 62 + lineIndex * 30),
       );
     });
