@@ -176,11 +176,11 @@ test("production bootstrap redirects before data/tracking and initializes one ca
   );
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
     "content",
-    `${canonical}/art/paperclub-social-v3.png`,
+    `${canonical}/art/paperclub-social-v4.png`,
   );
   await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute(
     "content",
-    `${canonical}/art/paperclub-social-v3.png`,
+    `${canonical}/art/paperclub-social-v4.png`,
   );
   await expect(page.locator("script[data-cf-beacon]")).toHaveCount(1);
   await expect(page.locator("script[data-cf-beacon]")).toHaveAttribute(
