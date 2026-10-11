@@ -133,12 +133,13 @@
 }
 .liquidation-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   margin: 0 0 26px;
 }
 .liquidation-metrics > div {
+  min-width: 0;
   padding: 20px;
   border-right: 1px solid var(--line);
 }
@@ -152,6 +153,13 @@
   color: var(--muted);
   font-size: 11px;
   margin-bottom: 10px;
+}
+.liquidation-estimate {
+  display: inline-block;
+  margin-left: 3px;
+  color: var(--ink);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
 .liquidation-metrics dd {
   margin: 0;
@@ -225,6 +233,24 @@
   color: var(--muted);
   font-size: 11px;
 }
+@media (min-width: 721px) and (max-width: 1100px) {
+  .liquidation-metrics {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .liquidation-metrics > div {
+    grid-column: span 2;
+  }
+  .liquidation-metrics > div:nth-child(3) {
+    border-right: 0;
+  }
+  .liquidation-metrics > div:nth-child(n + 4) {
+    grid-column: span 3;
+    border-top: 1px solid var(--line);
+  }
+  .liquidation-metrics > div:nth-child(4) {
+    padding-left: 0;
+  }
+}
 @media (max-width: 720px) {
   .house-funds > .pc-chart-card .pc-chart-plot {
     --pc-plot-height: 180px;
@@ -246,15 +272,17 @@
   .liquidation-metrics > div {
     padding: 16px;
   }
-  .liquidation-metrics > div:nth-child(3) {
+  .liquidation-metrics > div:nth-child(odd) {
     padding-left: 0;
+  }
+  .liquidation-metrics > div:nth-child(n + 3) {
     border-top: 1px solid var(--line);
   }
-  .liquidation-metrics > div:nth-child(4) {
-    border-top: 1px solid var(--line);
-  }
-  .liquidation-metrics > div:nth-child(2) {
+  .liquidation-metrics > div:nth-child(even) {
     border-right: 0;
+  }
+  .liquidation-metrics > div:last-child {
+    grid-column: 1 / -1;
   }
   .liquidations-heading {
     align-items: flex-start;

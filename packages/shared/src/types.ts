@@ -359,6 +359,9 @@ export interface ProtocolChartsResponse {
 }
 
 export interface LiquidationTotals {
+  /** Approximate initial margin: sum(notionalUsd / leverage), not exact collateral accounting. Null until every retained observation in this window is covered. */
+  estimatedMarginUsd?: number | null;
+  marginObservationCount?: number;
   count: number;
   longCount: number;
   shortCount: number;

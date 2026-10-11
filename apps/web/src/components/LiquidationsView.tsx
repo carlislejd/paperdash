@@ -95,6 +95,20 @@ export function LiquidationsView({
           </dd>
         </div>
         <div>
+          <dt>
+            Liquidated margin · 24h{" "}
+            <span
+              className="liquidation-estimate"
+              title="Initial margin estimated from notional ÷ entry leverage."
+            >
+              Est.
+            </span>
+          </dt>
+          <dd title={formatUsd(totals?.estimatedMarginUsd)}>
+            {formatUsd(totals?.estimatedMarginUsd, true)}
+          </dd>
+        </div>
+        <div>
           <dt>Liquidations · 24h</dt>
           <dd>{totals?.count.toLocaleString() ?? "—"}</dd>
         </div>
@@ -260,7 +274,8 @@ export function LiquidationsView({
       </div>
       <p className="protocol-method">
         Observed activity; coverage may be incomplete. Notional is position
-        size, not lost collateral. Totals through{" "}
+        size, not lost collateral. Initial margin estimated from notional ÷
+        entry leverage. Totals through{" "}
         {data ? new Date(data.windowTo).toLocaleTimeString() : "—"}.
       </p>
     </section>

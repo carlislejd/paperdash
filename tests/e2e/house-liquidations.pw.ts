@@ -58,6 +58,8 @@ function liquidations(
       longCount: 20,
       shortCount: 3,
       notionalUsd: 10_000_000_000,
+      estimatedMarginUsd: instrument === 1 ? 4_000_000 : 10_000_000,
+      marginObservationCount: 23,
     };
   return {
     items: [
@@ -76,7 +78,14 @@ function liquidations(
       },
     ],
     nextCursor: older ? null : "older-page",
-    stats: { day: totals, hour: totals },
+    stats: {
+      day: totals,
+      hour: {
+        ...totals,
+        notionalUsd: 1_000_000_000,
+        estimatedMarginUsd: 1_000_000,
+      },
+    },
     hourly: {
       intervalMs: 3600000,
       from: at - 86400000,
@@ -206,6 +215,93 @@ test("liquidation filtering, retained pagination and wallet links remain bounded
     path: `/tmp/paperdash-liquidations-${test.info().project.name}.png`,
     fullPage: true,
   });
+});
+
+test("estimated liquidation margin is a same-weight headline across responsive sizes and asset filters", async ({
+  page,
+}) => {
+  await sources(page);
+  await page.goto("/?view=liquidations");
+  const metrics = page.locator(".liquidation-metrics");
+  const margin = metrics
+    .locator("> div")
+    .filter({ hasText: "Liquidated margin · 24h" });
+  await expect(metrics.locator("> div")).toHaveCount(5);
+  await expect(margin.locator("dd")).toHaveText("$10M");
+  await expect(margin.locator("dd")).toHaveAttribute("title", "$10,000,000.00");
+  await expect(margin).toContainText("Est.");
+  await expect(
+    page.locator(".liquidations-view .protocol-method"),
+  ).toContainText("Initial margin estimated from notional ÷ entry leverage.");
+  await expect(
+    metrics
+      .locator("> div")
+      .filter({ hasText: "Liquidated notional · 1h" })
+      .locator("dd"),
+  ).toHaveText("$1B");
+  const widths =
+    test.info().project.name === "desktop" ? [1440, 1024, 720, 320] : [393];
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 1000 });
+    const sizes = await metrics.locator("dd").evaluateAll((items) =>
+      items.map((item) => {
+        const style = getComputedStyle(item);
+        return `${style.fontSize}/${style.fontWeight}`;
+      }),
+    );
+    expect(new Set(sizes).size).toBe(1);
+    expect(
+      await metrics
+        .locator("> div")
+        .evaluateAll((items) =>
+          items.every((item) => item.scrollWidth <= item.clientWidth),
+        ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+    if (width === 1440 || width === 393)
+      await page.screenshot({
+        path: `/tmp/paperclub-liquidation-margin-${width}.png`,
+      });
+  }
+  await page
+    .locator(".liquidation-toolbar")
+    .getByRole("button", { name: "ETH", exact: true })
+    .click();
+  await expect(margin.locator("dd")).toHaveText("$4M");
+  await expect(page.locator(".liquidation-table tbody")).toContainText("ETH");
+});
+
+test("liquidation margin distinguishes missing legacy data, incomplete estimates and observed zero", async ({
+  page,
+}) => {
+  await sources(page);
+  let value: number | null | undefined;
+  await page.route("**/api/liquidations", (route) => {
+    const data = liquidations();
+    if (value === undefined) {
+      delete data.stats.day.estimatedMarginUsd;
+      delete data.stats.day.marginObservationCount;
+    } else {
+      data.stats.day.estimatedMarginUsd = value;
+      data.stats.day.marginObservationCount = 0;
+      if (value === 0) data.stats.day.count = 0;
+    }
+    return route.fulfill({ json: data });
+  });
+  const margin = page
+    .locator(".liquidation-metrics > div")
+    .filter({ hasText: "Liquidated margin · 24h" })
+    .locator("dd");
+  await page.goto("/?view=liquidations");
+  await expect(margin).toHaveText("—");
+  value = null;
+  await page.reload();
+  await expect(margin).toHaveText("—");
+  value = 0;
+  await page.reload();
+  await expect(margin).toHaveText("$0");
 });
 
 test("hourly liquidations stack assets, switch metric and export an expanded chart", async ({

@@ -43,6 +43,7 @@ The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API respo
 | Wallet closed-position history | `/api/wallets/ADDRESS/trades` | `items`, `nextCursor`, `coverage` |
 | House funds, PAPER staked, rewards, annualized staking revenue | `/api/house` | `house`, `paper`, `annualizedStakingRevenue` |
 | Liquidation totals over the last 1 or 24 hours | `/api/liquidations/stats` | `stats.hour`, `stats.day`, `windowTo` |
+| Estimated margin in liquidated positions | `/api/liquidations/stats` | `stats.hour.estimatedMarginUsd`, `stats.day.estimatedMarginUsd`, and each `marginObservationCount` |
 | Liquidations by asset, hourly chart and recent events | `/api/liquidations?instrument=0` | `stats`, `hourly`, `items`, `nextCursor` |
 | Hourly TVL, volume, open-position and PAPER charts | `/api/protocol/charts` | `series`, `intervalMs`, per-series `coverage` |
 | Average holding time and leverage | `/api/position-metrics` or `/api/wallets/ADDRESS/position-metrics` | Returned metrics and their coverage; based on indexed closed-position history |
@@ -96,6 +97,7 @@ For chart highlights, `/api/assets/0/market?window=15m` (BTC) or `/api/assets/1/
 - `annualizedStakingRevenue.usdPerYearRaw` is a protocol-wide historical USDC/year run rate, not a forecast or yield percentage.
 - Asset open interest is entry notional. Long/short percentages are notional-weighted, not percentages of wallets.
 - Liquidation notional is execution size, not lost collateral or trader losses.
+- `estimatedMarginUsd` is approximate USD initial margin associated with observed liquidations, summed as each position's notional divided by its entry leverage. It is already in USD, not 18-decimal raw units. Label it estimated; it is not an independently reconciled collateral-loss total. Null/missing means unavailable while retained observations are being enriched or a contribution cannot be derived. `marginObservationCount` covers locally derived observations; upstream coverage remains partial. Never estimate the total by dividing aggregate notional by average leverage.
 - Most response times and window bounds are Unix milliseconds. Wallet `snapshot.indexedThroughTimestamp` is Unix seconds. Position `openedAtMs` is milliseconds.
 - Wallet position tuples are easiest to interpret through `node paperclub.mjs positions ADDRESS`, which includes column names and unit descriptions. BTC raw entry/bust prices divide by 10; ETH by 100, unlike 18-decimal monetary amounts.
 - Missing or null is unavailable, not zero. Never fabricate a missing value.

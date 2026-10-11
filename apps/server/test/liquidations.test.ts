@@ -102,6 +102,8 @@ describe("incremental observed liquidations", () => {
       longCount: 3,
       shortCount: 0,
       notionalUsd: 30000000000,
+      estimatedMarginUsd: 30000000,
+      marginObservationCount: 3,
     });
     const items = (await liquidations.page(undefined, undefined, at)).items;
     expect(items).toHaveLength(3);
@@ -136,12 +138,16 @@ describe("incremental observed liquidations", () => {
       longCount: 2,
       shortCount: 3,
       notionalUsd: 500,
+      estimatedMarginUsd: 0.5,
+      marginObservationCount: 5,
     });
     expect(stats.hour).toEqual({
       count: 3,
       longCount: 1,
       shortCount: 2,
       notionalUsd: 300,
+      estimatedMarginUsd: 0.30000000000000004,
+      marginObservationCount: 3,
     });
     expect(stats.coverage.observedFrom).toBe(at - 86400001);
     expect(stats.coverage.latestObservedAt).toBe(at);
@@ -169,6 +175,8 @@ describe("incremental observed liquidations", () => {
       longCount: 0,
       shortCount: 1,
       notionalUsd: 7,
+      estimatedMarginUsd: 0.007,
+      marginObservationCount: 1,
     });
     expect((await liquidations.stats(undefined, at)).day.count).toBe(2);
     expect(
@@ -293,14 +301,9 @@ describe("incremental observed liquidations", () => {
       ),
     ).toBe(true);
     const minute = Math.floor(at / 60000) * 60000 - 60000;
-    db.prepare("INSERT INTO liquidation_minutes VALUES(?,?,?,?,?,?)").run(
-      0,
-      minute,
-      9007199254740993n,
-      9007199254740993n,
-      0,
-      1,
-    );
+    db.prepare(
+      "INSERT INTO liquidation_minutes(instrument,time,event_count,long_count,short_count,notional) VALUES(?,?,?,?,?,?)",
+    ).run(0, minute, 9007199254740993n, 9007199254740993n, 0, 1);
     await expect(liquidations.stats(undefined, at)).rejects.toThrow(
       "supported range",
     );
@@ -365,10 +368,8 @@ describe("incremental observed liquidations", () => {
       processed: 2,
       complete: false,
     });
-    expect(await second.liquidations.backfill(2)).toEqual({
-      processed: 1,
-      complete: true,
-    });
+    for (let i = 0; i < 10; i++)
+      if ((await second.liquidations.backfill(2)).complete) break;
     expect(await second.liquidations.backfill(2)).toEqual({
       processed: 0,
       complete: true,
@@ -427,7 +428,7 @@ describe("incremental observed liquidations", () => {
     }
     expect((await liquidations.stats(undefined, at)).day.count).toBe(1);
     expect(await liquidations.backfill(100)).toEqual({
-      processed: 2,
+      processed: 5, // two raw observations and three margin checkpoints
       complete: true,
     });
     expect((await liquidations.stats(undefined, at)).day.count).toBe(3);

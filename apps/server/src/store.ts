@@ -58,6 +58,7 @@ import {
   createPgLiquidations,
   createLocalLiquidations,
   liquidationsSchemaSql,
+  migrateLocalLiquidations,
   projectLiquidationPg,
   projectLiquidationSqlite,
   type LiquidationsStore,
@@ -414,7 +415,7 @@ export async function createStore(
   db.exec(positionMetricsSchemaSql("", false));
   migrateLocalMarket(db);
   db.exec(houseSchemaSql("", false));
-  db.exec(liquidationsSchemaSql("", false));
+  migrateLocalLiquidations(db);
   db.exec(tradeInboxSchemaSql("", false));
   const maxBytes = options.maxBytes ?? config.localMaxBytes;
   let checkAt = 0;

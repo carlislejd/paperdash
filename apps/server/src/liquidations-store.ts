@@ -48,17 +48,41 @@ export function liquidationsSchemaSql(
   const kind = postgres ? "payload->>'kind'" : "json_extract(payload,'$.kind')";
   return `
 CREATE TABLE IF NOT EXISTS ${prefix}liquidation_members(id TEXT PRIMARY KEY,fingerprint TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS ${prefix}liquidation_fingerprints(fingerprint TEXT PRIMARY KEY,instrument INTEGER NOT NULL,source_at ${int} NOT NULL,side TEXT NOT NULL,notional ${real} NOT NULL,stream_count ${int} NOT NULL,recent_count ${int} NOT NULL);
+CREATE TABLE IF NOT EXISTS ${prefix}liquidation_fingerprints(fingerprint TEXT PRIMARY KEY,instrument INTEGER NOT NULL,source_at ${int} NOT NULL,side TEXT NOT NULL,notional ${real} NOT NULL,stream_count ${int} NOT NULL,recent_count ${int} NOT NULL,estimated_margin ${real});
 CREATE INDEX IF NOT EXISTS ${prefix}liquidation_fingerprint_time ON ${prefix}liquidation_fingerprints(source_at,fingerprint);
 CREATE INDEX IF NOT EXISTS ${prefix}liquidation_fingerprint_instrument ON ${prefix}liquidation_fingerprints(instrument,source_at,fingerprint);
-CREATE TABLE IF NOT EXISTS ${prefix}liquidation_minutes(instrument INTEGER NOT NULL,time ${int} NOT NULL,event_count ${int} NOT NULL,long_count ${int} NOT NULL,short_count ${int} NOT NULL,notional ${real} NOT NULL,PRIMARY KEY(instrument,time));
+CREATE TABLE IF NOT EXISTS ${prefix}liquidation_minutes(instrument INTEGER NOT NULL,time ${int} NOT NULL,event_count ${int} NOT NULL,long_count ${int} NOT NULL,short_count ${int} NOT NULL,notional ${real} NOT NULL,estimated_margin ${real} NOT NULL DEFAULT 0,margin_observation_count ${int} NOT NULL DEFAULT 0,PRIMARY KEY(instrument,time));
 CREATE INDEX IF NOT EXISTS ${prefix}liquidation_minute_time ON ${prefix}liquidation_minutes(time,instrument);
 CREATE TABLE IF NOT EXISTS ${prefix}liquidation_events(id TEXT PRIMARY KEY,instrument INTEGER NOT NULL,source_at ${int} NOT NULL,payload ${json} NOT NULL);
 CREATE INDEX IF NOT EXISTS ${prefix}liquidation_event_time ON ${prefix}liquidation_events(source_at DESC,id DESC);
 CREATE INDEX IF NOT EXISTS ${prefix}liquidation_event_instrument ON ${prefix}liquidation_events(instrument,source_at DESC,id DESC);
 CREATE TABLE IF NOT EXISTS ${prefix}liquidation_state(id INTEGER PRIMARY KEY,cursor TEXT NOT NULL,complete INTEGER NOT NULL);
-INSERT INTO ${prefix}liquidation_state VALUES(1,'',0) ON CONFLICT(id) DO NOTHING;
+INSERT INTO ${prefix}liquidation_state VALUES(1,'',0),(2,'',0) ON CONFLICT(id) DO NOTHING;
+${
+  postgres
+    ? `ALTER TABLE ${prefix}liquidation_fingerprints ADD COLUMN IF NOT EXISTS estimated_margin double precision;
+ALTER TABLE ${prefix}liquidation_minutes ADD COLUMN IF NOT EXISTS estimated_margin double precision NOT NULL DEFAULT 0;
+ALTER TABLE ${prefix}liquidation_minutes ADD COLUMN IF NOT EXISTS margin_observation_count bigint NOT NULL DEFAULT 0;`
+    : ""
+}
 CREATE INDEX IF NOT EXISTS ${prefix}liquidation_raw_ids ON ${prefix}trade_observations(id) WHERE ${kind}='liq';`;
+}
+/** Additive local migration; no historical rows are rewritten at startup. */
+export function migrateLocalLiquidations(db: DatabaseSync): void {
+  db.exec(liquidationsSchemaSql("", false));
+  for (const [table, column, definition] of [
+    ["liquidation_fingerprints", "estimated_margin", "REAL"],
+    ["liquidation_minutes", "estimated_margin", "REAL NOT NULL DEFAULT 0"],
+    [
+      "liquidation_minutes",
+      "margin_observation_count",
+      "INTEGER NOT NULL DEFAULT 0",
+    ],
+  ]) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (!columns.some((c) => c.name === column))
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 const pgSql = (sql: string) => {
   let i = 0;
@@ -98,7 +122,7 @@ function statements(prefix: string, value: TradeEvent) {
       args: [value.id, fingerprint],
     },
     fingerprintUpdate: {
-      sql: `INSERT INTO ${table}(fingerprint,instrument,source_at,side,notional,stream_count,recent_count) VALUES(?,?,?,?,?,?,?) ON CONFLICT(fingerprint) DO UPDATE SET stream_count=${table}.stream_count+excluded.stream_count,recent_count=${table}.recent_count+excluded.recent_count RETURNING stream_count,recent_count,CASE WHEN ${stream ? "stream_count>recent_count" : "recent_count>stream_count"} THEN 1 ELSE 0 END AS delta`,
+      sql: `INSERT INTO ${table}(fingerprint,instrument,source_at,side,notional,stream_count,recent_count) VALUES(?,?,?,?,?,?,?) ON CONFLICT(fingerprint) DO UPDATE SET stream_count=${table}.stream_count+excluded.stream_count,recent_count=${table}.recent_count+excluded.recent_count RETURNING stream_count,recent_count,estimated_margin,CASE WHEN ${stream ? "stream_count>recent_count" : "recent_count>stream_count"} THEN 1 ELSE 0 END AS delta`,
       args: [
         fingerprint,
         value.instrument,
@@ -123,9 +147,88 @@ function statements(prefix: string, value: TradeEvent) {
   };
 }
 interface Counts {
+  estimated_margin: number | null;
   stream_count: number | string;
   recent_count: number | string;
   delta: number | string;
+}
+function marginEstimate(value: TradeEvent): number | null {
+  if (
+    !Number.isFinite(value.notionalUsd) ||
+    value.notionalUsd < 0 ||
+    !Number.isFinite(value.leverage) ||
+    value.leverage <= 0
+  )
+    return null;
+  const margin = value.notionalUsd / value.leverage;
+  return Number.isFinite(margin) &&
+    margin >= 0 &&
+    (value.notionalUsd === 0 || margin > 0)
+    ? margin
+    : null;
+}
+const marginFillSql = (prefix: string) =>
+  `UPDATE ${prefix}liquidation_fingerprints SET estimated_margin=? WHERE fingerprint=? AND estimated_margin IS NULL RETURNING stream_count,recent_count`;
+const marginMinuteSql = (prefix: string) =>
+  `UPDATE ${prefix}liquidation_minutes SET estimated_margin=estimated_margin+?,margin_observation_count=margin_observation_count+? WHERE instrument=? AND time=?`;
+function marginAddition(
+  value: TradeEvent,
+  margin: number,
+  count: number,
+): number[] {
+  const sum = margin * count;
+  if (!Number.isSafeInteger(count) || count < 0 || !Number.isFinite(sum))
+    throw new Error("Liquidation margin exceeds supported range");
+  return [sum, count, value.instrument, Math.floor(value.ts / MINUTE) * MINUTE];
+}
+/** Fingerprint lock precedes its minute lock in both live writes and backfill. */
+async function fillMarginPg(
+  client: Pick<PoolClient, "query">,
+  fingerprint: string,
+  value: TradeEvent,
+  counts?: Counts,
+): Promise<void> {
+  let margin = counts?.estimated_margin ?? marginEstimate(value);
+  if (margin === null) return;
+  let count = Number(counts?.delta ?? 0);
+  if (counts?.estimated_margin == null) {
+    const filled = (
+      await client.query(pgSql(marginFillSql("paperdash_")), [
+        margin,
+        fingerprint,
+      ])
+    ).rows[0];
+    if (!filled) return;
+    count = Math.max(Number(filled.stream_count), Number(filled.recent_count));
+  }
+  if (!count) return;
+  const updated = await client.query(
+    pgSql(marginMinuteSql("paperdash_")),
+    marginAddition(value, margin, count),
+  );
+  if (updated.rowCount !== 1)
+    throw new Error("Missing liquidation minute for margin");
+}
+function fillMarginSqlite(
+  db: DatabaseSync,
+  fingerprint: string,
+  value: TradeEvent,
+  counts?: Counts,
+): void {
+  const margin = counts?.estimated_margin ?? marginEstimate(value);
+  if (margin === null) return;
+  let count = Number(counts?.delta ?? 0);
+  if (counts?.estimated_margin == null) {
+    const filled = db.prepare(marginFillSql("")).get(margin, fingerprint);
+    if (!filled) return;
+    count = Math.max(Number(filled.stream_count), Number(filled.recent_count));
+  }
+  if (!count) return;
+  const updated = db
+    .prepare(marginMinuteSql(""))
+    .run(...marginAddition(value, margin, count));
+  if (updated.changes !== 1)
+    throw new Error("Missing liquidation minute for margin");
 }
 function projectedEvent(
   value: TradeEvent,
@@ -169,6 +272,7 @@ export async function projectLiquidationPg(
       [JSON.stringify(event), event.id],
     );
   }
+  await fillMarginPg(client, q.fingerprint, value, counts);
 }
 /** Synchronous and invoked in the same transaction as raw SQLite observations. */
 export function projectLiquidationSqlite(
@@ -196,6 +300,7 @@ export function projectLiquidationSqlite(
       "UPDATE liquidation_events SET payload=? WHERE id=? AND json_extract(payload,'$.priceUsd') IS NULL",
     ).run(JSON.stringify(event), event.id);
   }
+  fillMarginSqlite(db, q.fingerprint, value, counts);
 }
 interface Reader {
   prefix: string;
@@ -239,12 +344,16 @@ type TotalRow = {
   long_count: number | string | null;
   short_count: number | string | null;
   notional: number | string | null;
+  estimated_margin: number | string | null;
+  margin_count: number | string | null;
 };
 const zeroTotals = (): LiquidationTotals => ({
   count: 0,
   longCount: 0,
   shortCount: 0,
   notionalUsd: 0,
+  estimatedMarginUsd: 0,
+  marginObservationCount: 0,
 });
 function checkTotals(value: LiquidationTotals): LiquidationTotals {
   if (
@@ -252,7 +361,13 @@ function checkTotals(value: LiquidationTotals): LiquidationTotals {
       (n) => Number.isSafeInteger(n) && n >= 0,
     ) ||
     !Number.isFinite(value.notionalUsd) ||
-    value.notionalUsd < 0
+    value.notionalUsd < 0 ||
+    !Number.isSafeInteger(value.marginObservationCount) ||
+    value.marginObservationCount! < 0 ||
+    value.marginObservationCount! > value.count ||
+    (value.estimatedMarginUsd !== null &&
+      (!Number.isFinite(value.estimatedMarginUsd) ||
+        value.estimatedMarginUsd! < 0))
   )
     throw new Error("Liquidation aggregate exceeds supported range");
   return value;
@@ -273,7 +388,7 @@ function readers(db: Reader): Pick<LiquidationsStore, "stats" | "page"> {
           fullFrom = Math.ceil(from / MINUTE) * MINUTE,
           fullTo = Math.floor(now / MINUTE) * MINUTE;
         return {
-          sql: `SELECT instrument,time AS source_at,event_count AS n,long_count,short_count,notional FROM ${m} WHERE ${filter}time>=? AND time<? UNION ALL SELECT instrument,source_at,n,CASE WHEN side='long' THEN n ELSE 0 END AS long_count,CASE WHEN side='short' THEN n ELSE 0 END AS short_count,notional*n AS notional FROM (SELECT instrument,source_at,side,notional,${effective} AS n FROM ${f} WHERE ${filter}((source_at>=? AND source_at<?) OR (source_at>=? AND source_at<=?))) boundary`,
+          sql: `SELECT instrument,time AS source_at,event_count AS n,long_count,short_count,notional,estimated_margin,margin_observation_count AS margin_count FROM ${m} WHERE ${filter}time>=? AND time<? UNION ALL SELECT instrument,source_at,n,CASE WHEN side='long' THEN n ELSE 0 END AS long_count,CASE WHEN side='short' THEN n ELSE 0 END AS short_count,notional*n AS notional,COALESCE(estimated_margin,0)*n AS estimated_margin,CASE WHEN estimated_margin IS NULL THEN 0 ELSE n END AS margin_count FROM (SELECT instrument,source_at,side,notional,estimated_margin,${effective} AS n FROM ${f} WHERE ${filter}((source_at>=? AND source_at<?) OR (source_at>=? AND source_at<=?))) boundary`,
           args: [
             ...args,
             fullFrom,
@@ -301,7 +416,7 @@ function readers(db: Reader): Pick<LiquidationsStore, "stats" | "page"> {
           complete: number | null;
         }
       >(
-        `WITH day_parts AS (${dayParts.sql}), hour_parts AS (${hourParts.sql}), grouped AS (SELECT 'bucket' AS kind,instrument,source_at-(source_at%${HOUR}) AS time,sum(n) AS count,sum(long_count) AS long_count,sum(short_count) AS short_count,sum(notional) AS notional FROM day_parts GROUP BY instrument,source_at-(source_at%${HOUR}) UNION ALL SELECT 'hour' AS kind,NULL AS instrument,NULL AS time,sum(n) AS count,sum(long_count) AS long_count,sum(short_count) AS short_count,sum(notional) AS notional FROM hour_parts), coverage AS (SELECT (SELECT source_at FROM ${f} WHERE ${filter}source_at<=? ORDER BY source_at LIMIT 1) AS observed_from,(SELECT source_at FROM ${f} WHERE ${filter}source_at<=? ORDER BY source_at DESC LIMIT 1) AS latest_at,(SELECT complete FROM ${db.prefix}liquidation_state WHERE id=1) AS complete) SELECT kind,instrument,time,CAST(count AS TEXT) AS count,CAST(long_count AS TEXT) AS long_count,CAST(short_count AS TEXT) AS short_count,notional,observed_from,latest_at,complete FROM grouped CROSS JOIN coverage ORDER BY kind,time,instrument LIMIT ${25 * MAX_ASSETS + 2}`,
+        `WITH day_parts AS (${dayParts.sql}), hour_parts AS (${hourParts.sql}), grouped AS (SELECT 'bucket' AS kind,instrument,source_at-(source_at%${HOUR}) AS time,sum(n) AS count,sum(long_count) AS long_count,sum(short_count) AS short_count,sum(notional) AS notional,sum(estimated_margin) AS estimated_margin,sum(margin_count) AS margin_count FROM day_parts GROUP BY instrument,source_at-(source_at%${HOUR}) UNION ALL SELECT 'hour' AS kind,NULL AS instrument,NULL AS time,sum(n) AS count,sum(long_count) AS long_count,sum(short_count) AS short_count,sum(notional) AS notional,sum(estimated_margin) AS estimated_margin,sum(margin_count) AS margin_count FROM hour_parts), coverage AS (SELECT (SELECT source_at FROM ${f} WHERE ${filter}source_at<=? ORDER BY source_at LIMIT 1) AS observed_from,(SELECT source_at FROM ${f} WHERE ${filter}source_at<=? ORDER BY source_at DESC LIMIT 1) AS latest_at,(SELECT complete FROM ${db.prefix}liquidation_state WHERE id=1) AS complete) SELECT kind,instrument,time,CAST(count AS TEXT) AS count,CAST(long_count AS TEXT) AS long_count,CAST(short_count AS TEXT) AS short_count,notional,estimated_margin,CAST(margin_count AS TEXT) AS margin_count,observed_from,latest_at,complete FROM grouped CROSS JOIN coverage ORDER BY kind,time,instrument LIMIT ${25 * MAX_ASSETS + 2}`,
         [...dayParts.args, ...hourParts.args, ...args, now, ...args, now],
       );
       if (rows.length > 25 * MAX_ASSETS + 1)
@@ -321,6 +436,11 @@ function readers(db: Reader): Pick<LiquidationsStore, "stats" | "page"> {
           longCount: Number(row.long_count ?? 0),
           shortCount: Number(row.short_count ?? 0),
           notionalUsd: Number(row.notional ?? 0),
+          estimatedMarginUsd:
+            Number(row.margin_count ?? 0) === Number(row.count ?? 0)
+              ? Number(row.estimated_margin ?? 0)
+              : null,
+          marginObservationCount: Number(row.margin_count ?? 0),
         });
         if (row.kind === "hour") {
           hour = total;
@@ -345,6 +465,11 @@ function readers(db: Reader): Pick<LiquidationsStore, "stats" | "page"> {
         day.longCount += total.longCount;
         day.shortCount += total.shortCount;
         day.notionalUsd += total.notionalUsd;
+        day.marginObservationCount! += total.marginObservationCount!;
+        day.estimatedMarginUsd =
+          day.estimatedMarginUsd === null || total.estimatedMarginUsd === null
+            ? null
+            : day.estimatedMarginUsd! + total.estimatedMarginUsd!;
       }
       if (instruments.size > MAX_ASSETS)
         throw new Error("Too many liquidation instruments");
@@ -459,30 +584,45 @@ export function createPgLiquidations(pool: Pool): LiquidationsStore {
           await client.query("BEGIN");
           const state = (
             await client.query(
-              "SELECT cursor,complete FROM paperdash_liquidation_state WHERE id=1 FOR UPDATE",
+              "SELECT id,cursor,complete FROM paperdash_liquidation_state WHERE complete=0 ORDER BY id LIMIT 1 FOR UPDATE",
             )
           ).rows[0];
-          if (state.complete === 1) {
+          if (!state) {
             await client.query("COMMIT");
             return { processed, complete: true };
           }
           const row = (
             await client.query(
-              "SELECT id,payload FROM paperdash_trade_observations WHERE id>$1 AND payload->>'kind'='liq' ORDER BY id LIMIT 1",
+              state.id === 1
+                ? "SELECT id,payload FROM paperdash_trade_observations WHERE id>$1 AND payload->>'kind'='liq' ORDER BY id LIMIT 1"
+                : "SELECT fingerprint AS id FROM paperdash_liquidation_fingerprints WHERE fingerprint>$1 ORDER BY fingerprint LIMIT 1",
               [state.cursor],
             )
           ).rows[0];
           if (!row) {
             await client.query(
-              "UPDATE paperdash_liquidation_state SET complete=1 WHERE id=1",
+              "UPDATE paperdash_liquidation_state SET complete=1 WHERE id=$1",
+              [state.id],
             );
             await client.query("COMMIT");
-            return { processed, complete: true };
+            continue;
           }
-          await projectLiquidationPg(client, parsePayload(row.payload));
+          if (state.id === 1)
+            await projectLiquidationPg(client, parsePayload(row.payload));
+          else {
+            const event = (
+              await client.query(
+                "SELECT payload FROM paperdash_liquidation_events WHERE id=$1",
+                [`liq:${row.id}:1`],
+              )
+            ).rows[0];
+            if (!event)
+              throw new Error("Missing liquidation event for margin backfill");
+            await fillMarginPg(client, row.id, parsePayload(event.payload));
+          }
           await client.query(
-            "UPDATE paperdash_liquidation_state SET cursor=$1 WHERE id=1",
-            [row.id],
+            "UPDATE paperdash_liquidation_state SET cursor=$1 WHERE id=$2",
+            [row.id, state.id],
           );
           await client.query("COMMIT");
           processed++;
@@ -513,32 +653,48 @@ export function createLocalLiquidations(
       await writable();
       db.exec("BEGIN IMMEDIATE");
       try {
-        const state = db
-          .prepare("SELECT cursor,complete FROM liquidation_state WHERE id=1")
-          .get() as { cursor: string; complete: number };
-        if (state.complete === 1) {
-          db.exec("COMMIT");
-          return { processed: 0, complete: true };
-        }
-        const rows = db
-          .prepare(
-            "SELECT id,payload FROM trade_observations WHERE id>? AND json_extract(payload,'$.kind')='liq' ORDER BY id LIMIT ?",
-          )
-          .all(state.cursor, limit) as { id: string; payload: string }[];
         const deadline = performance.now() + 3000;
         let processed = 0;
-        for (const row of rows) {
-          if (performance.now() >= deadline) break;
-          projectLiquidationSqlite(db, parsePayload(row.payload));
+        let complete = false;
+        while (processed < limit && performance.now() < deadline) {
+          const state = db
+            .prepare(
+              "SELECT id,cursor FROM liquidation_state WHERE complete=0 ORDER BY id LIMIT 1",
+            )
+            .get();
+          if (!state) {
+            complete = true;
+            break;
+          }
+          const row = db
+            .prepare(
+              state.id === 1
+                ? "SELECT id,payload FROM trade_observations WHERE id>? AND json_extract(payload,'$.kind')='liq' ORDER BY id LIMIT 1"
+                : "SELECT fingerprint AS id FROM liquidation_fingerprints WHERE fingerprint>? ORDER BY fingerprint LIMIT 1",
+            )
+            .get(state.cursor!);
+          if (!row) {
+            db.prepare(
+              "UPDATE liquidation_state SET complete=1 WHERE id=?",
+            ).run(state.id!);
+            continue;
+          }
+          if (state.id === 1)
+            projectLiquidationSqlite(db, parsePayload(row.payload));
+          else {
+            const event = db
+              .prepare("SELECT payload FROM liquidation_events WHERE id=?")
+              .get(`liq:${row.id}:1`);
+            if (!event)
+              throw new Error("Missing liquidation event for margin backfill");
+            fillMarginSqlite(db, String(row.id), parsePayload(event.payload));
+          }
+          db.prepare("UPDATE liquidation_state SET cursor=? WHERE id=?").run(
+            row.id!,
+            state.id!,
+          );
           processed++;
         }
-        const complete = processed === rows.length && rows.length < limit;
-        db.prepare(
-          "UPDATE liquidation_state SET cursor=?,complete=? WHERE id=1",
-        ).run(
-          processed ? rows[processed - 1].id : state.cursor,
-          complete ? 1 : 0,
-        );
         db.exec("COMMIT");
         return { processed, complete };
       } catch (error) {

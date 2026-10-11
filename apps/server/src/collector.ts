@@ -277,7 +277,7 @@ export class Collector {
       refreshProtocolCharts(this.store),
     );
     this.loop("liquidations-backfill", 10000, async () => {
-      await this.store.liquidations.backfill(100);
+      await this.store.liquidations.backfill(1000);
     });
     this.loop("liquidations", 5000, () => refreshLiquidations(this.store));
     this.loop("asset-activity", 10000, async () => {
