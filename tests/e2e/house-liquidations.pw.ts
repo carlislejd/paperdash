@@ -12,6 +12,7 @@ function house(): HouseResponse {
     sourceAt: at,
     receivedAt: at,
     stale: false,
+    houseStale: false,
     house: {
       fundsRaw: raw(-10_000_000_000),
       lpRaw: raw(1_000_000),
@@ -35,11 +36,45 @@ function house(): HouseResponse {
       yearDays: 365,
     },
     history: [
-      { time: at - 600000, fundsRaw: raw(1_000_000) },
-      { time: at - 500000, fundsRaw: raw(1_100_000) },
-      { time: at - 60000, fundsRaw: raw(-9_000_000_000), gapBefore: true },
-      { time: at, fundsRaw: raw(-10_000_000_000) },
+      {
+        time: at - 600000,
+        fundsRaw: raw(1_000_000),
+        lpRaw: raw(1_000_000),
+        openPnlRaw: raw(1000),
+        queueDebtRaw: raw(1000),
+      },
+      {
+        time: at - 500000,
+        fundsRaw: raw(1_100_000),
+        lpRaw: raw(1_100_000),
+        openPnlRaw: raw(1000),
+        queueDebtRaw: raw(1000),
+      },
+      {
+        time: at - 60000,
+        fundsRaw: raw(-9_000_000_000),
+        lpRaw: raw(900_000),
+        openPnlRaw: raw(-9_000_898_000),
+        queueDebtRaw: raw(2000),
+        gapBefore: true,
+      },
+      {
+        time: at,
+        fundsRaw: raw(-10_000_000_000),
+        lpRaw: raw(1_000_000),
+        openPnlRaw: raw(-10_000_999_000),
+        queueDebtRaw: raw(1000),
+      },
     ],
+    change: {
+      fromMs: at - 60000,
+      toMs: at,
+      sampleCount: 2,
+      fundsRaw: raw(-1_000_000_000),
+      lpRaw: raw(100_000),
+      openPnlRaw: raw(-1_000_101_000),
+      queueDebtRaw: raw(-1000),
+    },
     coverage: {
       source: "retained-house-observations",
       approximate: true,
@@ -170,9 +205,35 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   ).toHaveAttribute("title", "125,571,374 PAPER");
   await expect(panel).toContainText("LP balance + open house PnL − queue debt");
   const d = await panel
-    .locator(".house-funds .pc-chart-plot path")
+    .locator(".house-funds > .pc-chart-card .pc-chart-plot path")
     .getAttribute("d");
   expect(d?.match(/M/g)).toHaveLength(2);
+  const change = panel.getByRole("region", { name: "House funds change" });
+  await expect(change.locator(".house-change-heading strong")).toHaveText(
+    "-$1B",
+  );
+  await expect(change.locator("dd > span:last-child")).toHaveText([
+    "+$100K",
+    "-$1B",
+    "+$1K",
+  ]);
+  await expect(change.locator("dd").nth(1)).toHaveAttribute(
+    "title",
+    "−$1,000,101,000.00 contribution to house funds",
+  );
+  await expect(change).toContainText("Queue debt effect");
+  const componentCards = panel.locator(".house-components .pc-chart-card");
+  await expect(componentCards.locator("h3")).toHaveText([
+    "LP balance",
+    "Open house PnL",
+    "Queue debt",
+  ]);
+  const componentPaths = await componentCards
+    .locator("path[stroke]")
+    .evaluateAll((paths) => paths.map((path) => path.getAttribute("d")));
+  expect(componentPaths.every((path) => path?.match(/M/g)?.length === 2)).toBe(
+    true,
+  );
   await expect(
     page.getByRole("button", { name: "View liquidations" }),
   ).toContainText("23");
@@ -184,10 +245,147 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(page.viewportSize()!.width);
-  await page.screenshot({
-    path: `/tmp/paperdash-house-${test.info().project.name}.png`,
-    fullPage: true,
+  await panel.screenshot({
+    path: `/tmp/paperclub-house-health-${test.info().project.name}.png`,
   });
+  await panel.locator(".house-funds").screenshot({
+    path: `/tmp/paperclub-house-health-panel-${test.info().project.name}.png`,
+  });
+});
+
+test("house component links expand and export without mixing PAPER freshness", async ({
+  page,
+}) => {
+  await sources(page);
+  await page.route("**/api/house", (route) => {
+    const data = house();
+    data.stale = true;
+    data.houseStale = false;
+    data.error = "Protocol summary is delayed";
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/?view=overview&chart=house-open-pnl");
+  const dialog = page.getByRole("dialog", {
+    name: "Open house PnL",
+    exact: true,
+  });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toContainText("Last available");
+  await expect(dialog).not.toContainText("Protocol summary is delayed");
+  const d = await dialog.locator(".pc-chart-plot path").getAttribute("d");
+  expect(d?.match(/M/g)).toHaveLength(2);
+  const downloadEvent = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download PNG" }).click();
+  const download = await downloadEvent;
+  const bytes = await readFile((await download.path())!);
+  expect(bytes.subarray(1, 4).toString()).toBe("PNG");
+  expect(bytes.readUInt32BE(16)).toBe(1800);
+  await download.saveAs(
+    `/tmp/paperclub-house-pnl-export-${test.info().project.name}.png`,
+  );
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Expand Queue debt chart" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Queue debt", exact: true }),
+  ).toBeVisible();
+});
+
+test("house legacy history keeps current amounts and marks missing components and changes unavailable", async ({
+  page,
+}) => {
+  await sources(page);
+  await page.route("**/api/house", (route) => {
+    const data = house();
+    data.stale = true;
+    delete data.houseStale;
+    delete data.change;
+    data.history = data.history.map(({ time, fundsRaw, gapBefore }) => ({
+      time,
+      fundsRaw,
+      gapBefore,
+    }));
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/");
+  const housePanel = page.locator(".house-funds");
+  await expect(
+    housePanel.locator(".house-components .pc-chart-headline strong"),
+  ).toHaveText(["$1M", "-$10B", "$1K"]);
+  await expect(
+    housePanel
+      .locator(".house-components")
+      .getByRole("img", { name: /no observations/ }),
+  ).toHaveCount(3);
+  await expect(housePanel).toContainText(
+    "Change unavailable for the available history",
+  );
+  await expect(housePanel.locator(".house-contributions")).toHaveCount(0);
+  await expect(housePanel).toContainText("Last available");
+  await expect(
+    page.getByRole("region", { name: "PAPER economics" }),
+  ).not.toContainText("LAST AVAILABLE");
+});
+
+test("house change handles zero and giant signed contributions without overflow", async ({
+  page,
+}) => {
+  await sources(page);
+  let large = false;
+  await page.route("**/api/house", (route) => {
+    const data = house();
+    const giant = (2n ** 255n - 1n).toString();
+    const values = {
+      fundsRaw: large ? `-${giant}` : "0",
+      lpRaw: large ? giant : "0",
+      openPnlRaw: large ? `-${giant}` : "0",
+      queueDebtRaw: large ? giant : "0",
+    };
+    data.house = values;
+    data.history = [
+      {
+        time: data.sourceAt! - 60000,
+        fundsRaw: "0",
+        lpRaw: "0",
+        openPnlRaw: "0",
+        queueDebtRaw: "0",
+      },
+      { time: data.sourceAt!, ...values },
+    ];
+    data.change = {
+      fromMs: data.sourceAt! - 60000,
+      toMs: data.sourceAt!,
+      sampleCount: 2,
+      ...values,
+    };
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/");
+  const change = page.getByRole("region", { name: "House funds change" });
+  await expect(change.locator(".house-change-heading strong")).toHaveText("$0");
+  await expect(change.locator("dd > span:last-child")).toHaveText([
+    "$0",
+    "$0",
+    "$0",
+  ]);
+  expect(
+    await change
+      .locator("i")
+      .evaluateAll((bars) => bars.every((bar) => bar.style.width === "0%")),
+  ).toBe(true);
+  large = true;
+  await page.reload();
+  await expect(change.locator("dd").nth(2)).toHaveClass("negative");
+  expect(
+    await change
+      .locator("i")
+      .evaluateAll((bars) =>
+        bars.every((bar) => Number.parseFloat(bar.style.width) === 50),
+      ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 test("liquidation filtering, retained pagination and wallet links remain bounded", async ({
   page,

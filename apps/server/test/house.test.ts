@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalHouse, houseSchemaSql } from "../src/house-store.js";
 import {
+  houseChange,
   normalizeHouse,
   readHouse,
   refreshHouse,
@@ -159,7 +160,13 @@ describe("durable minute house history", () => {
     expect(result.latest?.sourceAt).toBe(at + 999);
     expect(result.latest?.receivedAt).toBe(at + 1002);
     expect(result.history).toEqual([
-      { time: at + 999, fundsRaw: "176000000000000000000" },
+      {
+        time: at + 999,
+        fundsRaw: "176000000000000000000",
+        lpRaw: "201000000000000000000",
+        openPnlRaw: "-20000000000000000000",
+        queueDebtRaw: "5000000000000000000",
+      },
     ]);
     expect(db.prepare("SELECT COUNT(*) AS n FROM house_samples").get()).toEqual(
       { n: 1 },
@@ -250,6 +257,159 @@ describe("durable minute house history", () => {
   });
 });
 
+describe("coherent retained house change", () => {
+  const point = (time: number, lp: string, pnl: string, queue: string) => ({
+    time,
+    lpRaw: lp,
+    openPnlRaw: pnl,
+    queueDebtRaw: queue,
+    fundsRaw: (BigInt(lp) + BigInt(pnl) - BigInt(queue)).toString(),
+  });
+  const latest = (value: ReturnType<typeof point>) => ({
+    sourceAt: value.time,
+    receivedAt: value.time,
+    generation: "g",
+    revision: "r",
+    house: {
+      fundsRaw: value.fundsRaw,
+      lpRaw: value.lpRaw,
+      openPnlRaw: value.openPnlRaw,
+      queueDebtRaw: value.queueDebtRaw,
+    },
+  });
+  it("keeps signed endpoint differences exact, including sub-Number precision and queue sign", () => {
+    const first = point(at, "100000000000000000000000001", "-200", "50");
+    const last = point(at + 60000, "100000000000000000000000008", "-180", "55");
+    expect(houseChange([first, last], latest(last))).toEqual({
+      fromMs: at,
+      toMs: at + 60000,
+      sampleCount: 2,
+      fundsRaw: "22",
+      lpRaw: "7",
+      openPnlRaw: "20",
+      queueDebtRaw: "5",
+    });
+    const decline = point(at + 120000, "0", "-300", "0");
+    const result = houseChange([first, last, decline], latest(decline))!;
+    expect(result.queueDebtRaw).toBe("-50");
+    expect(BigInt(result.fundsRaw)).toBe(
+      BigInt(result.lpRaw) +
+        BigInt(result.openPnlRaw) -
+        BigInt(result.queueDebtRaw),
+    );
+    expect(BigInt(result.fundsRaw) < 0n).toBe(true);
+  });
+  it("starts after the latest source/generation gap and requires two new coherent points", () => {
+    const first = point(at, "100", "-20", "5");
+    const afterGap = {
+      ...point(at + 180000, "200", "-30", "10"),
+      gapBefore: true,
+    };
+    const last = point(at + 240000, "204", "-35", "12");
+    expect(houseChange([first, afterGap], latest(afterGap))).toBeNull();
+    expect(houseChange([first, afterGap, last], latest(last))).toMatchObject({
+      fromMs: afterGap.time,
+      toMs: last.time,
+      sampleCount: 2,
+      fundsRaw: "-3",
+      lpRaw: "4",
+      openPnlRaw: "-5",
+      queueDebtRaw: "2",
+    });
+  });
+  it("does not reconstruct missing components or ignore invalid/intermediate samples", () => {
+    const first = point(at, "100", "-20", "5");
+    const last = point(at + 60000, "104", "-35", "12");
+    expect(houseChange([], latest(last))).toBeNull();
+    expect(houseChange([first], latest(first))).toBeNull();
+    expect(houseChange([first, last], null)).toBeNull();
+    for (const bad of [
+      { time: at, fundsRaw: "75" },
+      { ...first, lpRaw: "1.2" },
+      { ...first, lpRaw: "01" },
+      { ...first, lpRaw: "1".repeat(80) },
+      { ...first, queueDebtRaw: "-1" },
+      { ...first, fundsRaw: "76" },
+      { ...first, time: -1 },
+      { ...first, time: NaN },
+      { ...first, time: at + 60000 },
+    ])
+      expect(houseChange([bad, last], latest(last))).toBeNull();
+    expect(
+      houseChange(
+        [first, { ...first, time: at + 30000, lpRaw: undefined }, last],
+        latest(last),
+      ),
+    ).toBeNull();
+  });
+  it("rejects a latest/history race in timestamp or any component even when funds match", () => {
+    const first = point(at, "100", "-20", "5");
+    const last = point(at + 60000, "104", "-35", "12");
+    expect(
+      houseChange([first, last], { ...latest(last), sourceAt: last.time + 1 }),
+    ).toBeNull();
+    const corrected = point(last.time, "105", "-36", "12");
+    expect(corrected.fundsRaw).toBe(last.fundsRaw);
+    expect(houseChange([first, last], latest(corrected))).toBeNull();
+  });
+  it("computes from the full bounded history before thinning removes the run's first endpoint", async () => {
+    const { store } = memory();
+    for (let i = 0; i < 1441; i++)
+      await retainHouseSource(
+        store,
+        source(at + i * 60000, i, 0, 0, i < 2 ? "old" : "new"),
+        at + i * 60000,
+      );
+    const now = at + 1440 * 60000;
+    await store.put("summary", summary(now), now);
+    await store.put("collector-heartbeat", { at: now, errors: {} }, now);
+    const read = vi.spyOn(store.house, "read");
+    await refreshHouse(store, now);
+    expect(read).toHaveBeenCalledTimes(1);
+    const result = await readHouse(store, now);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(result.history).toHaveLength(300);
+    expect(result.history.some((entry) => entry.time === at + 120000)).toBe(
+      false,
+    );
+    expect(result.change).toEqual({
+      fromMs: at + 120000,
+      toMs: now,
+      sampleCount: 1439,
+      fundsRaw: "1438000000000000000000",
+      lpRaw: "1438000000000000000000",
+      openPnlRaw: "0",
+      queueDebtRaw: "0",
+    });
+    expect(result.history.at(-1)).toMatchObject({
+      lpRaw: "1440000000000000000000",
+      openPnlRaw: "0",
+      queueDebtRaw: "0",
+    });
+  });
+  it("suppresses an equal-time equal-amount generation correction between the indexed reads", async () => {
+    const { store } = memory();
+    await retainHouseSource(store, source(at - 60000), at - 60000);
+    await retainHouseSource(store, source(at), at);
+    const retained = await store.house.read(at);
+    expect(retained.historyGeneration).toBe("gen1");
+    vi.spyOn(store.house, "read").mockResolvedValue({
+      ...retained,
+      latest: { ...retained.latest!, generation: "gen2" },
+    });
+    await store.put("summary", summary(), at);
+    await store.put("collector-heartbeat", { at, errors: {} }, at);
+    await refreshHouse(store, at);
+    const result = await readHouse(store, at);
+    expect(result.change).toBeNull();
+    expect(result.houseStale).toBe(false);
+    expect(result).not.toHaveProperty("historyGeneration");
+    expect(result.history.every((entry) => !("generation" in entry))).toBe(
+      true,
+    );
+  });
+});
+
 describe("saved house response and independent freshness", () => {
   it("keeps summary fields exact and derives funds only from the coherent head", async () => {
     const { store } = memory();
@@ -262,6 +422,8 @@ describe("saved house response and independent freshness", () => {
     expect(read).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       stale: false,
+      houseStale: false,
+      change: null,
       sourceAt: at,
       receivedAt: at,
       sourceBlock: "100",
@@ -281,6 +443,8 @@ describe("saved house response and independent freshness", () => {
     const { store } = memory();
     expect(await readHouse(store, at)).toMatchObject({
       stale: true,
+      houseStale: true,
+      change: null,
       house: null,
       paper: { supplyRaw: null },
       history: [],
@@ -289,6 +453,7 @@ describe("saved house response and independent freshness", () => {
     await refreshHouse(store, at);
     expect(await readHouse(store, at)).toMatchObject({
       stale: true,
+      houseStale: true,
       house: { fundsRaw: "75000000000000000000" },
       paper: { stakerRewardsRaw: null },
       sourceBlock: null,
@@ -310,6 +475,7 @@ describe("saved house response and independent freshness", () => {
     await refreshHouse(store, at);
     expect(await readHouse(store, at)).toMatchObject({
       stale: true,
+      houseStale: false,
       error: "PAPER protocol summary is delayed.",
     });
     await store.put("summary", summary(at + 31000), at);
@@ -328,14 +494,40 @@ describe("saved house response and independent freshness", () => {
         at,
       );
       await refreshHouse(store, at);
-      expect((await readHouse(store, at)).stale).toBe(true);
+      expect(await readHouse(store, at)).toMatchObject({
+        stale: true,
+        houseStale: loop !== "summary",
+      });
       await store.put(
         "collector-heartbeat",
         { at, errors: { "wallet-indexer": "unrelated history task" } },
         at,
       );
       expect((await readHouse(store, at)).stale).toBe(false);
-      expect((await readHouse(store, at + 15001)).stale).toBe(true);
+      expect(await readHouse(store, at + 15001)).toMatchObject({
+        stale: true,
+        houseStale: true,
+      });
     },
   );
+  it("keeps old componentless saved responses readable and derives independent freshness", async () => {
+    const { store } = memory();
+    await retainHouseSource(store, source(), at);
+    await store.put("summary", summary(at - 31000), at);
+    await store.put("collector-heartbeat", { at, errors: {} }, at);
+    await refreshHouse(store, at);
+    const saved = (await store.get<Record<string, unknown>>("house"))!;
+    const { houseStale: _houseStale, change: _change, ...old } = saved.value;
+    await store.put(
+      "house",
+      { ...old, history: [{ time: at, fundsRaw: "75000000000000000000" }] },
+      at,
+    );
+    const result = await readHouse(store, at);
+    expect(result).toMatchObject({ stale: true, houseStale: false });
+    expect(result.change).toBeUndefined();
+    expect(result.history[0].lpRaw).toBeUndefined();
+    await store.put("collector-heartbeat", { at: at - 31000, errors: {} }, at);
+    expect((await readHouse(store, at)).houseStale).toBe(true);
+  });
 });

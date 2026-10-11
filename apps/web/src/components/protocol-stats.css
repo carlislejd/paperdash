@@ -24,25 +24,126 @@
 .paper-panel .section-heading {
   margin-bottom: 4px;
 }
-.house-details {
+.house-components {
   margin: 12px 0 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.house-components .pc-chart-card {
+  min-width: 0;
+  padding: 8px;
+  background: transparent;
+}
+.house-components .pc-chart-heading {
+  gap: 4px;
+  align-items: flex-start;
+}
+.house-components .pc-chart-heading h3 {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  min-height: 30px;
+}
+.house-components .pc-chart-expand {
+  min-height: 25px;
+  flex-basis: 25px;
+}
+.house-components .pc-chart-headline {
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.house-components .pc-chart-headline strong {
+  font-size: 20px;
+}
+.house-components .pc-chart-headline > span {
+  font-size: 9px;
+}
+.house-components .pc-chart-plot--spark {
+  flex-basis: 100%;
+  margin: 3px 0 0;
+}
+.house-components .pc-chart-meta {
+  display: none;
+}
+.house-change {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.house-change-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
   gap: 12px;
 }
-.house-details > div {
-  min-width: 0;
+.house-change h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
 }
-.house-details dt {
+.house-change-heading strong {
+  font-size: 20px;
+  font-weight: 600;
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.house-change-period,
+.house-change--unavailable p {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 5px 0 12px;
+}
+.house-contributions {
+  display: grid;
+  gap: 8px;
+  margin: 0;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.house-contributions > div {
+  display: grid;
+  grid-template-columns: 115px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.house-contributions dt {
   color: var(--muted);
 }
-.house-details dd {
-  margin: 5px 0 0;
-  font-size: 15px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
+.house-contributions dd {
+  display: grid;
+  grid-template-columns: minmax(30px, 1fr) minmax(70px, auto);
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+.house-contributions dd > span:last-child {
+  text-align: right;
   overflow-wrap: anywhere;
+  max-width: 150px;
+}
+.house-contribution-track {
+  display: block;
+  position: relative;
+  height: 10px;
+  background: #cbd0bf33;
+}
+.house-contribution-track::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  border-left: 1px solid var(--line);
+}
+.house-contribution-track i {
+  position: absolute;
+  height: 100%;
+  background: currentColor;
+  opacity: 0.6;
 }
 .paper-details {
   display: grid;

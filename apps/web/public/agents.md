@@ -7,7 +7,7 @@ Public, read-only Papertrade analytics. Use this guide to answer questions about
 - JSON API base: https://paperdash-api.onrender.com
 - Standalone CLI: https://papertrade.club/paperclub.mjs
 - Authentication: none. All documented requests are GET requests.
-- Contract checked: October 10, 2026.
+- Contract checked: October 11, 2026.
 
 ## Quick start
 
@@ -47,6 +47,7 @@ The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API respo
 | Wallet closed-position history | `/api/wallets/ADDRESS/trades` | `items`, `nextCursor`, `coverage` |
 | One position's margin, outcome and PAPER issuance | `/api/wallets/ADDRESS/trades` | Match `items[].positionId` within this wallet; inspect the outcome fields below and page with `nextCursor` if needed |
 | House funds, PAPER staked, rewards, annualized staking revenue | `/api/house` | `house`, `paper`, `annualizedStakingRevenue` |
+| What changed House Funds | `/api/house` | `change` with actual `fromMs`/`toMs`; component `history`, `houseStale`, `sourceAt` |
 | PAPER economics, staking participation and hourly supply/reward changes | `/api/paper/economics` | `supplyRaw`, `stakedRaw`, `stakeRatioBps`, `allocatedRewardsRaw`, `pendingRewardsRaw`, `annualized`, `series` |
 | Liquidation totals over the last 1 or 24 hours | `/api/liquidations/stats` | `stats.hour`, `stats.day`, `windowTo` |
 | Estimated margin in liquidated positions | `/api/liquidations/stats` | `stats.hour.estimatedMarginUsd`, `stats.day.estimatedMarginUsd`, and each `marginObservationCount` |
@@ -115,6 +116,16 @@ For chart highlights, `/api/assets/0/market?window=15m` (BTC) or `/api/assets/1/
 - Missing or null is unavailable, not zero. Never fabricate a missing value.
 
 Wallet staking: `snapshot.paper.staked` is staked PAPER; `snapshot.lifetime.paperRewardsClaimedRaw` is claimed USDC rewards. Pending/claimable wallet rewards are currently unavailable. Do not interpret `snapshot.paper.pendingBase` as the total pending/claimable balance.
+
+### House health
+
+`node paperclub.mjs house` returns House Funds and its components from one publication: **LP balance + open house PnL − queue debt**. LP includes the payout reserve; do not subtract it twice. TVL is not available house backing, and these values alone do not establish solvency or a risk score. The source publishes approximate USD numbers; their raw 18-decimal representation preserves supplied precision without making them exact on-chain balances.
+
+Each available `history` point carries the same four raw fields (`fundsRaw`, `lpRaw`, `openPnlRaw`, `queueDebtRaw`) and a source timestamp. Missing component fields in an older response mean unavailable, not zero. Respect `gapBefore`.
+
+`change`, when available, contains signed endpoint differences for the four components, `fromMs`, `toMs` and `sampleCount`. Funds change equals LP change + open house PnL change − queue-debt change. Positive debt change therefore has a negative contribution to funds. The comparison covers the latest comparable retained segment, bounded to available history within 24 hours; recorded gaps and source-generation changes reset it. This remains partial observation history. State its returned time bounds rather than calling it a full-day change. A null/missing change means insufficient comparable observations. These differences explain the accounting components, not individual deposit, payout, fee or realized-profit flows.
+
+Use `houseStale` (fallback `stale` for older responses), `sourceAt` and `receivedAt` for House freshness. The legacy PAPER block has a separate `summarySourceAt`; top-level `stale` and CLI `--require-fresh` remain conservative for the full response. For independent current PAPER economics, use `paper`.
 
 ### PAPER economics
 

@@ -34,9 +34,17 @@ describe.skipIf(!url)("PostgreSQL coherent house history", () => {
         store.sample(value(at + 60000, 10000000000.125)),
         store.sample(value(at + 1000, 999)),
       ]);
-      expect((await store.read(at + 60000)).latest?.house.fundsRaw).toBe(
+      const retained = await store.read(at + 60000);
+      expect(retained.latest?.house.fundsRaw).toBe(
         "10000000000125000000000000000",
       );
+      expect(retained.history.at(-1)).toEqual({
+        time: at + 60000,
+        fundsRaw: "10000000000125000000000000000",
+        lpRaw: "10000000000125000000000000000",
+        openPnlRaw: "0",
+        queueDebtRaw: "0",
+      });
       expect(await store.sample(value(at + 500, 99999))).toBe(false);
       await pool.query(
         "ALTER TABLE paperdash_house_samples ADD CONSTRAINT reject_fixture CHECK (lp_raw <> '777000000000000000000')",

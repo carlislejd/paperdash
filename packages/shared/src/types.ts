@@ -330,6 +330,8 @@ export interface HouseResponse {
   sourceAt: number | null;
   receivedAt: number | null;
   stale: boolean;
+  /** House source and collector freshness, independent of the PAPER summary. */
+  houseStale?: boolean;
   house: {
     fundsRaw: Raw;
     lpRaw: Raw;
@@ -345,7 +347,25 @@ export interface HouseResponse {
   /** This block belongs to the independent protocol summary, not the house valuation. */
   sourceBlock: string | null;
   summarySourceAt: number | null;
-  history: { time: number; fundsRaw: Raw; gapBefore?: boolean }[];
+  history: {
+    time: number;
+    fundsRaw: Raw;
+    lpRaw?: Raw;
+    openPnlRaw?: Raw;
+    queueDebtRaw?: Raw;
+    gapBefore?: boolean;
+  }[];
+  /** Signed endpoint changes over the newest coherent retained run; not a cash-flow attribution. */
+  change?: {
+    fromMs: number;
+    toMs: number;
+    sampleCount: number;
+    fundsRaw: Raw;
+    lpRaw: Raw;
+    openPnlRaw: Raw;
+    /** Change in queue debt itself; its contribution to funds is the negative of this value. */
+    queueDebtRaw: Raw;
+  } | null;
   coverage: {
     source: "retained-house-observations";
     approximate: true;

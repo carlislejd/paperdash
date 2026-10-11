@@ -6,6 +6,7 @@
 - [Standalone CLI](https://papertrade.club/paperclub.mjs): Dependency-free Node.js 24 client; JSON output and bounded retries.
 - [PAPER economics](https://paperdash-api.onrender.com/api/paper/economics): Supply, staking participation, allocated rewards and partial hourly changes; allocations are not claimed payouts.
 - [PAPER ownership ranking](https://paperdash-api.onrender.com/api/leaderboard?metric=paper&page=0): Current staked plus unstaked PAPER by account, alongside rolling 24-hour PnL; counts are accounts, not positive holders.
+- [House health](https://paperdash-api.onrender.com/api/house): House Funds, LP, open house PnL, queue debt and comparable observed changes; approximate values with explicit source times and coverage.
 - [Dashboard](https://papertrade.club/): Human-readable analytics and wallet profiles.
 
 JSON API base: https://paperdash-api.onrender.com

@@ -18,6 +18,9 @@ export interface HouseSample {
 export interface HousePoint {
   time: number;
   fundsRaw: string;
+  lpRaw?: string;
+  openPnlRaw?: string;
+  queueDebtRaw?: string;
   gapBefore?: boolean;
 }
 export interface HouseStore {
@@ -26,6 +29,8 @@ export interface HouseStore {
   read(now?: number): Promise<{
     latest: HouseSample | null;
     history: HousePoint[];
+    /** Internal tail identity, to detect a generation correction between indexed reads. */
+    historyGeneration: string | null;
     observedFrom: number | null;
   }>;
 }
@@ -126,9 +131,13 @@ function reader(
     const ordered = points.reverse();
     return {
       latest: latest[0] ? sampleFromRow(latest[0]) : null,
+      historyGeneration: ordered.at(-1)?.generation ?? null,
       history: ordered.map((point, i) => ({
         time: Number(point.source_at),
         fundsRaw: point.funds_raw,
+        lpRaw: point.lp_raw,
+        openPnlRaw: point.open_pnl_raw,
+        queueDebtRaw: point.queue_debt_raw,
         ...(i > 0 &&
         (Number(point.source_at) - Number(ordered[i - 1].source_at) > 120000 ||
           point.generation !== ordered[i - 1].generation)

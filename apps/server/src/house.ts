@@ -85,11 +85,72 @@ export function thinHouseHistory(
   }
   return chosen;
 }
+/** Use retained endpoints before display thinning; never bridge a source/generation gap. */
+export function houseChange(
+  history: HousePoint[],
+  latest: HouseSample | null,
+): NonNullable<HouseResponse["change"]> | null {
+  if (!latest || history.length < 2) return null;
+  let start = 0;
+  for (let i = 1; i < history.length; i++) {
+    if (history[i].gapBefore) start = i;
+  }
+  const run = history.slice(start);
+  if (run.length < 2) return null;
+  const keys = ["fundsRaw", "lpRaw", "openPnlRaw", "queueDebtRaw"] as const;
+  for (let i = 0; i < run.length; i++) {
+    const point = run[i];
+    if (
+      !Number.isSafeInteger(point.time) ||
+      point.time < 0 ||
+      (i > 0 && point.time <= run[i - 1].time) ||
+      keys.some((key) => {
+        const value = point[key];
+        return (
+          typeof value !== "string" ||
+          value.length > 79 ||
+          !/^(?:0|-?[1-9]\d*)$/.test(value)
+        );
+      })
+    )
+      return null;
+    if (
+      BigInt(point.queueDebtRaw!) < 0n ||
+      BigInt(point.fundsRaw) !==
+        BigInt(point.lpRaw!) +
+          BigInt(point.openPnlRaw!) -
+          BigInt(point.queueDebtRaw!)
+    )
+      return null;
+  }
+  const first = run[0],
+    last = run[run.length - 1];
+  // Separate indexed reads can straddle an update; only publish a matching coherent endpoint.
+  if (
+    last.time !== latest.sourceAt ||
+    keys.some((key) => last[key] !== latest.house[key])
+  )
+    return null;
+  return {
+    fromMs: first.time,
+    toMs: last.time,
+    sampleCount: run.length,
+    fundsRaw: (BigInt(last.fundsRaw) - BigInt(first.fundsRaw)).toString(),
+    lpRaw: (BigInt(last.lpRaw!) - BigInt(first.lpRaw!)).toString(),
+    openPnlRaw: (
+      BigInt(last.openPnlRaw!) - BigInt(first.openPnlRaw!)
+    ).toString(),
+    queueDebtRaw: (
+      BigInt(last.queueDebtRaw!) - BigInt(first.queueDebtRaw!)
+    ).toString(),
+  };
+}
 function empty(): HouseResponse {
   return {
     sourceAt: null,
     receivedAt: null,
     stale: true,
+    houseStale: true,
     house: null,
     paper: {
       supplyRaw: null,
@@ -100,6 +161,7 @@ function empty(): HouseResponse {
     sourceBlock: null,
     summarySourceAt: null,
     history: [],
+    change: null,
     annualizedStakingRevenue: annualizedStakingRevenue(null),
     coverage: {
       source: "retained-house-observations",
@@ -137,6 +199,10 @@ export async function refreshHouse(
       now,
     ),
     history: thinHouseHistory(retained.history),
+    change:
+      retained.historyGeneration === latest?.generation
+        ? houseChange(retained.history, latest)
+        : null,
     coverage: {
       source: "retained-house-observations",
       approximate: true,
@@ -144,12 +210,14 @@ export async function refreshHouse(
       partial: true,
     },
   };
-  data.stale =
+  data.houseStale =
     !latest ||
     now - latest.sourceAt > 30000 ||
     latest.sourceAt > now + 30000 ||
     now - latest.receivedAt > 30000 ||
-    latest.receivedAt > now + 30000 ||
+    latest.receivedAt > now + 30000;
+  data.stale =
+    data.houseStale ||
     !summary ||
     now - summary.receivedAt > 30000 ||
     summary.receivedAt > now + 30000 ||
@@ -171,6 +239,7 @@ export async function readHouse(
     return { ...empty(), error: "Waiting for the first house observation." };
   const { summaryReceivedAt, ...data } = saved.value;
   const houseDelayed =
+    !data.house ||
     data.sourceAt === null ||
     data.receivedAt === null ||
     now - data.sourceAt > 30000 ||
@@ -197,6 +266,7 @@ export async function readHouse(
   return {
     ...data,
     stale,
+    houseStale: Boolean(data.houseStale || houseDelayed || collectorDelayed),
     ...(stale
       ? {
           error: houseDelayed

@@ -69,6 +69,17 @@ describe("house and liquidation public route contracts", () => {
         summarySourceAt: now,
         sourceBlock: "123",
         stale: false,
+        houseStale: false,
+        change: null,
+        history: [
+          {
+            time: now,
+            fundsRaw: "-25000000000000000000",
+            lpRaw: "100000000000000000000",
+            openPnlRaw: "-120000000000000000000",
+            queueDebtRaw: "5000000000000000000",
+          },
+        ],
         coverage: { partial: true, approximate: true },
       });
       const liquidation = await app.inject("/api/liquidations?instrument=1");

@@ -59,7 +59,7 @@ Commands:
   assets [BTC|ETH|0|1]         Asset summaries; with asset, recent price/trade view
   leaderboard                 Rolling 24h activity or current PAPER ownership, one page
     --metric pnl|volume|trades|paper --page N --q SEARCH
-  house                       House Funds, PAPER and retained house history
+  house                       House Funds, component history and observed changes
   paper                       PAPER supply, participation and allocated-reward history
   liquidations                Observed liquidations with rolling 1h/24h totals
     --asset BTC|ETH|0|1 --cursor CURSOR
