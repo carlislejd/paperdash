@@ -167,6 +167,22 @@
   color: #596646;
   margin-top: 2px;
 }
+.wd-follow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--ink);
+}
+.wd-follow[aria-pressed="true"] {
+  background: #eee8f3;
+}
+.wd-follow:disabled {
+  color: var(--muted);
+}
 .wd-full-address {
   display: block;
   max-width: 100%;

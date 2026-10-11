@@ -57,6 +57,35 @@ export interface AccountsResponse {
     stale: boolean;
   };
 }
+export interface WalletBatchResponse {
+  rows: {
+    address: string;
+    account: Account | null;
+    receivedAt: number | null;
+    /** The directory source does not expose a valuation timestamp. */
+    sourceAt: null;
+    stale: boolean;
+    refreshQueued: boolean;
+  }[];
+  activity: {
+    items: TradeEvent[];
+    windowFrom: number;
+    windowTo: number;
+    receivedAt: number;
+    stale: boolean;
+    coverage: {
+      source: "retained-public-observations";
+      partial: true;
+      identityAmbiguous: true;
+      observedFrom: number | null;
+      projectionBackfillComplete: boolean;
+      truncated: boolean;
+    };
+  };
+  receivedAt: number;
+  stale: boolean;
+  error?: string;
+}
 export interface TradeEvent {
   id: string;
   ts: number;

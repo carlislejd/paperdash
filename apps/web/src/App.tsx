@@ -26,6 +26,9 @@ import {
 import { PositionMetrics } from "./components/PositionMetrics";
 import { readDashboardRoute, type DashboardView } from "./lib/navigation";
 import { useOverview } from "./lib/use-overview";
+import { useFollowing } from "./lib/use-following";
+import { FOLLOWING_LIMIT } from "./lib/following-storage";
+import { FollowingView } from "./components/FollowingView";
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
@@ -84,61 +87,6 @@ function PaperMark({ size = 30 }: { size?: number }) {
       </g>
     </svg>
   );
-}
-function readFollowing(): Account[] {
-  try {
-    const list: unknown = JSON.parse(
-      localStorage.getItem("paperdash:following") || "[]",
-    );
-    if (!Array.isArray(list)) return [];
-    const rawFields = [
-      "currentBalance",
-      "currentQueued",
-      "currentOpenNotional",
-      "currentUnrealizedPnl",
-      "realizedPnl",
-      "totalVolume",
-      "totalWindowedPnl",
-      "paperTotal",
-    ];
-    const seen = new Set<string>();
-    return list
-      .filter((entry): entry is Account => {
-        if (!entry || typeof entry !== "object") return false;
-        if (
-          typeof entry.address !== "string" ||
-          !/^0x[a-fA-F0-9]{40}$/.test(entry.address)
-        )
-          return false;
-        if (
-          entry.leaderboardName !== null &&
-          typeof entry.leaderboardName !== "string"
-        )
-          return false;
-        if (
-          !rawFields.every(
-            (key) =>
-              typeof entry[key] === "string" &&
-              /^-?\d{1,100}$/.test(entry[key]),
-          )
-        )
-          return false;
-        if (
-          !Number.isSafeInteger(entry.currentOpenPositionCount) ||
-          entry.currentOpenPositionCount < 0 ||
-          !Number.isFinite(entry.lastActiveTs) ||
-          entry.lastActiveTs < 0
-        )
-          return false;
-        const key = entry.address.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .slice(0, 100);
-  } catch {
-    return [];
-  }
 }
 
 function TradeFeed({
@@ -286,7 +234,7 @@ function App() {
   const accounts =
     accountsState?.key === accountsKey ? accountsState.data : null;
   const [retry, setRetry] = useState(0);
-  const [following, setFollowing] = useState<Account[]>(readFollowing);
+  const { following, toggle: toggleFollowing } = useFollowing();
   const [wallet, setWallet] = useState<string | null>(() => {
     const a = new URLSearchParams(location.search).get("wallet");
     return a && /^0x[a-fA-F0-9]{40}$/.test(a) ? a : null;
@@ -402,32 +350,14 @@ function App() {
     window.scrollTo({ top: 0, behavior: "instant" });
   };
   const toggleFollow = (account: Account) =>
-    setFollowing((old) => {
-      const next = old.some(
-        (a) => a.address.toLowerCase() === account.address.toLowerCase(),
-      )
-        ? old.filter(
-            (a) => a.address.toLowerCase() !== account.address.toLowerCase(),
-          )
-        : [account, ...old].slice(0, 100);
-      try {
-        localStorage.setItem("paperdash:following", JSON.stringify(next));
-      } catch {
-        /* memory-only on unavailable storage */
-      }
-      return next;
-    });
-  const displayAccounts =
-    section === "following"
-      ? following.filter((a) =>
-          `${a.address} ${a.leaderboardName ?? ""}`
-            .toLowerCase()
-            .includes(debouncedQuery.toLowerCase()),
-        )
-      : (accounts?.accounts ?? []).slice(0, walletPageSize);
-  const selectedAccount = [...(accounts?.accounts ?? []), ...following].find(
-    (a) => a.address.toLowerCase() === wallet?.toLowerCase(),
-  );
+    toggleFollowing(account.address, account.leaderboardName);
+  const displayAccounts = (accounts?.accounts ?? []).slice(0, walletPageSize);
+  const selectedName =
+    accounts?.accounts.find(
+      (account) => account.address.toLowerCase() === wallet?.toLowerCase(),
+    )?.leaderboardName ||
+    following.find((identity) => identity.address === wallet?.toLowerCase())
+      ?.nameHint;
 
   return (
     <>
@@ -506,9 +436,7 @@ function App() {
         className={`page-shell ${section === "overview" ? "overview-page" : ""}`}
       >
         <h1 className="sr-only">Papertrade analytics</h1>
-        {(section === "overview" ||
-          section === "wallets" ||
-          section === "following") && (
+        {(section === "overview" || section === "wallets") && (
           <section className="overview-board" aria-label="Protocol overview">
             <div className="metrics-row">
               <div className="metric">
@@ -625,29 +553,32 @@ function App() {
           />
         )}
 
-        {(section === "wallets" || section === "following") && (
+        {section === "following" && (
+          <FollowingView
+            following={following}
+            query={debouncedQuery}
+            onUnfollow={(address) => toggleFollowing(address)}
+            onWallet={openWallet}
+            onBrowse={() => navigate("wallets")}
+            onClearSearch={() => setQuery("")}
+          />
+        )}
+        {section === "wallets" && (
           <section className="community-section" id="wallets">
             <div className="community-heading">
               <div>
                 <h2>
-                  {section === "following" ? "Following" : "Wallets"}
+                  Wallets
                   <span className="heading-count">
-                    {section === "following"
-                      ? following.length
-                      : (accounts?.summary.uniqueAccounts?.toLocaleString() ??
-                        "—")}
+                    {accounts?.summary.uniqueAccounts?.toLocaleString() ?? "—"}
                   </span>
                 </h2>
-                {section === "following" && (
-                  <p>Saved on this device · balances at time of saving</p>
-                )}
               </div>
               <div className="community-controls">
                 <label htmlFor="sort-wallets">Sort by</label>
                 <select
                   id="sort-wallets"
                   value={sort}
-                  disabled={section === "following"}
                   onChange={(e) => {
                     setSort(e.target.value);
                     setPage(0);
@@ -670,12 +601,12 @@ function App() {
                 </button>
               </div>
             )}
-            {accountsError && accounts && section !== "following" && (
+            {accountsError && accounts && (
               <p className="inline-notice" role="status">
                 Showing the saved directory. {accountsError}
               </p>
             )}
-            {accountsError && !accounts && section !== "following" ? (
+            {accountsError && !accounts ? (
               <div className="table-empty">
                 <h3>Unable to load wallets</h3>
                 <p>{accountsError}</p>
@@ -689,27 +620,21 @@ function App() {
             ) : (
               <>
                 <div
-                  className={`table-scroll ${loadingAccounts && section !== "following" ? "table-loading" : ""}`}
-                  aria-busy={loadingAccounts && section !== "following"}
+                  className={`table-scroll ${loadingAccounts ? "table-loading" : ""}`}
+                  aria-busy={loadingAccounts}
                 >
                   <table className="wallet-table">
                     <thead>
                       <tr>
                         <th className="rank-cell">NO.</th>
                         <th>WALLET</th>
-                        <th className="numeric">
-                          {section === "following"
-                            ? "SAVED BALANCE"
-                            : "BALANCE"}
-                        </th>
+                        <th className="numeric">BALANCE</th>
                         <th className="numeric">REALIZED PNL</th>
                         <th
                           className="numeric trade-count-cell"
                           title="Observed opens, closes and liquidations over 24 hours. Available collected activity; not lifetime completed trades."
                         >
-                          {section === "following"
-                            ? "SAVED TRADES · 24H"
-                            : "TRADES · 24H"}
+                          TRADES · 24H
                         </th>
                         <th className="numeric volume-cell">VOLUME</th>
                         <th className="last-seen">LAST ACTIVE</th>
@@ -722,7 +647,7 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {loadingAccounts && !accounts && section !== "following"
+                      {loadingAccounts && !accounts
                         ? Array.from({ length: 5 }, (_, i) => (
                             <tr key={i} className="skeleton-row">
                               <td>{String(i + 1).padStart(2, "0")}</td>
@@ -757,11 +682,7 @@ function App() {
                               <tr key={account.address}>
                                 <td className="rank-cell">
                                   {String(
-                                    (section === "following"
-                                      ? 0
-                                      : page * walletPageSize) +
-                                      i +
-                                      1,
+                                    page * walletPageSize + i + 1,
                                   ).padStart(2, "0")}
                                 </td>
                                 <td>
@@ -835,6 +756,16 @@ function App() {
                                     className={`star-button ${saved ? "saved" : ""}`}
                                     aria-label={`${saved ? "Unfollow" : "Follow"} ${account.leaderboardName || shortAddress(account.address)}`}
                                     aria-pressed={saved}
+                                    disabled={
+                                      !saved &&
+                                      following.length >= FOLLOWING_LIMIT
+                                    }
+                                    title={
+                                      !saved &&
+                                      following.length >= FOLLOWING_LIMIT
+                                        ? "Following limit reached (100 wallets). Unfollow one to add another."
+                                        : undefined
+                                    }
                                     onClick={() => toggleFollow(account)}
                                   >
                                     <Icon name="star" size={17} />
@@ -855,37 +786,18 @@ function App() {
                     </tbody>
                   </table>
                 </div>
-                {(section === "following" || !loadingAccounts) &&
-                  !displayAccounts.length && (
-                    <div className="table-empty">
-                      <PaperMark size={30} />
-                      <h3>
-                        {section === "following"
-                          ? "No followed wallets"
-                          : "No wallets found"}
-                      </h3>
-                      <p>
-                        {section === "following"
-                          ? "Tap the star beside a wallet to keep it here."
-                          : "Try a full wallet address or a different public name."}
-                      </p>
-                      {section === "following" && (
-                        <button
-                          className="outline-button"
-                          onClick={() => navigate("wallets")}
-                        >
-                          Browse wallets <Icon name="arrow" size={15} />
-                        </button>
-                      )}
-                    </div>
-                  )}
+                {!loadingAccounts && !displayAccounts.length && (
+                  <div className="table-empty">
+                    <PaperMark size={30} />
+                    <h3>No wallets found</h3>
+                    <p>Try a full wallet address or a different public name.</p>
+                  </div>
+                )}
               </>
             )}
             <div className="table-footer">
               <span>
-                {section === "following"
-                  ? "Following is private to this browser."
-                  : `${accounts?.count?.toLocaleString() ?? "—"} public accounts${accounts?.stale ? " · cached directory" : ""}`}
+                {`${accounts?.count?.toLocaleString() ?? "—"} public accounts${accounts?.stale ? " · cached directory" : ""}`}
                 <span className="wallet-trade-note">
                   24h trades · observed opens, closes &amp; liquidations
                   {displayAccounts.some(
@@ -896,34 +808,32 @@ function App() {
                   ) && " · * Last available"}
                 </span>
               </span>
-              {section !== "following" && (
-                <div className="pagination">
-                  <button
-                    aria-label="Previous page"
-                    disabled={page === 0 || loadingAccounts}
-                    onClick={() => setPage((p) => p - 1)}
-                  >
-                    <Icon name="left" size={15} />
-                  </button>
-                  <span>
-                    {page + 1}{" "}
-                    <span className="muted">
-                      / {accounts?.pageInfo.totalPages ?? "—"}
-                    </span>
+              <div className="pagination">
+                <button
+                  aria-label="Previous page"
+                  disabled={page === 0 || loadingAccounts}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  <Icon name="left" size={15} />
+                </button>
+                <span>
+                  {page + 1}{" "}
+                  <span className="muted">
+                    / {accounts?.pageInfo.totalPages ?? "—"}
                   </span>
-                  <button
-                    aria-label="Next page"
-                    disabled={
-                      !accounts ||
-                      page + 1 >= accounts.pageInfo.totalPages ||
-                      loadingAccounts
-                    }
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    <Icon name="right" size={15} />
-                  </button>
-                </div>
-              )}
+                </span>
+                <button
+                  aria-label="Next page"
+                  disabled={
+                    !accounts ||
+                    page + 1 >= accounts.pageInfo.totalPages ||
+                    loadingAccounts
+                  }
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <Icon name="right" size={15} />
+                </button>
+              </div>
             </div>
           </section>
         )}
@@ -946,7 +856,7 @@ function App() {
       <WalletDrawer
         address={wallet}
         onClose={closeWallet}
-        displayName={selectedAccount?.leaderboardName}
+        displayName={selectedName}
       />
       <DataInfoDialog
         open={info}

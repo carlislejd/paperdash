@@ -72,18 +72,24 @@ test("paperclub keeps saved follows and distinguishes zero, unknown and delayed 
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(page.viewportSize()!.width);
-  await page
-    .locator("#wallets")
-    .screenshot({
-      path: `/tmp/paperclub-wallets-${test.info().project.name}.png`,
-    });
+  await page.locator("#wallets").screenshot({
+    path: `/tmp/paperclub-wallets-${test.info().project.name}.png`,
+  });
   await page
     .getByRole("navigation")
     .getByRole("button", { name: /^Following/ })
     .click();
-  await expect(table.getByRole("button", { name: /^Aoi / })).toBeVisible();
-  await expect(table.locator("tbody .trade-count-cell")).toHaveText("—");
+  const followingTable = page.locator(".following-table");
   await expect(
-    table.getByRole("columnheader", { name: "SAVED TRADES · 24H" }),
+    followingTable.getByRole("button", { name: /^Aoi / }),
   ).toBeVisible();
+  await expect(followingTable.locator(".following-balance")).toHaveText(
+    "$10,779.00",
+  );
+  await expect(
+    page.getByText("Saved on this browser · up to 100 wallets"),
+  ).toBeVisible();
+  await expect(
+    followingTable.getByRole("columnheader", { name: /TRADES/ }),
+  ).toHaveCount(0);
 });

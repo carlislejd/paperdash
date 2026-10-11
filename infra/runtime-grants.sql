@@ -45,6 +45,7 @@ $handoff$;
 
 REVOKE ALL PRIVILEGES ON TABLE
   :"app_schema".paperdash_snapshots,
+  :"app_schema".paperdash_wallet_watches,
   :"app_schema".paperdash_trade_observations,
   :"app_schema".paperdash_trade_inbox,
   :"app_schema".paperdash_trade_inbox_totals,
@@ -93,6 +94,7 @@ DECLARE
 BEGIN
   FOREACH table_name IN ARRAY ARRAY[
     'paperdash_snapshots',
+    'paperdash_wallet_watches',
     'paperdash_trade_observations',
     'paperdash_trade_inbox',
     'paperdash_trade_inbox_totals',
@@ -144,6 +146,8 @@ GRANT USAGE ON SCHEMA :"app_schema" TO :"api_role", :"ingest_role";
 
 GRANT SELECT ON TABLE
   :"app_schema".paperdash_snapshots,
+  :"app_schema".paperdash_wallet_watches,
+  :"app_schema".paperdash_trade_observations,
   :"app_schema".paperdash_stream_events,
   :"app_schema".paperdash_history_wallets,
   :"app_schema".paperdash_history_jobs,
@@ -151,6 +155,7 @@ GRANT SELECT ON TABLE
   :"app_schema".paperdash_history_corrections,
   :"app_schema".paperdash_history_points,
   :"app_schema".paperdash_analytics_state,
+  :"app_schema".paperdash_analytics_members,
   :"app_schema".paperdash_analytics_fingerprints,
   :"app_schema".paperdash_analytics_wallet_fingerprints,
   :"app_schema".paperdash_analytics_wallet_minutes,
@@ -182,10 +187,20 @@ GRANT UPDATE(next_run) ON TABLE
   :"app_schema".paperdash_history_corrections
   TO :"api_role";
 
+-- Viewers can request a bounded watch but cannot change collector scheduling.
+GRANT INSERT(address,watch_until) ON TABLE
+  :"app_schema".paperdash_wallet_watches
+  TO :"api_role";
+
+GRANT UPDATE(watch_until) ON TABLE
+  :"app_schema".paperdash_wallet_watches
+  TO :"api_role";
+
 -- Worker: explicit current tables; never blanket grants on future objects.
 
 GRANT SELECT ON TABLE
   :"app_schema".paperdash_snapshots,
+  :"app_schema".paperdash_wallet_watches,
   :"app_schema".paperdash_trade_observations,
   :"app_schema".paperdash_trade_inbox,
   :"app_schema".paperdash_trade_inbox_totals,
@@ -264,7 +279,12 @@ GRANT UPDATE ON TABLE
   :"app_schema".paperdash_liquidation_state
   TO :"ingest_role";
 
+GRANT UPDATE(next_run,failures) ON TABLE
+  :"app_schema".paperdash_wallet_watches
+  TO :"ingest_role";
+
 GRANT DELETE ON TABLE
+  :"app_schema".paperdash_wallet_watches,
   :"app_schema".paperdash_trade_inbox,
   :"app_schema".paperdash_stream_events,
   :"app_schema".paperdash_history_visits,

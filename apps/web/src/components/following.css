@@ -1,0 +1,139 @@
+.following-view {
+  padding-top: 28px;
+}
+.following-view .community-heading {
+  margin-bottom: 20px;
+}
+.following-update-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+  max-width: 720px;
+}
+.following-table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.following-table th {
+  padding: 14px 16px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  border-block: 1px solid var(--line);
+}
+.following-table td {
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.following-table th:first-child,
+.following-table td:first-child {
+  padding-left: 0;
+}
+.following-table th:last-child,
+.following-table td:last-child {
+  padding-right: 0;
+}
+.following-table .numeric {
+  text-align: right;
+}
+.following-wallet-status {
+  display: none;
+}
+.following-observed {
+  font-size: 11px;
+}
+.following-observed time,
+.following-observed small {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+  font-size: 10px;
+}
+.following-activity {
+  margin-top: 32px;
+  max-width: 840px;
+}
+.following-activity-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.following-activity h3 {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  margin: 0 0 7px;
+}
+.following-activity-heading p {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 0;
+  line-height: 1.5;
+}
+.following-trades {
+  max-height: 520px;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+.following-trades .trade-row {
+  width: 100%;
+  min-height: 68px;
+  padding: 14px 0;
+}
+.following-trades .trade-description {
+  min-width: 0;
+}
+.following-trades .trade-description strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 420px;
+  white-space: nowrap;
+}
+.following-empty {
+  border-block: 1px solid var(--line);
+  padding: 30px 0;
+}
+.following-empty h4 {
+  margin: 0 0 9px;
+  font-weight: 500;
+}
+.following-empty p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+@media (max-width: 720px) {
+  .following-wallet-status {
+    display: block;
+  }
+  .following-table {
+    min-width: 690px;
+  }
+  .following-table th,
+  .following-table td {
+    padding: 13px;
+  }
+  .following-activity-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .following-trades .trade-description strong {
+    max-width: 150px;
+  }
+  .following-trades .trade-description > span {
+    font-size: 10px;
+    white-space: normal;
+  }
+  .following-view .table-footer {
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+}

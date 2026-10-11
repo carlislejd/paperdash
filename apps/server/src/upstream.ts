@@ -390,12 +390,13 @@ export class Upstream {
     }
   }
 
-  async accounts(
+  async directoryPage(
     q = "",
     sort = "currentBalance",
     page = 0,
     pageSize: 10 | 25 = 25,
-  ): Promise<AccountsResponse> {
+    wait = false,
+  ) {
     const path = canonicalPath("/state/leaderboard/accounts", {
       window: "all",
       sortKey: sort,
@@ -404,9 +405,24 @@ export class Upstream {
       pageSize,
       q,
     });
-    const r = await this.cached(path, 15000, () =>
-      this.request(path, accountsSchema),
+    return this.cached(
+      path,
+      15000,
+      async () => {
+        const value = await this.request(path, accountsSchema);
+        await this.store.following.retainAccounts(value.accounts, Date.now());
+        return value;
+      },
+      { wait },
     );
+  }
+  async accounts(
+    q = "",
+    sort = "currentBalance",
+    page = 0,
+    pageSize: 10 | 25 = 25,
+  ): Promise<AccountsResponse> {
+    const r = await this.directoryPage(q, sort, page, pageSize);
     const countAt = Date.now();
     const counts = await Promise.all([
       this.store.analytics.walletCounts(

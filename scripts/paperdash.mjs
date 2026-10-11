@@ -29,6 +29,7 @@ const COMMAND_FLAGS = {
   tvl: [],
   overview: [],
   wallets: ["page", "sort", "q"],
+  watchlist: [],
   wallet: ["history", "cursor"],
   positions: [],
   assets: [],
@@ -49,6 +50,8 @@ Commands:
   overview                    Protocol summary, recent observations and history
   wallets                     One page of the public account directory
     --page N --sort KEY --q SEARCH
+  watchlist ADDRESSES          Retained summaries and recent activity for 1..25 wallets
+    Comma-separated addresses; one request, no saved list or watch loop
   wallet ADDRESS              Snapshot and first retained-history pages
     --history cashflows|trades [--cursor CURSOR]
   positions [ADDRESS]         Wallet open positions; without address, global count
@@ -149,7 +152,7 @@ export function parseArgs(argv, env = process.env) {
   if (
     extra.length ||
     (argument !== undefined &&
-      !["wallet", "positions", "assets"].includes(command))
+      !["wallet", "positions", "assets", "watchlist"].includes(command))
   )
     invalid(`Unexpected argument for ${command}.`);
   for (const key of Object.keys(options))
@@ -200,6 +203,16 @@ export function parseArgs(argv, env = process.env) {
     }
   }
   if (command === "health") path = "/health/ready";
+  if (command === "watchlist") {
+    const entries = (argument ?? "").split(",");
+    if (entries.length > 25)
+      invalid("watchlist accepts at most 25 comma-separated addresses.");
+    const addresses = [
+      ...new Set(entries.map((value) => address(value.trim()))),
+    ].sort();
+    path = "/api/wallets/batch";
+    query.set("addresses", addresses.join(","));
+  }
   if (command === "wallets" || command === "leaderboard") {
     path = command === "wallets" ? "/api/accounts" : "/api/leaderboard";
     query.set("page", String(integer(options.page, 0, 0, 1000000, "page")));
@@ -474,6 +487,16 @@ export function isFresh(config, body) {
     return Boolean(body.snapshot) && body.stale === false;
   if (config.command === "health")
     return body.ready === true && body.degraded === false;
+  if (config.command === "watchlist")
+    return (
+      body.stale === false &&
+      body.activity?.stale === false &&
+      Array.isArray(body.rows) &&
+      body.rows.length > 0 &&
+      body.rows.every(
+        (row) => row.account !== null && row.account !== undefined && row.stale === false,
+      )
+    );
   return body.stale === false;
 }
 export async function runCli(argv = process.argv.slice(2), dependencies = {}) {

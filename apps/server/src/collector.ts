@@ -6,6 +6,7 @@ import type {
   ProtocolSummary,
   StreamMessage,
 } from "../../../packages/shared/src/types.js";
+import { refreshWatchedWallet } from "./following.js";
 import { config, errorMessage } from "./config.js";
 import {
   accountsSchema,
@@ -307,6 +308,9 @@ export class Collector {
         Number(BigInt(summary.balances.tvl)) / 1e18,
       );
     });
+    this.loop("wallet-summaries", 5000, () =>
+      refreshWatchedWallet(this.store, this.upstream),
+    );
     this.loop("directory", config.directoryInterval, async () => {
       const path = canonicalPath("/state/leaderboard/accounts", {
         window: "all",
@@ -316,6 +320,11 @@ export class Collector {
         pageSize: 25,
       });
       const accounts = await this.upstream.request(path, accountsSchema);
+      await this.store.following.retainAccounts(
+        accounts.accounts,
+        Date.now(),
+        true,
+      );
       await this.store.put("account-count", accounts.summary.uniqueAccounts);
       await this.store.put(`cache:${path}`, accounts);
       await this.store.history.discoverWallets(
@@ -336,6 +345,11 @@ export class Collector {
         pageSize: 25,
       });
       const accounts = await this.upstream.request(path, accountsSchema);
+      await this.store.following.retainAccounts(
+        accounts.accounts,
+        Date.now(),
+        true,
+      );
       await this.store.put("account-count", accounts.summary.uniqueAccounts);
       await this.store.put(`cache:${path}`, accounts);
       await this.store.history.discoverWallets(

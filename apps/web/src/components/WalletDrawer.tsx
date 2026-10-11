@@ -15,6 +15,8 @@ import type {
   WalletResponse,
 } from "../../../../packages/shared/src/types";
 import { fetchJson } from "../lib/api";
+import { useFollowing } from "../lib/use-following";
+import { FOLLOWING_LIMIT } from "../lib/following-storage";
 import { mergeHistory } from "../lib/wallet-history";
 import { closedHoldingTimeMs, formatHoldingTime } from "../lib/position-format";
 import { PositionMetrics } from "./PositionMetrics";
@@ -407,6 +409,7 @@ export function WalletDrawer({
   onClose,
   displayName,
 }: WalletDrawerProps) {
+  const { following, toggle: toggleFollowing } = useFollowing();
   const titleId = useId();
   const contentId = useId();
   const [data, setData] = useState<WalletResponse | null>(null);
@@ -709,6 +712,10 @@ export function WalletDrawer({
   const wallet =
     data?.address.toLowerCase() === address.toLowerCase() ? data : null;
   const snapshot = wallet?.snapshot;
+  const followed = following.some(
+    (item) => item.address === address.toLowerCase(),
+  );
+  const followLimit = !followed && following.length >= FOLLOWING_LIMIT;
   const selectedHistory = wallet?.[tab];
   const partial = wallet && (wallet.stale || wallet.errors.length > 0);
   return createPortal(
@@ -786,6 +793,26 @@ export function WalletDrawer({
                     : ""}
               </span>
               {copyError && <code className="wd-full-address">{address}</code>}
+              <button
+                type="button"
+                className="wd-follow"
+                aria-pressed={followed}
+                aria-label={`${followed ? "Unfollow" : "Follow"} ${displayName?.trim() || shortAddress(address)}`}
+                disabled={followLimit}
+                title={
+                  followLimit
+                    ? "Following limit reached (100 wallets). Unfollow one to add another."
+                    : "Saved on this browser"
+                }
+                onClick={() => toggleFollowing(address, displayName ?? null)}
+              >
+                <span aria-hidden="true">{followed ? "★" : "☆"}</span>{" "}
+                {followed
+                  ? "Following"
+                  : followLimit
+                    ? "Following limit reached"
+                    : "Follow wallet"}
+              </button>
             </div>
           </section>
           {error && (

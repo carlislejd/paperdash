@@ -1,3 +1,9 @@
+import {
+  createPgFollowing,
+  createLocalFollowing,
+  followingSchemaSql,
+  type FollowingStore,
+} from "./following-store.js";
 import { DeadlinePgClient, rollbackPg } from "./pg-deadline.js";
 import { monitorPgLease } from "./pg-lease.js";
 import {
@@ -81,6 +87,8 @@ export interface Store {
   house: HouseStore;
   liquidations: LiquidationsStore;
   tradeInbox: TradeInboxStore;
+  following: FollowingStore;
+  getMany<T>(keys: string[]): Promise<Record<string, Saved<T>>>;
   get<T>(key: string): Promise<Saved<T> | null>;
   put(key: string, value: unknown, receivedAt?: number): Promise<void>;
   trade(value: TradeEvent): Promise<boolean>;
@@ -116,6 +124,7 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query(houseSchemaSql("paperdash_", true));
     await client.query(liquidationsSchemaSql("paperdash_", true));
     await client.query(tradeInboxSchemaSql("paperdash_", true));
+    await client.query(followingSchemaSql("paperdash_", true));
     await client.query("COMMIT");
   } catch (error) {
     await rollbackPg(client);
@@ -155,7 +164,7 @@ export async function createStore(
       else {
         await pool
           .query(
-            "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0; SELECT 1 FROM paperdash_house_samples LIMIT 0; SELECT 1 FROM paperdash_liquidation_state LIMIT 0",
+            "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0; SELECT 1 FROM paperdash_house_samples LIMIT 0; SELECT 1 FROM paperdash_liquidation_state LIMIT 0; SELECT 1 FROM paperdash_wallet_watches LIMIT 0",
           )
           .catch(() => {
             throw new Error(
@@ -227,6 +236,23 @@ export async function createStore(
       kind: "postgres",
       history,
       analytics: createPgAnalytics(pool),
+      following: createPgFollowing(pool),
+      async getMany<T>(keys: string[]) {
+        if (keys.length > 100) throw new Error("Too many snapshot keys");
+        if (!keys.length) return {};
+        const rows = (
+          await pool.query(
+            "SELECT key,payload,received_at FROM paperdash_snapshots WHERE key=ANY($1::text[])",
+            [keys],
+          )
+        ).rows;
+        return Object.fromEntries(
+          rows.map((r) => [
+            r.key,
+            { value: r.payload as T, receivedAt: Number(r.received_at) },
+          ]),
+        );
+      },
       positionMetrics: createPgPositionMetrics(pool),
       market: createPgMarket(pool),
       house: createPgHouse(pool),
@@ -417,6 +443,7 @@ export async function createStore(
   db.exec(houseSchemaSql("", false));
   migrateLocalLiquidations(db);
   db.exec(tradeInboxSchemaSql("", false));
+  db.exec(followingSchemaSql("", false));
   const maxBytes = options.maxBytes ?? config.localMaxBytes;
   let checkAt = 0;
   async function writable() {
@@ -439,6 +466,25 @@ export async function createStore(
   return {
     kind: "local",
     analytics: createLocalAnalytics(db, writable),
+    following: createLocalFollowing(db, writable),
+    async getMany<T>(keys: string[]) {
+      if (keys.length > 100) throw new Error("Too many snapshot keys");
+      if (!keys.length) return {};
+      const rows = db
+        .prepare(
+          `SELECT key,payload,received_at FROM snapshots WHERE key IN (${keys.map(() => "?").join(",")})`,
+        )
+        .all(...keys);
+      return Object.fromEntries(
+        rows.map((r) => [
+          String(r.key),
+          {
+            value: JSON.parse(String(r.payload)) as T,
+            receivedAt: Number(r.received_at),
+          },
+        ]),
+      );
+    },
     positionMetrics: createLocalPositionMetrics(db, writable),
     market: createLocalMarket(db, writable),
     house: createLocalHouse(db, writable),

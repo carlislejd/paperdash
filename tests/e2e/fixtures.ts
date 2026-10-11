@@ -10,6 +10,7 @@ import type {
   Overview,
   ProtocolChartsResponse,
   WalletResponse,
+  WalletBatchResponse,
 } from "../../packages/shared/src/types";
 
 // Synthetic, test-only source data. No production module imports these fixtures.
@@ -449,6 +450,48 @@ export async function mockSources(
           trackedPaper: "0",
         },
         receivedAt: Date.now(),
+        stale: Boolean(options.stale),
+      };
+      await route.fulfill({ json: result });
+      return;
+    }
+    if (url.pathname === "/api/wallets/batch") {
+      const now = Date.now();
+      const result: WalletBatchResponse = {
+        rows: (url.searchParams.get("addresses") ?? "")
+          .split(",")
+          .filter(Boolean)
+          .map((address) => ({
+            address,
+            account: account(
+              address,
+              address === WALLET
+                ? "Aoi"
+                : address === SECOND_WALLET
+                  ? "Yuki"
+                  : "Test wallet",
+            ),
+            sourceAt: null,
+            receivedAt: options.stale ? now - 120000 : now,
+            stale: Boolean(options.stale),
+            refreshQueued: false,
+          })),
+        activity: {
+          items: [],
+          windowFrom: now - 86400000,
+          windowTo: now,
+          receivedAt: now,
+          stale: Boolean(options.stale),
+          coverage: {
+            source: "retained-public-observations",
+            partial: true,
+            identityAmbiguous: true,
+            projectionBackfillComplete: true,
+            observedFrom: now - 86400000,
+            truncated: false,
+          },
+        },
+        receivedAt: now,
         stale: Boolean(options.stale),
       };
       await route.fulfill({ json: result });

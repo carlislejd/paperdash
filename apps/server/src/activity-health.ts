@@ -1,5 +1,25 @@
 import type { Store } from "./store.js";
 
+export function savedActivityDelayed(
+  heartbeat: { at: number; errors?: Record<string, string> } | null | undefined,
+  stream: string | undefined,
+  now = Date.now(),
+): boolean {
+  return (
+    !heartbeat ||
+    now - heartbeat.at > 30000 ||
+    heartbeat.at > now + 30000 ||
+    Boolean(
+      heartbeat.errors?.stream ||
+      heartbeat.errors?.recent ||
+      heartbeat.errors?.["trade-ingestion"] ||
+      heartbeat.errors?.["trade-ingestion-gap"] ||
+      heartbeat.errors?.["asset-activity"],
+    ) ||
+    stream !== "connected"
+  );
+}
+
 /** Other collector loops can remain healthy while both trade transports fail. */
 export async function activityDelayed(
   store: Store,
@@ -11,16 +31,9 @@ export async function activityDelayed(
     ),
     store.get<{ status: { stream: string } }>("overview"),
   ]);
-  return (
-    !heartbeat ||
-    now - heartbeat.value.at > 30000 ||
-    Boolean(
-      heartbeat.value.errors?.stream ||
-      heartbeat.value.errors?.recent ||
-      heartbeat.value.errors?.["trade-ingestion"] ||
-      heartbeat.value.errors?.["trade-ingestion-gap"] ||
-      heartbeat.value.errors?.["asset-activity"],
-    ) ||
-    overview?.value.status.stream !== "connected"
+  return savedActivityDelayed(
+    heartbeat?.value,
+    overview?.value.status.stream,
+    now,
   );
 }

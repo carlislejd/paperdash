@@ -23,6 +23,7 @@ import { readLiquidations } from "./liquidations.js";
 import { EventHub, type StreamTopic } from "./event-hub.js";
 import { PublicReadCache, ReadCapacityError } from "./public-read-cache.js";
 import { applyEdgeCachePolicy } from "./edge-cache.js";
+import { readWalletBatch } from "./following.js";
 import { readProtocolCharts } from "./protocol-charts.js";
 export { EventHub } from "./event-hub.js";
 
@@ -309,6 +310,28 @@ export async function buildApi(
       await profileReads.read(
         `leaderboard:${query.metric}:${query.page}:${query.q}`,
         () => upstream.leaderboard(query.metric, query.page, query.q),
+      ),
+    );
+  });
+  app.get("/api/wallets/batch", profileLimit, async (req, reply) => {
+    const query = z
+      .object({
+        addresses: z
+          .string()
+          .max(1074)
+          .transform((s) => s.split(","))
+          .pipe(z.array(addressSchema).min(1).max(25))
+          .transform((a) => [...new Set(a)].sort()),
+      })
+      .strict()
+      .parse(req.query);
+    return analyticsResponse(
+      req,
+      reply,
+      await profileReads.read(
+        `wallet-batch:${query.addresses.join(",")}`,
+        () => readWalletBatch(store, query.addresses),
+        10000,
       ),
     );
   });

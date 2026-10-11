@@ -61,6 +61,11 @@ describe("public CLI arguments and command contracts", () => {
     ["assets", "DOGE"],
     ["wallet", wallet, "--cursor", "abc"],
     ["wallet", wallet, "--history", "all"],
+    ["watchlist"],
+    ["watchlist", `${wallet},bad`],
+    ["watchlist", `${wallet},`],
+    ["watchlist", Array(26).fill(wallet).join(",")],
+    ["watchlist", wallet, "--page", "1"],
     ["leaderboard", "--metric", "volume", "--q", "Alice"],
   ])(
     "rejects invalid arguments without sending a request: %j",
@@ -135,9 +140,30 @@ describe("public CLI arguments and command contracts", () => {
     expect(io.text()).toContain("Raw money/token strings");
     expect(fetch).not.toHaveBeenCalled();
   });
+  it("canonicalizes a bounded watchlist into one batch request", () => {
+    const other = `0x${"a".repeat(40)}`;
+    const plan = parseArgs(["watchlist", `${other.toUpperCase().replace("0X", "0x")},${wallet},${other}`], {});
+    const url = new URL(plan.url);
+    expect(url.pathname).toBe("/api/wallets/batch");
+    expect(url.searchParams.get("addresses")).toBe(`${wallet},${other}`);
+  });
 });
 
 describe("CLI data fidelity and freshness", () => {
+  it("preserves watchlist row ages and partial activity while failing freshness for missing wallets", async () => {
+    const io = output();
+    const data = {
+      rows: [{ address: wallet, account: null, receivedAt: null, stale: true, refreshQueued: true }],
+      activity: { items: [], stale: false, coverage: { partial: true } },
+      stale: true,
+      receivedAt: 123,
+    };
+    const fetch = vi.fn(async () => response(data));
+    expect(await runCli(["watchlist", wallet, "--require-fresh"], { ...io, fetch })).toBe(3);
+    expect(JSON.parse(io.text()).data).toEqual(data);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(io.error().error.code).toBe("data_not_fresh");
+  });
   const summary = {
     balances: { tvl: "123456789012345678901234567890" },
     activity: { open: 1166 },

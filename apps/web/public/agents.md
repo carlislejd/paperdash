@@ -39,6 +39,7 @@ The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API respo
 | Observed trade counts and volume over the last 24 hours | `/api/assets` | `assets[].activity.counts`, `.notionalUsd`, `.windowFrom`, `.windowTo` |
 | BTC/ETH open interest and long/short share | `/api/assets` | `assets[].openInterest` |
 | Wallet balances, staking and initial history pages | `/api/wallets/ADDRESS` | `snapshot`, `cashflows`, `trades`, `portfolio` |
+| Retained summaries and recent activity for selected wallets | `/api/wallets/batch?addresses=ADDRESS,ADDRESS` | `rows[].account`, each row's `receivedAt`/`stale`, and `activity` |
 | Wallet deposits/withdrawals | `/api/wallets/ADDRESS/cashflows` | `items`, `nextCursor`, `coverage` |
 | Wallet closed-position history | `/api/wallets/ADDRESS/trades` | `items`, `nextCursor`, `coverage` |
 | House funds, PAPER staked, rewards, annualized staking revenue | `/api/house` | `house`, `paper`, `annualizedStakingRevenue` |
@@ -103,6 +104,8 @@ For chart highlights, `/api/assets/0/market?window=15m` (BTC) or `/api/assets/1/
 - Missing or null is unavailable, not zero. Never fabricate a missing value.
 
 Wallet staking: `snapshot.paper.staked` is staked PAPER; `snapshot.lifetime.paperRewardsClaimedRaw` is claimed USDC rewards. Pending/claimable wallet rewards are currently unavailable. Do not interpret `snapshot.paper.pendingBase` as the total pending/claimable balance.
+
+For a watchlist, use `node paperclub.mjs watchlist ADDRESS,ADDRESS` or the batch endpoint above with 1–25 addresses. This is one read, not a background monitor and not access to a visitor's browser-saved Following list. Rows can have null account data or delayed valuations; `refreshQueued` only means a shared collector refresh is scheduled. The directory source has no verified valuation source clock, so `sourceAt` is null and `receivedAt` records collection time. Activity has separate freshness, a rolling 24-hour bound and a capped recent list. Do not count that list as total trades or claim that a fresh feed makes all balances fresh.
 
 ## Freshness, coverage and pagination
 

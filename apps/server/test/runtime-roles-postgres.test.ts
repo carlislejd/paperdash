@@ -6,8 +6,12 @@ import { createStore, type Store } from "../src/store.js";
 import { normalizeHouse, readHouse, refreshHouse } from "../src/house.js";
 import { readLiquidations, refreshLiquidations } from "../src/liquidations.js";
 import { refreshMarkets, readMarket } from "../src/market.js";
+import { accountKey } from "../src/following-store.js";
 import type { HistoryJob } from "../src/history-store.js";
-import type { TradeEvent } from "../../../packages/shared/src/types.js";
+import type {
+  Account,
+  TradeEvent,
+} from "../../../packages/shared/src/types.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const wallet = `0x${"6".repeat(40)}`;
@@ -84,6 +88,12 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
         `GRANT UPDATE(state) ON paperdash_history_jobs TO ${apiRole}`,
       );
       await owner.query(`GRANT SELECT ON paperdash_trade_inbox TO ${apiRole}`);
+      await owner.query(
+        `GRANT UPDATE(next_run,failures) ON paperdash_wallet_watches TO ${apiRole}`,
+      );
+      await owner.query(
+        `GRANT UPDATE(watch_until) ON paperdash_wallet_watches TO ${workerRole}`,
+      );
       await owner.query(
         `GRANT UPDATE(payload) ON paperdash_trade_inbox TO ${workerRole}`,
       );
@@ -308,6 +318,97 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
         observedFrom: at - 1000,
         projectionBackfillComplete: true,
       });
+      // Batch Following reads the retained public activity with the API role;
+      // stream/recent overlap still represents one economic observation.
+      const followingActivity = await api.store.following.activity(
+        [wallet],
+        at,
+      );
+      expect(followingActivity.items).toHaveLength(1);
+      expect(followingActivity.items[0]).toMatchObject({
+        wallet,
+        kind: "liq",
+        notionalUsd: 100,
+      });
+      expect(followingActivity.coverage.projectionBackfillComplete).toBe(true);
+
+      const unknownWallet = `0x${"7".repeat(40)}`;
+      expect(
+        await api.store.following.touch([wallet, unknownWallet], at),
+      ).toEqual([wallet]);
+      expect(await worker.store.following.nextWatch(at)).toEqual({
+        address: wallet,
+        failures: 0,
+      });
+      await worker.store.following.failWatch(wallet, 0, at + 1, at + 90000);
+      // Another viewer may extend interest, but cannot rewind worker backoff.
+      expect(await api.store.following.touch([wallet], at + 40000)).toEqual([
+        wallet,
+      ]);
+      expect(
+        (
+          await api.pool.query(
+            "SELECT watch_until,next_run,failures FROM paperdash_wallet_watches WHERE address=$1",
+            [wallet],
+          )
+        ).rows[0],
+      ).toEqual({
+        watch_until: String(at + 160000),
+        next_run: String(at + 90000),
+        failures: 1,
+      });
+      const account: Account = {
+        address: wallet,
+        leaderboardName: null,
+        currentBalance: "1000000000000000000",
+        currentQueued: "0",
+        currentOpenNotional: "0",
+        currentOpenPositionCount: 0,
+        currentUnrealizedPnl: "0",
+        realizedPnl: "0",
+        totalVolume: "100000000000000000000",
+        totalWindowedPnl: "0",
+        paperTotal: "0",
+        lastActiveTs: Math.floor(at / 1000),
+      };
+      // Existing API directory responses may seed the shared account cache,
+      // but this default retention path must not require scheduling privileges.
+      await api.store.following.retainAccounts([account], at + 45000);
+      expect(
+        (
+          await api.pool.query(
+            "SELECT next_run,failures FROM paperdash_wallet_watches WHERE address=$1",
+            [wallet],
+          )
+        ).rows[0],
+      ).toEqual({ next_run: String(at + 90000), failures: 1 });
+      await worker.store.following.retainAccounts([account], at + 50000, true);
+      await worker.store.following.retainAccounts(
+        [{ ...account, currentBalance: "0" }],
+        at + 20000,
+        true,
+      );
+      expect(
+        await api.store.getMany<Account>([
+          accountKey(wallet),
+          accountKey(unknownWallet),
+        ]),
+      ).toEqual({
+        [accountKey(wallet)]: {
+          value: account,
+          receivedAt: at + 50000,
+        },
+      });
+      expect(await worker.store.following.nextWatch(at + 109999)).toBeNull();
+      expect(await worker.store.following.nextWatch(at + 110000)).toEqual({
+        address: wallet,
+        failures: 0,
+      });
+      expect(await worker.store.following.nextWatch(at + 160000)).toBeNull();
+      expect(
+        (await api.pool.query("SELECT address FROM paperdash_wallet_watches"))
+          .rows,
+      ).toEqual([]);
       await worker.store.market.quote({
         instrument: 0,
         sourceAt: at,
@@ -438,6 +539,47 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       await expect(
         api.pool.query("UPDATE paperdash_history_jobs SET state='{}'"),
       ).rejects.toMatchObject({ code: "42501" });
+      // A watch request cannot control the worker's retry schedule, and the
+      // worker cannot manufacture or extend viewer interest. Reapplying the
+      // checked-in policy above removes independently granted column rights.
+      for (const query of [
+        "UPDATE paperdash_wallet_watches SET next_run=0 WHERE false",
+        "UPDATE paperdash_wallet_watches SET failures=0 WHERE false",
+        "UPDATE paperdash_wallet_watches SET address=address WHERE false",
+        "DELETE FROM paperdash_wallet_watches WHERE false",
+        `INSERT INTO paperdash_wallet_watches(address,watch_until,next_run) VALUES('forbidden',1,0)`,
+        `INSERT INTO paperdash_wallet_watches(address,watch_until,failures) VALUES('forbidden',1,0)`,
+      ]) {
+        await expect(api.pool.query(query)).rejects.toMatchObject({
+          code: "42501",
+        });
+      }
+      for (const query of [
+        "UPDATE paperdash_wallet_watches SET watch_until=0 WHERE false",
+        "UPDATE paperdash_wallet_watches SET address=address WHERE false",
+        `INSERT INTO paperdash_wallet_watches(address,watch_until) VALUES('forbidden',1)`,
+      ]) {
+        await expect(worker.pool.query(query)).rejects.toMatchObject({
+          code: "42501",
+        });
+      }
+      for (const table of [
+        "paperdash_analytics_members",
+        "paperdash_trade_observations",
+      ]) {
+        await expect(
+          api.pool.query(`SELECT * FROM ${table} LIMIT 1`),
+        ).resolves.toBeDefined();
+        for (const query of [
+          `INSERT INTO ${table} SELECT * FROM ${table} WHERE false`,
+          `UPDATE ${table} SET id=id WHERE false`,
+          `DELETE FROM ${table} WHERE false`,
+        ]) {
+          await expect(api.pool.query(query)).rejects.toMatchObject({
+            code: "42501",
+          });
+        }
+      }
       await expect(
         api.store.recordTrade({ ...trade, id: "forbidden-api" }),
       ).rejects.toMatchObject({ code: "42501" });
