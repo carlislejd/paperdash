@@ -1,3 +1,5 @@
+import { useState } from "react";
+import type { MarketWindow } from "../../../../packages/shared/src/types";
 import { useAssetMarket } from "../lib/use-asset-market";
 import { AssetTradeGraph } from "./AssetTradeGraph";
 import { AnalyticsNotice } from "./AnalyticsShared";
@@ -11,7 +13,8 @@ export function AssetLivePanel({
   connected: boolean;
   onWallet: (address: string) => void;
 }) {
-  const market = useAssetMarket(instrument);
+  const [window, setWindow] = useState<MarketWindow>("15m");
+  const market = useAssetMarket(instrument, window);
   return (
     <>
       <AnalyticsNotice error={market.error} hasData={Boolean(market.data)} />
@@ -20,6 +23,9 @@ export function AssetLivePanel({
         symbol={instrument === 1 ? "ETH" : "BTC"}
         points={market.points}
         trades={market.trades}
+        chartSample={market.chartSample}
+        window={window}
+        onWindowChange={setWindow}
         price={market.price}
         receivedAt={market.data?.receivedAt ?? null}
         stale={market.stale}

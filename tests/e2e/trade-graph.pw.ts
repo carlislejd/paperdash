@@ -7,10 +7,16 @@ test("price bubbles and side feed share selection, keyboard inspection and walle
   await mockSources(page);
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
+  await panel
+    .getByRole("combobox", { name: "Minimum trade notional" })
+    .selectOption("0");
   const chart = panel.getByRole("group", {
     name: "BTC reference price and execution bubbles",
   });
   await expect(chart.getByRole("button")).toHaveCount(12);
+  await expect(panel).toContainText(
+    "Recent observations only; full-window trade sampling is not available.",
+  );
   const bubble = chart.getByRole("button", {
     name: /^Closed BTC long, \$50,000\.00 notional/,
   });
@@ -64,11 +70,14 @@ test("pausing freezes the chart cohort while new data is buffered and resumes to
   await page.clock.install({ time: now });
   await mockSources(page);
   let response = marketResponse();
-  await page.route("**/api/assets/0/market", (route) =>
+  await page.route("**/api/assets/0/market*", (route) =>
     route.fulfill({ json: response }),
   );
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
+  await panel
+    .getByRole("combobox", { name: "Minimum trade notional" })
+    .selectOption("0");
   const chart = panel.getByRole("group", {
     name: "BTC reference price and execution bubbles",
   });
@@ -121,11 +130,14 @@ test("unpriced executions stay in the feed without invented price bubbles", asyn
   response.points = [];
   response.stale = true;
   response.trades = [{ ...response.trades[0], priceUsd: null }];
-  await page.route("**/api/assets/0/market", (route) =>
+  await page.route("**/api/assets/0/market*", (route) =>
     route.fulfill({ json: response }),
   );
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
+  await panel
+    .getByRole("combobox", { name: "Minimum trade notional" })
+    .selectOption("0");
   await expect(
     panel.getByText("Waiting for price observations", { exact: true }),
   ).toBeVisible();
@@ -141,4 +153,118 @@ test("unpriced executions stay in the feed without invented price bubbles", asyn
   ).toHaveCount(1);
   await panel.getByRole("button", { name: /^View wallet/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
+});
+
+test("window-wide samples spread bubbles, filter notional and request the selected cohort", async ({
+  page,
+}) => {
+  const now = Date.now();
+  await page.clock.install({ time: now });
+  await mockSources(page);
+  const windows: string[] = [];
+  const rows = [
+    { id: "small-old", age: 14 * 60_000, notional: 50_000 },
+    { id: "large-old", age: 12 * 60_000, notional: 150_000 },
+    { id: "million-middle", age: 7 * 60_000, notional: 2_000_000 },
+    { id: "whale-new", age: 60_000, notional: 12_000_000 },
+  ].map((row, index) => ({
+    ...marketResponse().trades[0],
+    id: row.id,
+    ts: now - row.age,
+    notionalUsd: row.notional,
+    priceUsd: 82_000 + index * 5,
+  }));
+  await page.route("**/api/assets/0/market*", async (route) => {
+    const window =
+      new URL(route.request().url()).searchParams.get("window") ?? "1h";
+    windows.push(window);
+    const duration = { "5m": 300_000, "15m": 900_000, "1h": 3_600_000 }[
+      window
+    ]!;
+    await route.fulfill({
+      json: {
+        ...marketResponse(0, false, now),
+        trades: [
+          rows[3],
+          {
+            ...rows[3],
+            id: "unpriced-recent",
+            priceUsd: null,
+            notionalUsd: 500_000,
+          },
+        ],
+        chartSample: {
+          windowFrom: now - duration,
+          windowTo: now,
+          bucketMs: duration / 30,
+          perBucket: 2,
+          selection: "largest-notional-per-time-bucket",
+          partial: true,
+          trades: rows.filter((row) => row.ts >= now - duration),
+        },
+      },
+    });
+  });
+  await page.goto("/?view=assets&asset=0");
+  const panel = page.getByRole("region", { name: "BTC price and trades" });
+  const minimum = panel.getByRole("combobox", {
+    name: "Minimum trade notional",
+  });
+  await expect(minimum).toHaveValue("100000");
+  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(3);
+  await expect(panel.locator(".trade-graph-feed h4")).toContainText(
+    "Largest observed trades",
+  );
+  await expect(panel).toContainText("across 15m");
+  expect(windows).toContain("15m");
+  await expect(panel.locator('[data-trade-id="unpriced-recent"]')).toHaveCount(
+    1,
+  );
+  await expect(panel).toContainText(
+    "1 trade without a valid price or notional appears in the feed only.",
+  );
+  const positions = await panel
+    .locator(".trade-graph-bubble")
+    .evaluateAll((els) =>
+      els.map((el) =>
+        Number(
+          (el as SVGElement).style.transform.match(/translate\(([-.\d]+)/)?.[1],
+        ),
+      ),
+    );
+  const width = await panel
+    .locator(".trade-graph-canvas")
+    .evaluate((el) => el.clientWidth);
+  expect(Math.max(...positions) - Math.min(...positions)).toBeGreaterThan(
+    (width - 85) * 0.65,
+  );
+  await minimum.selectOption("1000000");
+  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(2);
+  await minimum.selectOption("10000000");
+  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(1);
+  await minimum.selectOption("0");
+  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(4);
+  await panel.getByRole("button", { name: "Pause chart", exact: true }).click();
+  await expect(
+    panel.getByRole("button", { name: "5m", exact: true }),
+  ).toBeDisabled();
+  await panel
+    .getByRole("button", { name: "Resume live chart", exact: true })
+    .click();
+  await panel.getByRole("button", { name: "5m", exact: true }).click();
+  await expect.poll(() => windows.at(-1)).toBe("5m");
+  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(1);
+  await panel.getByRole("button", { name: "1h", exact: true }).click();
+  await expect.poll(() => windows.at(-1)).toBe("1h");
+  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(4);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await panel.getByRole("button", { name: "15m", exact: true }).click();
+  await minimum.selectOption("100000");
+  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(3);
+  await page.mouse.move(0, 0);
+  await panel.screenshot({
+    path: test.info().outputPath("windowed-trade-sample.png"),
+  });
 });

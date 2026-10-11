@@ -6,7 +6,12 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import type { TradeEvent } from "../../../../packages/shared/src/types";
+import type {
+  MarketTradeSample,
+  MarketWindow,
+  TradeEvent,
+} from "../../../../packages/shared/src/types";
+import { MARKET_WINDOWS, selectMarketSample } from "../lib/market-sample";
 import { formatUsd, relativeTime, shortAddress } from "../lib/format";
 import {
   GRAPH_PRICE_GAP_MS,
@@ -28,6 +33,9 @@ export interface AssetTradeGraphProps {
   symbol: string;
   points: GraphPricePoint[];
   trades: PricedTrade[];
+  chartSample?: MarketTradeSample;
+  window: MarketWindow;
+  onWindowChange: (window: MarketWindow) => void;
   price: { priceUsd: number; sourceAt: number; receivedAt: number } | null;
   receivedAt: number | null;
   stale: boolean;
@@ -36,10 +44,12 @@ export interface AssetTradeGraphProps {
   onWallet: (address: string) => void;
 }
 
-const windows = [
-  { label: "5m", ms: 300_000 },
-  { label: "15m", ms: 900_000 },
-  { label: "1h", ms: 3_600_000 },
+const windows = Object.keys(MARKET_WINDOWS) as MarketWindow[];
+const minimums = [
+  { value: 0, label: "All" },
+  { value: 100_000, label: "$100K" },
+  { value: 1_000_000, label: "$1M" },
+  { value: 10_000_000, label: "$10M" },
 ];
 const action = (trade: TradeEvent) =>
   trade.kind === "open"
@@ -79,7 +89,8 @@ function useVisibleClock() {
 export function AssetTradeGraph(props: AssetTradeGraphProps) {
   const { instrument, symbol, onWallet } = props;
   const now = useVisibleClock();
-  const [range, setRange] = useState(900_000);
+  const [minimumNotional, setMinimumNotional] = useState(100_000);
+  const range = MARKET_WINDOWS[props.window];
   const [frozen, setFrozen] = useState<{
     at: number;
     instrument: number;
@@ -113,7 +124,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
     setSelectedId(null);
     setHoveredId(null);
     if (feedRef.current) feedRef.current.scrollTop = 0;
-  }, [instrument, range]);
+  }, [instrument, range, minimumNotional]);
 
   const prices = useMemo(() => {
     const latest = data.price;
@@ -125,10 +136,36 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
       through,
     );
   }, [data.points, data.price, from, through]);
-  const trades = useMemo(
-    () => graphTrades(data.trades, instrument, from, through) as PricedTrade[],
-    [data.trades, instrument, from, through],
-  );
+  const sampled = Boolean(data.chartSample);
+  const trades = useMemo(() => {
+    const recent = graphTrades(data.trades, instrument, from, through).filter(
+      (trade) => trade.notionalUsd >= minimumNotional,
+    );
+    if (!data.chartSample) return recent;
+    const selected = selectMarketSample(
+      data.chartSample.trades,
+      [],
+      instrument,
+      data.window,
+      through,
+    ).filter((trade) => trade.notionalUsd >= minimumNotional);
+    // Unpriced executions remain inspectable, but never consume a priced
+    // sample slot or borrow a position on the reference-price line.
+    const unpriced = recent
+      .filter((trade) => graphExecutionPrice(trade) === null)
+      .slice(0, 20);
+    return [...selected, ...unpriced].sort(
+      (a, b) => b.ts - a.ts || b.id.localeCompare(a.id),
+    );
+  }, [
+    data.chartSample,
+    data.trades,
+    data.window,
+    instrument,
+    from,
+    through,
+    minimumNotional,
+  ]);
   const plotted = useMemo(
     () =>
       trades.filter(
@@ -188,13 +225,14 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
       : null;
   const missingPrices = trades.length - plotted.length;
   const capped =
-    data.tradesCapped ||
-    data.trades.filter(
-      (trade) =>
-        trade.instrument === instrument &&
-        trade.ts >= from &&
-        trade.ts <= through,
-    ).length > GRAPH_TRADE_LIMIT;
+    !sampled &&
+    (data.tradesCapped ||
+      data.trades.filter(
+        (trade) =>
+          trade.instrument === instrument &&
+          trade.ts >= from &&
+          trade.ts <= through,
+      ).length > GRAPH_TRADE_LIMIT);
 
   const selectTrade = (trade: PricedTrade) => {
     setSelectedId(trade.id);
@@ -242,15 +280,35 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
           >
             {windows.map((window) => (
               <button
-                key={window.label}
+                key={window}
                 type="button"
-                aria-pressed={range === window.ms}
-                onClick={() => setRange(window.ms)}
+                aria-pressed={props.window === window}
+                disabled={paused}
+                title={
+                  paused ? "Resume the chart to change its window" : undefined
+                }
+                onClick={() => props.onWindowChange(window)}
               >
-                {window.label}
+                {window}
               </button>
             ))}
           </div>
+          <label className="trade-graph-minimum">
+            <span>Min. notional</span>
+            <select
+              aria-label="Minimum trade notional"
+              value={minimumNotional}
+              onChange={(event) =>
+                setMinimumNotional(Number(event.target.value))
+              }
+            >
+              {minimums.map((minimum) => (
+                <option key={minimum.value} value={minimum.value}>
+                  {minimum.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             className="trade-graph-pause"
@@ -459,6 +517,9 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
           </div>
           <p className="trade-graph-note" id={descriptionId}>
             Line: reference price · bubbles: execution price.
+            {sampled
+              ? ` Up to 2 largest observed priced trades per ${data.chartSample!.bucketMs / 1000}s across ${data.window}.`
+              : " Recent observations only; full-window trade sampling is not available."}
             {missingPrices > 0
               ? ` ${missingPrices} ${missingPrices === 1 ? "trade without a valid price or notional appears" : "trades without valid prices or notionals appear"} in the feed only.`
               : ""}
@@ -480,7 +541,8 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
         >
           <div className="trade-graph-feed-heading">
             <h4>
-              Trades <span>{trades.length}</span>
+              {sampled ? "Largest observed trades" : "Recent observed trades"}{" "}
+              <span>{trades.length}</span>
             </h4>
             <small>
               {paused
@@ -536,13 +598,19 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
             ))}
             {!trades.length && (
               <li className="trade-graph-feed-empty">
-                No observed trades in this window.
+                {sampled
+                  ? "No sampled trades match this minimum in the selected window."
+                  : "No recent observed trades match this minimum in the selected window."}
               </li>
             )}
           </ul>
           <p>
-            {capped ? `${trades.length} recent trades shown · ` : ""}Partial
-            public activity
+            {sampled
+              ? `Selected across ${data.window} · `
+              : capped
+                ? `${trades.length} recent trades shown · `
+                : ""}
+            Partial public activity
             {data.receivedAt ? ` · ${relativeTime(data.receivedAt)}` : ""}
           </p>
         </aside>

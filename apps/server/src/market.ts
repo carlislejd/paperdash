@@ -1,18 +1,26 @@
-import type { AssetMarketResponse } from "../../../packages/shared/src/types.js";
+import type {
+  AssetMarketResponse,
+  MarketTradeSample,
+  MarketWindow,
+} from "../../../packages/shared/src/types.js";
 import { visibleTrades, type Store } from "./store.js";
 import { activityDelayed } from "./activity-health.js";
 
 export const marketSymbols = ["BTC", "ETH"] as const;
+interface SavedMarket extends AssetMarketResponse {
+  chartSamples?: Record<MarketWindow, MarketTradeSample>;
+}
 export async function refreshMarkets(store: Store, now = Date.now()) {
   for (const [instrument, symbol] of marketSymbols.entries()) {
     const data = await store.market.read(instrument, now);
     const visible = visibleTrades(data.rawTrades, 201);
-    const response: AssetMarketResponse = {
+    const response: SavedMarket = {
       instrument,
       symbol,
       price: data.price,
       points: data.points,
       trades: visible.slice(0, 200),
+      chartSamples: data.chartSamples,
       windowFrom: Math.max(0, now - 3600000),
       windowTo: now,
       receivedAt: now,
@@ -31,22 +39,26 @@ export async function readMarket(
   store: Store,
   instrument: number,
   now = Date.now(),
+  window: MarketWindow = "1h",
 ): Promise<AssetMarketResponse> {
   if (
     !Number.isInteger(instrument) ||
     instrument < 0 ||
-    instrument >= marketSymbols.length
+    instrument >= marketSymbols.length ||
+    !["5m", "15m", "1h"].includes(window)
   )
     throw new Error("Unknown market instrument");
   const [saved, connection, tradesDelayed, heartbeat] = await Promise.all([
-    store.get<AssetMarketResponse>(`market:${instrument}`),
+    store.get<SavedMarket>(`market:${instrument}`),
     store.get<{ connected: boolean }>("market-connection"),
     activityDelayed(store, now),
     store.get<{ errors?: Record<string, string> }>("collector-heartbeat"),
   ]);
-  if (saved)
+  if (saved) {
+    const { chartSamples, ...value } = saved.value;
     return {
-      ...saved.value,
+      ...value,
+      ...(chartSamples?.[window] ? { chartSample: chartSamples[window] } : {}),
       stale:
         saved.value.stale ||
         now - saved.receivedAt > 15000 ||
@@ -59,6 +71,7 @@ export async function readMarket(
         !saved.value.price ||
         now - saved.value.price.sourceAt > 30000,
     };
+  }
   return {
     instrument,
     symbol: marketSymbols[instrument],

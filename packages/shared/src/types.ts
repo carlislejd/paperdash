@@ -77,12 +77,25 @@ export interface AssetPricePoint {
   /** First observed bucket after a connection/restart gap. */
   gapBefore?: boolean;
 }
+export type MarketWindow = "5m" | "15m" | "1h";
+export interface MarketTradeSample {
+  windowFrom: number;
+  windowTo: number;
+  /** Epoch-aligned bucket width; first/current buckets can be clipped. */
+  bucketMs: number;
+  perBucket: 2;
+  trades: TradeEvent[];
+  selection: "largest-notional-per-time-bucket";
+  partial: true;
+}
 export interface AssetMarketResponse {
   instrument: number;
   symbol: string;
   price: { priceUsd: number; sourceAt: number; receivedAt: number } | null;
   points: AssetPricePoint[];
   trades: TradeEvent[];
+  /** Separate from the latest-trades feed; absent in older saved snapshots. */
+  chartSample?: MarketTradeSample;
   windowFrom: number;
   windowTo: number;
   receivedAt: number;

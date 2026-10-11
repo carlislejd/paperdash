@@ -68,6 +68,27 @@
   background: var(--ink);
   color: var(--paper);
 }
+.trade-graph-ranges button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.trade-graph-minimum {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.trade-graph-minimum select {
+  min-height: 36px;
+  max-width: 88px;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 11px;
+}
 .trade-graph-pause {
   font-size: 10px;
   color: var(--muted);
@@ -273,6 +294,7 @@
   align-items: baseline;
   min-height: 25px;
   margin-bottom: 7px;
+  flex-wrap: wrap;
 }
 .trade-graph-feed-heading h4 {
   font-size: 17px;
@@ -384,17 +406,18 @@
   }
   .trade-graph-heading {
     gap: 12px;
+    flex-wrap: wrap;
   }
   .trade-graph-heading h3 {
     font-size: 24px;
   }
   .trade-graph-controls {
-    max-width: 190px;
-    gap: 8px;
+    flex: 1 0 100%;
+    justify-content: flex-start;
+    gap: 8px 12px;
   }
   .trade-graph-status {
-    width: 100%;
-    justify-content: flex-end;
+    width: auto;
   }
   .trade-graph-ranges button {
     padding-inline: 9px;

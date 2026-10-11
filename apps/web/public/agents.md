@@ -85,6 +85,8 @@ Supported windows today:
 
 Do not count `/api/overview.trades`, `activity.recent`, liquidation `items`, leaderboard rows, or market-view trades as a full total. These are limited lists. `assets BTC` in the CLI selects the capped recent market view, not BTC's full 24-hour count; use `assets` and select BTC from the response.
 
+For chart highlights, `/api/assets/0/market?window=15m` (BTC) or `/api/assets/1/market?window=15m` (ETH) accepts `window=5m|15m|1h`, defaulting to `1h`. Its optional `chartSample` contains up to two large, priced observations per time bucket across the selected window (at most 62 trades), with explicit bounds and `partial: true`. These are sampled highlights, **not execution counts for that window**. The separate `trades` list remains capped at 200 recent observations. If `chartSample` is absent, window-wide highlights are unavailable; do not infer them from the recent list.
+
 ## Units and interpretation
 
 - USD/USDC and PAPER raw integer strings use 18 decimal places. This includes `pnlRaw`, balances, supply, staked amounts and reward fields. Keep strings intact; use arbitrary-precision integers or decimal arithmetic. In Python, set sufficient decimal precision (for example, `getcontext().prec = 100`) before `Decimal(raw) / Decimal(10**18)`. Do not convert raw strings to JavaScript `Number` before scaling. Raw representation preserves the API's precision; it does not establish independent accounting accuracy.

@@ -5,13 +5,18 @@ const snapshots = new Set([
   "/api/assets",
   "/api/assets/0/market",
   "/api/assets/1/market",
+  ...[0, 1].flatMap((instrument) =>
+    ["5m", "15m", "1h"].map(
+      (window) => `/api/assets/${instrument}/market?window=${window}`,
+    ),
+  ),
   "/api/house",
   "/api/protocol/charts",
   "/api/position-metrics",
   "/api/liquidations/stats",
 ]);
 
-/** Opt in only shared, query-free snapshots. Browser revalidation stays separate. */
+/** Opt in only shared snapshots and fixed chart-window variants. Browser revalidation stays separate. */
 export function applyEdgeCachePolicy(
   request: FastifyRequest,
   reply: FastifyReply,

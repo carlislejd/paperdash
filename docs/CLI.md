@@ -37,6 +37,8 @@ Freshness is separate from completeness. By default stale/partial observations r
 
 `wallets --sort currentUnrealizedPnl` orders the directory by current unrealized PnL from account snapshots. It is not a time-window PnL ranking. `leaderboard --metric pnl` uses the source rolling 24-hour PnL ranking; `--metric trades` and `--metric volume` rank retained observations in the past 24 hours. Custom start/end times and other leaderboard windows are not supported.
 
+`assets BTC` or `assets ETH` returns the market view: recent trades are capped at 200, and an optional `chartSample` highlights at most 62 large, priced observations across the default one-hour window. Neither list is a complete count. Direct HTTP callers can select `window=5m|15m|1h` on `/api/assets/0/market` or `/api/assets/1/market`; this chooses a chart sample, not a trade-count aggregate. Use `assets` without a symbol for the supported rolling-24h observed counts.
+
 ## History and pagination
 
 ```sh

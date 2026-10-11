@@ -86,6 +86,11 @@ describe("explicit native edge-cache policy", () => {
     "/api/assets",
     "/api/assets/0/market",
     "/api/assets/1/market",
+    ...[0, 1].flatMap((instrument) =>
+      ["5m", "15m", "1h"].map(
+        (window) => `/api/assets/${instrument}/market?window=${window}`,
+      ),
+    ),
     "/api/house",
     "/api/protocol/charts",
     "/api/position-metrics",
@@ -147,11 +152,15 @@ describe("explicit native edge-cache policy", () => {
     expect(next.payload).toBe("");
   });
 
-  it("excludes every query variant, account, wallet and paginated-history response", async () => {
+  it("excludes unrecognized query variants, accounts, wallets and paginated history", async () => {
     const api = await app();
     for (const url of [
       "/api/overview?ignored=1",
       "/api/assets/0/market?range=1h",
+      "/api/assets/0/market?window=1h&ignored=1",
+      "/api/assets/0/market?window=5m&window=1h",
+      "/api/assets/0/market?window=6h",
+      "/api/assets/0/market?window=%35m",
       "/api/%6fverview",
       "/api/house?x=1",
       "/api/protocol/charts?range=1d",
@@ -193,10 +202,12 @@ describe("explicit native edge-cache policy", () => {
       { cookie: "" },
       { "x-test-cookie": "yes" },
     ]) {
-      const response = await api.inject({ url: "/api/overview", headers });
-      expect(response.statusCode).toBe(200);
-      expect(response.headers["cdn-cache-control"]).toBe("no-store");
-      expect(response.headers["cache-control"]).toBe("no-store");
+      for (const url of ["/api/overview", "/api/assets/0/market?window=15m"]) {
+        const response = await api.inject({ url, headers });
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["cdn-cache-control"]).toBe("no-store");
+        expect(response.headers["cache-control"]).toBe("no-store");
+      }
     }
   });
 

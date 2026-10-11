@@ -37,17 +37,28 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
   });
   await mockSources(page);
   let marketReads = 0;
-  await page.route("**/api/assets/*/market", async (route) => {
+  await page.route("**/api/assets/*/market*", async (route) => {
     marketReads++;
     const instrument = Number(
       new URL(route.request().url()).pathname.split("/")[3],
     );
-    await route.fulfill({
-      json: marketResponse(instrument, false, at - 10_000),
-    });
+    const response = marketResponse(instrument, false, at - 10_000);
+    response.chartSample = {
+      windowFrom: response.windowTo - 900_000,
+      windowTo: response.windowTo,
+      bucketMs: 30_000,
+      perBucket: 2,
+      selection: "largest-notional-per-time-bucket",
+      partial: true,
+      trades: response.trades,
+    };
+    await route.fulfill({ json: response });
   });
   await page.goto("/?view=assets&asset=0");
   const graph = page.getByRole("region", { name: "BTC price and trades" });
+  await graph
+    .getByRole("combobox", { name: "Minimum trade notional" })
+    .selectOption("0");
   await expect(
     graph.locator(".trade-graph-feed li[data-trade-id]"),
   ).toHaveCount(12);
@@ -92,10 +103,36 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
   ).toHaveCount(1);
   await expect(graph.locator(".trade-graph-price")).toHaveText("$82,345.67");
 
+  await page.evaluate((base) => {
+    const emit = (
+      window as unknown as { emitDashboard: (message: unknown) => void }
+    ).emitDashboard;
+    for (let i = 0; i < 500; i++)
+      emit({
+        type: "trade",
+        data: { ...base, id: `burst-${i}`, notionalUsd: 1_000 + i },
+      });
+  }, trade);
+  await expect(graph.locator('[data-trade-id="market-0-11"]')).toHaveCount(1);
+  await expect(
+    graph.locator('[data-trade-id="stream-integration-trade"]'),
+  ).toHaveCount(1);
+  expect(
+    await graph.locator(".trade-graph-bubble").count(),
+  ).toBeLessThanOrEqual(62);
+  await page.clock.fastForward(6_001);
+  await expect(graph.locator('[data-trade-id="market-0-11"]')).toHaveCount(1);
+  await expect(
+    graph.locator('[data-trade-id="stream-integration-trade"]'),
+  ).toHaveCount(1);
+
   await page.getByRole("button", { name: "ETH Ethereum" }).click();
   const eth = page.getByRole("region", { name: "ETH price and trades" });
+  await expect(
+    eth.getByRole("combobox", { name: "Minimum trade notional" }),
+  ).toHaveValue("100000");
   await expect(eth.locator(".trade-graph-feed li[data-trade-id]")).toHaveCount(
-    12,
+    11,
   );
   await send({ type: "trade", data: { ...trade, id: "wrong-asset" } });
   await send(quote);

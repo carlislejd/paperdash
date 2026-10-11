@@ -4,6 +4,8 @@ import type { Pool } from "pg";
 import { appendStreamEventPg } from "./stream-event-store.js";
 import type {
   AssetPricePoint,
+  MarketTradeSample,
+  MarketWindow,
   TradeEvent,
 } from "../../../packages/shared/src/types.js";
 
@@ -20,6 +22,7 @@ export interface MarketData {
   rawTrades: TradeEvent[];
   observedFrom: number | null;
   tradesCapped: boolean;
+  chartSamples: Record<MarketWindow, MarketTradeSample>;
 }
 export interface MarketStore {
   /** Saves the latest genuine quote per five-second bucket and its SSE notification atomically. */
@@ -106,6 +109,103 @@ interface Reader {
   postgres: boolean;
   rows<T>(sql: string, args: (number | string)[]): Promise<T[]>;
 }
+export const marketWindows = {
+  "5m": { durationMs: 300000, bucketMs: 10000 },
+  "15m": { durationMs: 900000, bucketMs: 30000 },
+  "1h": { durationMs: 3600000, bucketMs: 120000 },
+} as const;
+
+async function chartSamples(db: Reader, instrument: number, now: number) {
+  const rawInstrument = db.postgres
+    ? "(payload->>'instrument')"
+    : "json_extract(payload,'$.instrument')";
+  const price = db.postgres
+    ? "CASE WHEN jsonb_typeof(r.payload->'priceUsd')='number' THEN (r.payload->>'priceUsd')::numeric END"
+    : "CASE WHEN json_type(r.payload,'$.priceUsd') IN ('integer','real') THEN json_extract(r.payload,'$.priceUsd') END";
+  // Drive both identity lookups from the bounded raw window. These join fences
+  // prevent a low price-filter estimate from hashing the entire retained member
+  // ledger. PostgreSQL uses indexed lateral lookups; SQLite preserves CROSS JOIN
+  // order and uses the same existing primary keys.
+  const identityJoins = db.postgres
+    ? `FROM recent r
+       JOIN LATERAL (SELECT fingerprint,provenance FROM ${db.prefix}analytics_members WHERE id=r.id OFFSET 0) m ON true
+       JOIN LATERAL (SELECT fingerprint,source_at,notional,instrument FROM ${db.prefix}analytics_fingerprints WHERE fingerprint=m.fingerprint OFFSET 0) f ON true`
+    : `FROM recent r CROSS JOIN ${db.prefix}analytics_members m CROSS JOIN ${db.prefix}analytics_fingerprints f`;
+  // Indexed instrument/time restriction precedes source-overlap matching. Only
+  // bounded selected payloads leave the query; API viewers read the saved result.
+  // Price is excluded from economic identity. Count only genuinely priced
+  // observations per source so unpriced REST rows cannot hide priced stream rows.
+  const rows = await db.rows<{ window_name: MarketWindow; payload: unknown }>(
+    `WITH recent AS MATERIALIZED (
+      SELECT id,payload FROM ${db.prefix}trade_observations
+      WHERE ${rawInstrument}=? AND source_at>=? AND source_at<=?
+    ), eligible AS (
+      SELECT f.fingerprint,f.source_at,f.notional,m.provenance,r.id,r.payload
+      ${identityJoins}
+      WHERE ${db.postgres ? "" : "m.id=r.id AND f.fingerprint=m.fingerprint AND "} f.instrument=? AND f.source_at>=? AND f.source_at<=?
+        AND f.notional>=0 AND f.notional<=1.7976931348623157e308
+        AND ${price}>0 AND ${price}<=1.7976931348623157e308
+    ), priced AS (
+      SELECT *,count(*) OVER(PARTITION BY fingerprint,provenance) AS priced_count,
+      row_number() OVER(PARTITION BY fingerprint,provenance ORDER BY id DESC) AS source_rank FROM eligible
+    ), source_choice AS (
+      SELECT fingerprint,max(CASE WHEN provenance='recent-api' THEN priced_count ELSE 0 END) AS recent_count,
+      max(CASE WHEN provenance='public-stream' THEN priced_count ELSE 0 END) AS stream_count FROM priced GROUP BY fingerprint
+    ), candidates AS (
+      SELECT p.* FROM priced p JOIN source_choice c ON c.fingerprint=p.fingerprint
+      WHERE source_rank<=2 AND p.provenance=CASE WHEN c.recent_count>=c.stream_count THEN 'recent-api' ELSE 'public-stream' END
+    ), windows(window_name,window_from,bucket_ms) AS (VALUES ('5m',CAST(? AS BIGINT),10000),('15m',CAST(? AS BIGINT),30000),('1h',CAST(? AS BIGINT),120000)), ranked AS (
+      SELECT w.window_name,c.payload,c.source_at,c.id,
+      row_number() OVER(PARTITION BY w.window_name,c.source_at-(c.source_at%w.bucket_ms) ORDER BY c.notional DESC,c.source_at DESC,c.id DESC) AS bucket_rank
+      FROM candidates c JOIN windows w ON c.source_at>=w.window_from
+    ) SELECT window_name,payload FROM ranked WHERE bucket_rank<=2 ORDER BY window_name,source_at DESC,id DESC LIMIT 186`,
+    [
+      db.postgres ? String(instrument) : instrument,
+      Math.max(0, now - 3600000),
+      now,
+      instrument,
+      Math.max(0, now - 3600000),
+      now,
+      ...Object.values(marketWindows).map((window) =>
+        Math.max(0, now - window.durationMs),
+      ),
+    ],
+  );
+  const sampleFor = (window: MarketWindow): MarketTradeSample => ({
+    windowFrom: Math.max(0, now - marketWindows[window].durationMs),
+    windowTo: now,
+    bucketMs: marketWindows[window].bucketMs,
+    perBucket: 2,
+    trades: [],
+    selection: "largest-notional-per-time-bucket",
+    partial: true,
+  });
+  const result: Record<MarketWindow, MarketTradeSample> = {
+    "5m": sampleFor("5m"),
+    "15m": sampleFor("15m"),
+    "1h": sampleFor("1h"),
+  };
+  for (const row of rows) {
+    const trade = (
+      typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload
+    ) as TradeEvent;
+    const sample = result[row.window_name];
+    if (
+      sample &&
+      trade.instrument === instrument &&
+      Number.isSafeInteger(trade.ts) &&
+      trade.ts >= sample.windowFrom &&
+      trade.ts <= now &&
+      Number.isFinite(trade.notionalUsd) &&
+      trade.notionalUsd >= 0 &&
+      typeof trade.priceUsd === "number" &&
+      Number.isFinite(trade.priceUsd) &&
+      trade.priceUsd > 0
+    )
+      sample.trades.push(trade);
+  }
+  return result;
+}
 function reader(db: Reader): MarketStore["read"] {
   return async (instrument, now = Date.now()) => {
     if (
@@ -117,7 +217,7 @@ function reader(db: Reader): MarketStore["read"] {
       throw new Error("Invalid market query");
     const from = Math.max(0, now - 3600000),
       table = `${db.prefix}market_prices`;
-    const [latest, first, points, trades] = await Promise.all([
+    const [latest, first, points, trades, samples] = await Promise.all([
       db.rows<PriceRow>(
         `SELECT * FROM ${table} WHERE instrument=? ORDER BY source_at DESC LIMIT 1`,
         [instrument],
@@ -134,6 +234,7 @@ function reader(db: Reader): MarketStore["read"] {
         `SELECT payload FROM ${db.prefix}trade_observations WHERE ${db.postgres ? "(payload->>'instrument')" : "json_extract(payload,'$.instrument')"}=? AND source_at>=? AND source_at<=? ORDER BY source_at DESC,id DESC LIMIT 400`,
         [db.postgres ? String(instrument) : instrument, from, now],
       ),
+      chartSamples(db, instrument, now),
     ]);
     const row = latest[0];
     return {
@@ -158,6 +259,7 @@ function reader(db: Reader): MarketStore["read"] {
       ),
       observedFrom: first[0] ? Number(first[0].source_at) : null,
       tradesCapped: trades.length === 400,
+      chartSamples: samples,
     };
   };
 }

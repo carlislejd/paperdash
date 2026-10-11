@@ -6,6 +6,30 @@ import type {
 export const MARKET_WINDOW_MS = 3_600_000;
 const PRICE_BUCKET_MS = 5_000;
 
+export function validMarketTrade(
+  trade: TradeEvent,
+  instrument: number,
+  now: number,
+) {
+  return Boolean(
+    trade &&
+      trade.instrument === instrument &&
+      typeof trade.id === "string" &&
+      trade.id.length > 0 &&
+      trade.id.length <= 300 &&
+      Number.isSafeInteger(trade.ts) &&
+      trade.ts >= Math.max(0, now - MARKET_WINDOW_MS) &&
+      trade.ts <= now + 30_000 &&
+      /^0x[0-9a-f]{40}$/i.test(trade.wallet) &&
+      Number.isFinite(trade.notionalUsd) &&
+      trade.notionalUsd >= 0 &&
+      Number.isFinite(trade.leverage) &&
+      trade.leverage > 0 &&
+      ["long", "short"].includes(trade.side) &&
+      ["open", "close", "liq"].includes(trade.kind),
+  );
+}
+
 export function validPricePoint(point: AssetPricePoint, now: number) {
   return (
     point &&
@@ -47,24 +71,7 @@ export function mergeMarketTrades(
 ): TradeEvent[] {
   const trades = new Map<string, TradeEvent>();
   for (const trade of [...saved, ...live]) {
-    if (
-      !trade ||
-      trade.instrument !== instrument ||
-      typeof trade.id !== "string" ||
-      !trade.id ||
-      trade.id.length > 300 ||
-      !Number.isSafeInteger(trade.ts) ||
-      trade.ts < now - MARKET_WINDOW_MS ||
-      trade.ts > now + 30_000 ||
-      !/^0x[0-9a-f]{40}$/i.test(trade.wallet) ||
-      !Number.isFinite(trade.notionalUsd) ||
-      trade.notionalUsd < 0 ||
-      !Number.isFinite(trade.leverage) ||
-      trade.leverage <= 0 ||
-      !["long", "short"].includes(trade.side) ||
-      !["open", "close", "liq"].includes(trade.kind)
-    )
-      continue;
+    if (!validMarketTrade(trade, instrument, now)) continue;
     const previous = trades.get(trade.id);
     // A poll can still contain the original unpriced record when a live
     // observation has already supplied its execution price.
