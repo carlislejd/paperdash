@@ -104,7 +104,7 @@
   font-size: 10px;
 }
 .open-position-labels,
-.open-position-list li {
+.open-position-detail {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 75px minmax(75px, 1fr);
   gap: 10px;
@@ -115,7 +115,7 @@
   font-size: 9px;
 }
 .open-position-labels > :not(:first-child),
-.open-position-list li > :not(:first-child) {
+.open-position-detail > :not(:first-child) {
   text-align: right;
 }
 .open-position-list {
@@ -197,4 +197,35 @@
   .position-averages dd {
     font-size: 24px;
   }
+}
+
+.open-position-list li {
+  display: block;
+  padding: 0;
+}
+.open-position-detail {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 10px 0;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.open-position-detail:disabled {
+  cursor: default;
+}
+.open-position-detail:focus-visible {
+  outline: 2px solid #85739e;
+  outline-offset: 2px;
+}
+.open-position-detail:not(:disabled):hover {
+  background: #e7e0ed66;
+}
+.open-position-arrow {
+  color: #92829f;
+  font-size: 10px;
+  margin-left: 3px;
 }

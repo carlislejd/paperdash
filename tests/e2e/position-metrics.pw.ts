@@ -40,6 +40,7 @@ test("overview and wallet means use the closed cohort and separate open-position
   );
   await page.route(`**/api/wallets/${WALLET}`, (route) => {
     const wallet = walletResponse(WALLET, at);
+    wallet.snapshot!.indexedThroughTimestamp = at / 1000;
     wallet.snapshot!.openPositions = Array.from({ length: 7 }, (_, i) => [
       String(i),
       i % 2,
@@ -181,7 +182,7 @@ test("delayed open ages freeze at their source snapshot and metric polling stops
     wallet.stale = true;
     wallet.snapshot!.indexedThroughTimestamp = (at - 3_600_000) / 1000;
     wallet.snapshot!.openPositions = [
-      ["old", 0, true, false, "1", "1", 10, "1", at - 7_200_000, null],
+      ["9", 0, true, false, "1", "1", 10, "1", at - 7_200_000, null],
     ];
     return route.fulfill({ json: wallet });
   });

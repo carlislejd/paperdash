@@ -2,26 +2,46 @@ import { useId, useState } from "react";
 import type { PositionMetricsResponse } from "../../../../packages/shared/src/position-metrics";
 import type { WalletResponse } from "../../../../packages/shared/src/types";
 import { relativeTime } from "../lib/format";
-import {
-  formatHoldingTime,
-  formatLeverage,
-  openPositionRows,
-} from "../lib/position-format";
+import { formatHoldingTime, formatLeverage } from "../lib/position-format";
 import { useAnalytics } from "../lib/use-analytics";
+import {
+  normalizeOpenPosition,
+  type PositionDetails,
+} from "../../../../packages/shared/src/position-details";
 import "./position-metrics.css";
 
-function OpenPositions({ wallet }: { wallet: WalletResponse }) {
+function OpenPositions({
+  wallet,
+  onPosition,
+}: {
+  wallet: WalletResponse;
+  onPosition?: (position: PositionDetails) => void;
+}) {
   const [visibleCount, setVisibleCount] = useState(5);
   const snapshot = wallet.snapshot;
   const saved = wallet.stale || wallet.errors.length > 0;
   // A delayed snapshot cannot establish that a position is still open now.
   const sourceTime = snapshot?.indexedThroughTimestamp;
   const snapshotAt =
-    sourceTime != null && Number.isFinite(sourceTime) && sourceTime >= 0
+    typeof sourceTime === "number" &&
+    Number.isSafeInteger(sourceTime * 1000) &&
+    sourceTime >= 0
       ? sourceTime * 1000
-      : wallet.receivedAt;
-  const asOf = saved ? Math.min(snapshotAt, Date.now()) : Date.now();
-  const positions = openPositionRows(snapshot?.openPositions ?? [], asOf);
+      : null;
+  const total = snapshot?.openPositions.length ?? 0;
+  const positions = (snapshot?.openPositions ?? [])
+    .slice(0, visibleCount)
+    .map((tuple, index) => {
+      const details =
+        snapshotAt === null
+          ? null
+          : normalizeOpenPosition(tuple, {
+              walletAddress: wallet.address,
+              receivedAt: null,
+              asOf: snapshotAt,
+            });
+      return { key: `${details?.positionId ?? "unknown"}:${index}`, details };
+    });
   return (
     <section
       className="open-position-panel"
@@ -29,10 +49,11 @@ function OpenPositions({ wallet }: { wallet: WalletResponse }) {
     >
       <div className="open-position-heading">
         <h3>
-          Open positions{" "}
-          <span>{snapshot ? positions.length.toLocaleString() : "—"}</span>
+          Open positions <span>{snapshot ? total.toLocaleString() : "—"}</span>
         </h3>
-        {saved && <span className="position-delayed">At saved snapshot</span>}
+        <span className={saved ? "position-delayed" : "muted"}>
+          {saved ? "At saved snapshot" : "At snapshot"}
+        </span>
       </div>
       {!snapshot ? (
         <p className="position-empty">Position snapshot unavailable.</p>
@@ -48,50 +69,71 @@ function OpenPositions({ wallet }: { wallet: WalletResponse }) {
             <span>Held</span>
           </div>
           <ul className="open-position-list">
-            {positions.slice(0, visibleCount).map((position) => (
-              <li key={position.key}>
-                <span>
-                  <strong>{position.symbol}</strong>{" "}
-                  <span
-                    className={
-                      position.side === "Long"
-                        ? "positive"
-                        : position.side === "Short"
-                          ? "negative"
-                          : "muted"
-                    }
-                  >
-                    {position.side}
+            {positions.map(({ key, details }) => (
+              <li key={key}>
+                <button
+                  type="button"
+                  className="open-position-detail"
+                  disabled={!details || !onPosition}
+                  aria-label={
+                    details
+                      ? `View ${details.symbol ?? "market"} ${details.side} position ${details.positionId}`
+                      : "Position details unavailable"
+                  }
+                  onClick={() => {
+                    if (details) onPosition?.(details);
+                  }}
+                >
+                  <span>
+                    <strong>{details?.symbol ?? "Market"}</strong>{" "}
+                    <span
+                      className={
+                        details?.side === "long"
+                          ? "positive"
+                          : details?.side === "short"
+                            ? "negative"
+                            : "muted"
+                      }
+                    >
+                      {details?.side === "long"
+                        ? "Long"
+                        : details?.side === "short"
+                          ? "Short"
+                          : "—"}
+                    </span>
                   </span>
-                </span>
-                <span
-                  aria-label={`Leverage ${formatLeverage(position.leverage)}`}
-                >
-                  {formatLeverage(position.leverage)}
-                </span>
-                <span
-                  aria-label={`Held ${formatHoldingTime(position.heldMs)}${saved ? " at saved snapshot" : ""}`}
-                >
-                  {formatHoldingTime(position.heldMs)}
-                </span>
+                  <span
+                    aria-label={`Leverage ${formatLeverage(details?.leverage)}`}
+                  >
+                    {formatLeverage(details?.leverage)}
+                  </span>
+                  <span
+                    aria-label={`Held ${formatHoldingTime(details?.ageMs)} at snapshot`}
+                  >
+                    {formatHoldingTime(details?.ageMs)}{" "}
+                    <span className="open-position-arrow" aria-hidden="true">
+                      ↗
+                    </span>
+                  </span>
+                </button>
               </li>
             ))}
           </ul>
-          {positions.length > 5 && (
+          {total > 5 && (
             <button
               type="button"
               className="position-more"
               onClick={() =>
                 setVisibleCount(
-                  visibleCount >= positions.length
+                  visibleCount >= total
                     ? 5
-                    : Math.min(visibleCount + 20, positions.length),
+                    : Math.min(visibleCount + 20, total),
                 )
               }
             >
-              {visibleCount >= positions.length
+              {visibleCount >= total
                 ? "Show fewer positions"
-                : `Show ${Math.min(positions.length - visibleCount, 20)} more positions`}
+                : `Show ${Math.min(total - visibleCount, 20)} more positions`}
             </button>
           )}
         </>
@@ -100,7 +142,13 @@ function OpenPositions({ wallet }: { wallet: WalletResponse }) {
   );
 }
 
-export function PositionMetrics({ wallet }: { wallet?: WalletResponse }) {
+export function PositionMetrics({
+  wallet,
+  onPosition,
+}: {
+  wallet?: WalletResponse;
+  onPosition?: (position: PositionDetails) => void;
+}) {
   const id = useId();
   const { data, error, loading, refresh } =
     useAnalytics<PositionMetricsResponse>(
@@ -188,7 +236,13 @@ export function PositionMetrics({ wallet }: { wallet?: WalletResponse }) {
           <p className="position-empty">No closed positions indexed yet.</p>
         ) : null}
       </section>
-      {wallet && <OpenPositions key={wallet.address} wallet={wallet} />}
+      {wallet && (
+        <OpenPositions
+          key={wallet.address}
+          wallet={wallet}
+          onPosition={onPosition}
+        />
+      )}
     </>
   );
 }

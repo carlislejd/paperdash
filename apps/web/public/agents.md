@@ -42,6 +42,7 @@ The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API respo
 | Retained summaries and recent activity for selected wallets | `/api/wallets/batch?addresses=ADDRESS,ADDRESS` | `rows[].account`, each row's `receivedAt`/`stale`, and `activity` |
 | Wallet deposits/withdrawals | `/api/wallets/ADDRESS/cashflows` | `items`, `nextCursor`, `coverage` |
 | Wallet closed-position history | `/api/wallets/ADDRESS/trades` | `items`, `nextCursor`, `coverage` |
+| One position's margin, outcome and PAPER issuance | `/api/wallets/ADDRESS/trades` | Match `items[].positionId` within this wallet; inspect the outcome fields below and page with `nextCursor` if needed |
 | House funds, PAPER staked, rewards, annualized staking revenue | `/api/house` | `house`, `paper`, `annualizedStakingRevenue` |
 | Liquidation totals over the last 1 or 24 hours | `/api/liquidations/stats` | `stats.hour`, `stats.day`, `windowTo` |
 | Estimated margin in liquidated positions | `/api/liquidations/stats` | `stats.hour.estimatedMarginUsd`, `stats.day.estimatedMarginUsd`, and each `marginObservationCount` |
@@ -100,10 +101,23 @@ For chart highlights, `/api/assets/0/market?window=15m` (BTC) or `/api/assets/1/
 - Liquidation notional is execution size, not lost collateral or trader losses.
 - `estimatedMarginUsd` is approximate USD initial margin associated with observed liquidations, summed as each position's notional divided by its entry leverage. It is already in USD, not 18-decimal raw units. Label it estimated; it is not an independently reconciled collateral-loss total. Null/missing means unavailable while retained observations are being enriched or a contribution cannot be derived. `marginObservationCount` covers locally derived observations; upstream coverage remains partial. Never estimate the total by dividing aggregate notional by average leverage.
 - Most response times and window bounds are Unix milliseconds. Wallet `snapshot.indexedThroughTimestamp` is Unix seconds. Position `openedAtMs` is milliseconds.
-- Wallet position tuples are easiest to interpret through `node paperclub.mjs positions ADDRESS`, which includes column names and unit descriptions. BTC raw entry/bust prices divide by 10; ETH by 100, unlike 18-decimal monetary amounts.
+- Wallet position tuples are easiest to interpret through `node paperclub.mjs positions ADDRESS`, which includes column names and unit descriptions. BTC raw entry/bust prices divide by 10; ETH by 100, unlike 18-decimal monetary amounts. `useDebt=true` means queued-balance funding; `false` means cash funding. It does not mean ordinary borrowed margin.
 - Missing or null is unavailable, not zero. Never fabricate a missing value.
 
 Wallet staking: `snapshot.paper.staked` is staked PAPER; `snapshot.lifetime.paperRewardsClaimedRaw` is claimed USDC rewards. Pending/claimable wallet rewards are currently unavailable. Do not interpret `snapshot.paper.pendingBase` as the total pending/claimable balance.
+
+### Position outcomes and receipts
+
+`node paperclub.mjs wallet ADDRESS --history trades` returns one page of closed/liquidated positions. For an individual result:
+
+- Read initial margin from `marginRaw` and entry leverage from `leverage`. Entry notional is their product using integer arithmetic, with 18 decimals.
+- Divide `entryPriceRaw` and `exitPriceRaw` by that outcome's `priceScaleRaw` for USD prices. Do not assume every market uses the same scale.
+- Holding time is `timestampMs - openedAtMs` for valid ordered timestamps. A completed position's duration ends at the outcome, not at later payout settlement.
+- Display `adjustedPnlRaw` as supplied and keep `userPaidFeeRaw` separate. Do not label adjusted PnL net of that fee, infer a settled payout, or call PAPER a dollar return.
+- `paperMintedRaw` is PAPER attributed to this position. Keep `paperMintBasisRaw` and nullable `paperMintBatchTotalRaw` separate; the batch total can cover multiple positions.
+- `kind` distinguishes `PositionClosed` and `Liquidated`. Closed outcomes do not expose a funding flag or bust price; these remain unknown. Open-position tuples do expose `useDebt` and `bustPriceRaw`, but have no completed outcome or exit price.
+
+Scope `positionId` to the wallet and source. Several outcomes can share one transaction hash. Retained records may be corrected and coverage may be incomplete. Use the history page's `receivedAt` and `coverage.lastIndexedAt`, not the oldest aggregate wallet timestamp, when describing its observation age. A wallet card's exported PNG captures the selected observation; copied wallet links are not immutable receipt links. Never reconstruct a receipt by matching size and time in the sampled global live feed.
 
 For a watchlist, use `node paperclub.mjs watchlist ADDRESS,ADDRESS` or the batch endpoint above with 1–25 addresses. This is one read, not a background monitor and not access to a visitor's browser-saved Following list. Rows can have null account data or delayed valuations; `refreshQueued` only means a shared collector refresh is scheduled. The directory source has no verified valuation source clock, so `sourceAt` is null and `receivedAt` records collection time. Activity has separate freshness, a rolling 24-hour bound and a capped recent list. Do not count that list as total trades or claim that a fresh feed makes all balances fresh.
 

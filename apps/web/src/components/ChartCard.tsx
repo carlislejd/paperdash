@@ -17,6 +17,7 @@ import {
   type ChartSegment,
 } from "../lib/chart-data";
 import type { ChartExportSnapshot } from "../lib/chart-export";
+import { useImageActions } from "../lib/use-image-actions";
 import "./chart-card.css";
 
 export interface ChartCardProps {
@@ -458,19 +459,9 @@ export function ChartCard(props: ChartCardProps) {
       typeof window !== "undefined" &&
       new URLSearchParams(window.location.search).get("chart") === id,
   );
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [manualLink, setManualLink] = useState<string | null>(null);
-  const [readyFile, setReadyFile] = useState<{
-    file: File;
-    title: string;
-    text: string;
-    url: string;
-  } | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const mounted = useRef(true);
   const titleId = useId(),
     coverageId = useId();
   const prepared = useMemo(
@@ -481,12 +472,6 @@ export function ChartCard(props: ChartCardProps) {
   const link = () => props.shareUrl ?? chartShareUrl(window.location.href, id);
   const exportCoverage = `${coverage}${prepared.truncated ? " · Latest 2,048 observations" : ""}`;
 
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
   useEffect(() => {
     const changed = () =>
       setOpen(new URLSearchParams(window.location.search).get("chart") === id);
@@ -514,8 +499,7 @@ export function ChartCard(props: ChartCardProps) {
   }, [open]);
   function close() {
     setOpen(false);
-    setManualLink(null);
-    setReadyFile(null);
+    reset();
     const url = new URL(window.location.href);
     if (url.searchParams.get("chart") === id) {
       url.searchParams.delete("chart");
@@ -543,107 +527,30 @@ export function ChartCard(props: ChartCardProps) {
     const { renderChartPng } = await import("../lib/chart-export");
     return renderChartPng(frozen);
   }
-  async function copyLink() {
-    const url = link();
-    try {
-      await navigator.clipboard.writeText(url);
-      if (mounted.current) {
-        setMessage("Chart link copied.");
-        setManualLink(null);
-      }
-    } catch {
-      if (mounted.current) {
-        setManualLink(url);
-        setMessage("Copy this chart link.");
-      }
-    }
-  }
-  async function download() {
-    if (busy) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const blob = await png();
-      if (!mounted.current) return;
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = chartFilename(id);
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      setMessage("PNG downloaded.");
-    } catch (cause) {
-      if (mounted.current)
-        setMessage(
-          cause instanceof Error
-            ? cause.message
-            : "Image export failed. Try again.",
-        );
-    } finally {
-      if (mounted.current) setBusy(false);
-    }
-  }
-  async function share() {
-    if (busy) return;
-    if (!navigator.share || !navigator.canShare) {
-      await copyLink();
-      return;
-    }
-    setBusy(true);
-    setMessage("");
-    try {
-      // Keep the link/range/description with the same frozen snapshot as the PNG.
-      // A retry after transient activation expires must not relabel an older image.
+  const {
+    busy,
+    message,
+    manualLink,
+    readyFile,
+    copyLink,
+    download,
+    share,
+    reset,
+  } = useImageActions({
+    getLink: link,
+    linkLabel: "chart",
+    imageLabel: "Chart",
+    capture: () => {
       const frozen = snapshot();
-      const metadata = {
+      return {
+        filename: chartFilename(id),
         title: `${frozen.title} · paperclub`,
         text: `${frozen.range.label} · ${frozen.coverage}`,
         url: link(),
+        render: () => png(frozen),
       };
-      const ready = readyFile ?? {
-        ...metadata,
-        file: new File([await png(frozen)], chartFilename(id), {
-          type: "image/png",
-        }),
-      };
-      if (!mounted.current) return;
-      if (!navigator.canShare({ files: [ready.file] })) {
-        await copyLink();
-        return;
-      }
-      setReadyFile(ready);
-      await navigator.share({
-        files: [ready.file],
-        title: ready.title,
-        text: ready.text,
-        url: ready.url,
-      });
-      if (mounted.current) {
-        setMessage("Chart shared.");
-        setReadyFile(null);
-      }
-    } catch (cause) {
-      if (!mounted.current) return;
-      if (cause instanceof DOMException && cause.name === "AbortError") {
-        setMessage("Share cancelled.");
-        setReadyFile(null);
-      } else if (
-        cause instanceof DOMException &&
-        cause.name === "NotAllowedError"
-      )
-        setMessage("Image ready. Tap Share again, or copy the link.");
-      else
-        setMessage(
-          cause instanceof Error
-            ? cause.message
-            : "Sharing failed. Download the PNG or copy the link.",
-        );
-    } finally {
-      if (mounted.current) setBusy(false);
-    }
-  }
+    },
+  });
   const status =
     !points.length && loading
       ? "Loading"
@@ -664,7 +571,7 @@ export function ChartCard(props: ChartCardProps) {
           className="pc-chart-expand"
           aria-label={`Expand ${title} chart`}
           onClick={() => {
-            setMessage("");
+            reset();
             setOpen(true);
           }}
         >

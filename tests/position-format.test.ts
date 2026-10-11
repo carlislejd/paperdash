@@ -4,7 +4,6 @@ import {
   formatHoldingTime,
   formatLeverage,
   holdingTimeMs,
-  openPositionRows,
 } from "../apps/web/src/lib/position-format";
 
 describe("position display values", () => {
@@ -67,34 +66,5 @@ describe("position display values", () => {
         receivedAt,
       ),
     ).toBeNull();
-  });
-  it("uses the supplied snapshot time for open ages and keeps invalid rows visible", () => {
-    const positions = openPositionRows(
-      [
-        ["one", 0, true, false, "1", "1", 10, "1", 1000, null],
-        ["two", 1, false, false, "1", "1", 20, "1", 5000, null],
-        { bad: "tuple" },
-      ],
-      3000,
-    );
-    expect(positions).toHaveLength(3);
-    expect(positions[0]).toMatchObject({
-      symbol: "BTC",
-      side: "Long",
-      leverage: 10,
-      heldMs: 2000,
-    });
-    expect(positions[1]).toMatchObject({
-      symbol: "ETH",
-      side: "Short",
-      leverage: 20,
-      heldMs: null,
-    });
-    expect(positions[2]).toMatchObject({
-      symbol: "Market",
-      side: "—",
-      leverage: null,
-      heldMs: null,
-    });
   });
 });

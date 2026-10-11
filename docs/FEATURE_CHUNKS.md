@@ -20,3 +20,10 @@ Later features should reuse this read boundary, retained wallet outcomes, minute
 6. **Time ranges, historical moments and recaps.** Extend indexed aggregates to explicit supported bounds, then add reproducible saved chart/receipt snapshots. Shared links must preserve their original period and inputs. Longer-period PnL needs accounting appropriate to that period; never sum rolling leaderboard snapshots or treat deposits as gains.
 
 The sequence is a dependency guide, not a commitment to ship every later feature in one session. Each delivered chunk should state what changed, its data limits and the next chunk.
+
+## Delivered foundations
+
+- **Chunk 1: Live Following.** Shared retained wallet reads and the bounded collector refresh queue are in use by browser Following and the agent watchlist command.
+- **Chunk 2: Position details and receipt images.** Wallet open positions and retained closed/liquidated outcomes use a shared typed interpretation. Cards capture selected values and their source context; chart and receipt images share export actions and canvas helpers. Older loaded outcomes keep their original page's freshness/identity context when the head refreshes. No ingestion migration, new history scan, source connection or per-position request is required. [Definitions and limits](TRADE_RECEIPTS.md).
+
+The next feature chunk is PAPER economics. Hosted immutable receipt links and replay remain part of the later historical-views work.

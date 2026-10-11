@@ -21,6 +21,15 @@ import { mergeHistory } from "../lib/wallet-history";
 import { closedHoldingTimeMs, formatHoldingTime } from "../lib/position-format";
 import { PositionMetrics } from "./PositionMetrics";
 import {
+  normalizeClosedPosition,
+  type PositionDetails,
+} from "../../../../packages/shared/src/position-details";
+import {
+  freezePositionReceipt,
+  type PositionReceiptSnapshot,
+} from "../lib/position-receipt";
+import { PositionReceiptDialog } from "./PositionReceiptDialog";
+import {
   formatRawUsd,
   formatUsd,
   relativeTime,
@@ -47,6 +56,7 @@ let prefetch: {
 
 function cacheWallet(wallet: WalletResponse) {
   const key = wallet.address.toLowerCase();
+  rememberTradePage(wallet.trades);
   walletCache.delete(key);
   walletCache.set(key, wallet);
   if (walletCache.size > 30)
@@ -93,6 +103,29 @@ export function prefetchWallet(address: string): () => void {
   };
 }
 
+// Source clocks belong to the page that observed each row, even after pagination.
+const tradeReceiptSources = new WeakMap<
+  ClosedTrade,
+  { receivedAt: number | null; stale: boolean; identityAmbiguous: boolean }
+>();
+function rememberTradePage(page: HistoryPage<ClosedTrade>) {
+  const source = {
+    receivedAt: page.receivedAt ?? page.coverage?.lastIndexedAt ?? null,
+    stale: page.stale === true,
+    identityAmbiguous: page.coverage?.identityAmbiguous === true,
+  };
+  for (const item of page.items) tradeReceiptSources.set(item, source);
+}
+function tradeReceiptSource(item: ClosedTrade, page: HistoryPage<ClosedTrade>) {
+  return (
+    tradeReceiptSources.get(item) ?? {
+      receivedAt: page.receivedAt ?? page.coverage?.lastIndexedAt ?? null,
+      stale: page.stale === true,
+      identityAmbiguous: page.coverage?.identityAmbiguous === true,
+    }
+  );
+}
+
 function cashflowKey(item: Cashflow) {
   return (
     item.id ??
@@ -126,7 +159,12 @@ function paperAmount(raw: string | null | undefined): string {
 }
 
 function dateLabel(time: number | null | undefined, withYear = false): string {
-  if (!time || !Number.isFinite(time)) return "Date unavailable";
+  if (
+    time == null ||
+    !Number.isFinite(time) ||
+    !Number.isFinite(new Date(time).getTime())
+  )
+    return "Date unavailable";
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
@@ -351,9 +389,11 @@ function CashflowRow({ item }: { item: Cashflow }) {
 function TradeRow({
   item,
   receivedAt,
+  onSelect,
 }: {
   item: ClosedTrade;
   receivedAt?: number | null;
+  onSelect?: () => void;
 }) {
   const timestamp =
     typeof item.timestampMs === "number" ? item.timestampMs : null;
@@ -391,6 +431,15 @@ function TradeRow({
           </span>
           {heldMs !== null && <span>Held {formatHoldingTime(heldMs)}</span>}
           <TransactionLink hash={item.txHash} />
+          {onSelect && (
+            <button
+              type="button"
+              className="wd-position-view"
+              onClick={onSelect}
+            >
+              View position {String(item.positionId)} ↗
+            </button>
+          )}
         </div>
       </div>
       <div
@@ -413,6 +462,7 @@ export function WalletDrawer({
   const titleId = useId();
   const contentId = useId();
   const [data, setData] = useState<WalletResponse | null>(null);
+  const [receipt, setReceipt] = useState<PositionReceiptSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -451,6 +501,7 @@ export function WalletDrawer({
     });
     closeRef.current?.focus();
     function handleKey(event: globalThis.KeyboardEvent) {
+      if (dialogRef.current?.querySelector("dialog[open]")) return;
       if (event.key === "Escape") {
         event.preventDefault();
         onCloseRef.current();
@@ -496,6 +547,7 @@ export function WalletDrawer({
 
   useEffect(() => {
     setTab("cashflows");
+    setReceipt(null);
     setCopied(false);
     setCopyError(false);
     setPageError(null);
@@ -655,6 +707,8 @@ export function WalletDrawer({
       if (controller.signal.aborted) return;
       if (page.nextCursor === cursor)
         throw new Error("Repeated history cursor");
+      if (currentTab === "trades")
+        rememberTradePage(page as HistoryPage<ClosedTrade>);
       loadedPages.current[currentTab] = true;
       setData((current) => {
         if (!current || current.address.toLowerCase() !== address.toLowerCase())
@@ -663,6 +717,7 @@ export function WalletDrawer({
           return {
             ...current,
             cashflows: {
+              ...current.cashflows,
               items: [
                 ...current.cashflows.items,
                 ...(page.items as Cashflow[]),
@@ -673,6 +728,7 @@ export function WalletDrawer({
         return {
           ...current,
           trades: {
+            ...current.trades,
             items: [...current.trades.items, ...(page.items as ClosedTrade[])],
             nextCursor: page.nextCursor,
           },
@@ -718,6 +774,26 @@ export function WalletDrawer({
   const followLimit = !followed && following.length >= FOLLOWING_LIMIT;
   const selectedHistory = wallet?.[tab];
   const partial = wallet && (wallet.stale || wallet.errors.length > 0);
+  const selectPosition = (position: PositionDetails, sourceStale = false) => {
+    const clock =
+      position.status === "open"
+        ? position.provenance.asOf
+        : position.provenance.receivedAt;
+    const stale =
+      clock === null ||
+      clock > Date.now() + 30_000 ||
+      Date.now() - clock > (position.status === "open" ? 30_000 : 60_000) ||
+      sourceStale;
+    setReceipt(freezePositionReceipt(position, displayName ?? null, stale));
+  };
+  const closedPosition = (item: ClosedTrade) =>
+    wallet
+      ? normalizeClosedPosition(item, {
+          walletAddress: wallet.address,
+          ...tradeReceiptSource(item, wallet.trades),
+          asOf: Date.now(),
+        })
+      : null;
   return createPortal(
     <div
       className="wd-overlay"
@@ -953,7 +1029,11 @@ export function WalletDrawer({
                     in this view yet.
                   </p>
                 </section>
-                <PositionMetrics key={wallet.address} wallet={wallet} />
+                <PositionMetrics
+                  key={wallet.address}
+                  wallet={wallet}
+                  onPosition={selectPosition}
+                />
                 <PortfolioChart history={wallet.portfolio} />
                 <section className="wd-activity" aria-label="Wallet activity">
                   <div className="wd-section-heading">
@@ -1040,7 +1120,25 @@ export function WalletDrawer({
                                     : `${String(item.txHash)}-${String(item.positionId)}-${index}`
                                 }
                                 item={item}
-                                receivedAt={wallet.trades.receivedAt}
+                                receivedAt={
+                                  tradeReceiptSource(item, wallet.trades)
+                                    .receivedAt
+                                }
+                                onSelect={
+                                  closedPosition(item)
+                                    ? () => {
+                                        const position = closedPosition(item);
+                                        if (position)
+                                          selectPosition(
+                                            position,
+                                            tradeReceiptSource(
+                                              item,
+                                              wallet.trades,
+                                            ).stale,
+                                          );
+                                      }
+                                    : undefined
+                                }
                               />
                             ))}
                       </ol>
@@ -1123,6 +1221,12 @@ export function WalletDrawer({
             )
           )}
         </div>
+        {receipt && (
+          <PositionReceiptDialog
+            snapshot={receipt}
+            onClose={() => setReceipt(null)}
+          />
+        )}
       </aside>
     </div>,
     document.body,

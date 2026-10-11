@@ -1,4 +1,10 @@
 import {
+  fittedText,
+  wrappedText,
+  imageCanvas,
+  canvasPng,
+} from "./image-export";
+import {
   chartGeometry,
   chartColorValue,
   chartStackGeometry,
@@ -46,54 +52,14 @@ export function chartExportMetadata(snapshot: ChartExportSnapshot): string[] {
   ];
 }
 
-function fittedText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  size: number,
-  weight = 500,
-) {
-  ctx.font = `${weight} ${size}px "DM Sans", sans-serif`;
-  while (ctx.measureText(text).width > maxWidth && size > 15) {
-    size -= 1;
-    ctx.font = `${weight} ${size}px "DM Sans", sans-serif`;
-  }
-  ctx.fillText(text, x, y, maxWidth);
-}
-
-function wrappedText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  lineHeight: number,
-) {
-  let line = "",
-    offset = 0;
-  for (const word of text.split(/\s+/)) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (line && ctx.measureText(candidate).width > maxWidth) {
-      ctx.fillText(line, x, y + offset, maxWidth);
-      offset += lineHeight;
-      line = word;
-    } else line = candidate;
-  }
-  if (line) ctx.fillText(line, x, y + offset, maxWidth);
-}
-
 /** Imported only after an explicit export/share action. No screenshot library or external images. */
 export async function renderChartPng(
   snapshot: ChartExportSnapshot,
 ): Promise<Blob> {
-  await document.fonts?.ready;
-  const canvas = document.createElement("canvas");
-  canvas.width = CHART_EXPORT_SIZE.width;
-  canvas.height = CHART_EXPORT_SIZE.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Image export is unavailable in this browser.");
+  const { canvas, ctx } = await imageCanvas(
+    CHART_EXPORT_SIZE.width,
+    CHART_EXPORT_SIZE.height,
+  );
   const ink = "#252922",
     muted = "#747768",
     accent = chartColorValue(snapshot.color);
@@ -254,13 +220,5 @@ export async function renderChartPng(
     30,
   );
   fittedText(ctx, metadata[4], 80, 954, 1640, 20);
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (blob) =>
-        blob
-          ? resolve(blob)
-          : reject(new Error("Could not create the chart image.")),
-      "image/png",
-    ),
-  );
+  return canvasPng(canvas);
 }

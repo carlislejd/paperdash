@@ -51,23 +51,3 @@ export function formatLeverage(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return "—";
   return `${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}×`;
 }
-
-/** Keep unknown tuple fields unknown; an incomplete snapshot must not look empty. */
-export function openPositionRows(positions: unknown[], asOf: number) {
-  return positions.map((entry, index) => {
-    const tuple = Array.isArray(entry) ? entry : [];
-    const leverage = tuple[6];
-    return {
-      key: `${String(tuple[0] ?? "unknown")}:${index}`,
-      symbol: tuple[1] === 0 ? "BTC" : tuple[1] === 1 ? "ETH" : "Market",
-      side: tuple[2] === true ? "Long" : tuple[2] === false ? "Short" : "—",
-      leverage:
-        typeof leverage === "number" &&
-        Number.isSafeInteger(leverage) &&
-        leverage > 0
-          ? leverage
-          : null,
-      heldMs: holdingTimeMs(tuple[8], Math.floor(asOf)),
-    };
-  });
-}

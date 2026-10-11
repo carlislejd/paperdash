@@ -1,6 +1,6 @@
 # Paperclub
 
-A public, read-only dashboard for the Papertrade community. React renders protocol metrics, TVL history, observed trading activity, asset analytics, a rolling 24-hour leaderboard and a searchable wallet directory. Opening a wallet shows credited deposits, available balances, portfolio coverage and paginated cashflow/trade history. Following saves wallet identities in the current browser and reads refreshed summaries and observed activity in bounded batches, with each valuation's age shown separately.
+A public, read-only dashboard for the Papertrade community. React renders protocol metrics, TVL history, observed trading activity, asset analytics, a rolling 24-hour leaderboard and a searchable wallet directory. Opening a wallet shows credited deposits, available balances, portfolio coverage and paginated cashflow/trade history. Individual positions have inspectable details and shareable receipt images. Following saves wallet identities in the current browser and reads refreshed summaries and observed activity in bounded batches, with each valuation's age shown separately.
 
 The [live beta](https://papertrade.club) uses real public Papertrade sources and a continuously running collector backed by Postgres. Demo fixtures exist only in browser tests. It does not connect signing wallets, submit trades, move funds or require a blockchain node.
 
@@ -70,6 +70,8 @@ The collector saves global trade observations, minute TVL samples and wallet his
 Wallet history pagination reads local tables. Opening a wallet can prioritize its indexing job and refresh its current account snapshot, but does not download the wallet's upstream history for each visitor. API replicas and the worker use Redis for a shared upstream request budget and cache locks. Database-backed notification cursors support browser reconnection, with Redis accelerating fan-out. A database advisory lock coordinates the active collector. Local SQLite is for a single machine; Render replicas use shared Postgres.
 
 Following reuses those ingestion and coordination primitives. Its batch endpoint reads retained per-address account summaries and bounded recent executions; it does not fetch each wallet from upstream. Viewing known wallets renews temporary collector refresh requests, shared across visitors. Source directory pages also refresh the same summary projection. Response time, valuation receipt time and activity coverage remain distinct; a successful poll cannot make an old valuation current. See the [staged feature plan](docs/FEATURE_CHUNKS.md).
+
+Position cards reuse retained wallet outcomes and the current wallet snapshot through one shared interpretation of raw fields. Selecting a card freezes its values and observation context for image export. No extra collector, backfill or per-position source request is introduced. Missing funding, prices or payout information stay unavailable; adjusted PnL, fees and PAPER issuance remain separate. See [trade receipts](docs/TRADE_RECEIPTS.md).
 
 Source money values remain integer decimal strings. UI amounts are formatted from those strings; chart coordinates and source-provided approximate trade displays are not an independent accounting ledger.
 
