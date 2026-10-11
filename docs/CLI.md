@@ -12,6 +12,7 @@ node paperclub.mjs wallets --page 0 --sort currentUnrealizedPnl
 node paperclub.mjs watchlist 0x1234567890123456789012345678901234567890
 node paperclub.mjs wallet 0x1234567890123456789012345678901234567890
 node paperclub.mjs positions 0x1234567890123456789012345678901234567890
+node paperclub.mjs risk 0x1234567890123456789012345678901234567890 --pretty
 node paperclub.mjs assets
 node paperclub.mjs assets ETH
 node paperclub.mjs leaderboard --metric pnl --page 0
@@ -53,6 +54,16 @@ Source-ranked PnL and PAPER rows expose `paperTotalRaw` as an exact 18-decimal s
 `watchlist ADDRESS,ADDRESS` makes one bounded request for 1–25 addresses. It does not read the website's browser-saved list, store a list or start a watch loop. It returns per-wallet retained account summaries plus a capped recent observed-execution feed. Each row's `receivedAt` and `stale` describe that valuation; the activity feed has independent freshness. Missing account values remain null. The request can renew a temporary collector refresh request for a known wallet, but never performs a per-wallet upstream fetch in the HTTP handler. Source refreshes share a fixed collector budget, so a queued refresh is not a guarantee of immediate fresh data. The feed is not a complete execution count or historical ledger.
 
 `assets BTC` or `assets ETH` returns the market view: recent trades are capped at 200, and an optional `chartSample` highlights at most 62 large, priced observations across the default one-hour window. Neither list is a complete count. Direct HTTP callers can select `window=5m|15m|1h` on `/api/assets/0/market` or `/api/assets/1/market`; this chooses a chart sample, not a trade-count aggregate. Use `assets` without a symbol for the supported rolling-24h observed counts.
+
+## Wallet margin scenarios
+
+`risk ADDRESS` selects `marginRisk` from the existing wallet response in one request. It returns initial margin grouped by distance from a Hyperliquid midpoint reference to recorded bust prices, split by long/short and cash/queued-balance funding. This is a wallet snapshot scenario, not a global position inventory, liquidation prediction, account equity or expected cash loss. Queued margin is a claim on queued balance, not newly borrowed cash.
+
+Amounts (`initialMarginRaw`, `cashMarginRaw`, `queuedMarginRaw`) are exact 18-decimal strings. Bands are nonoverlapping: at/beyond the reference, (0, 0.1%], (0.1%, 0.25%], (0.25%, 0.5%], (0.5%, 1%], (1%, 5%], and over 5%. Long distance is `(reference − bust) / reference`; short distance is `(bust − reference) / reference`. Numeric `distanceBps` is approximate; exact integer comparisons determine band membership. Positive distance is an adverse price move; nonpositive distance does not establish current liquidation eligibility.
+
+Inspect `snapshot.sourceAt`, `snapshot.receivedAt`, each asset's `reference.sourceAt`/`receivedAt`/`stale`, and `coverage`. Quote prices are approximate and need not match the protocol's mark or snapshot block. Missing quotes leave margin totals available but `bands: null` and no nearest-price results. `nearest` is capped at five per asset; totals cover all included rows, not only those five. All rows of repeated position IDs are excluded; `duplicateCount` counts excluded rows and is already part of `excludedCount`. Missing/malformed or unverified markets are excluded. An empty valid snapshot means zero positions; a missing snapshot means unavailable. `partial: true` stays explicit even if every snapshot row is included.
+
+For `risk`, `--require-fresh` uses the risk snapshot and required references independently of unrelated wallet history/portfolio freshness. Freshness does not certify complete coverage. Older servers without `marginRisk` return an unavailable result, never fabricated zero totals. See [Margin scenario definitions](MARGIN_AT_RISK.md).
 
 ## History and pagination
 

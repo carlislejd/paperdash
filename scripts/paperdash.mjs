@@ -32,6 +32,7 @@ const COMMAND_FLAGS = {
   watchlist: [],
   wallet: ["history", "cursor"],
   positions: [],
+  risk: [],
   assets: [],
   leaderboard: ["metric", "page", "q"],
   house: [],
@@ -56,6 +57,7 @@ Commands:
   wallet ADDRESS              Snapshot and first retained-history pages
     --history cashflows|trades [--cursor CURSOR]
   positions [ADDRESS]         Wallet open positions; without address, global count
+  risk ADDRESS                Wallet initial margin by distance to recorded bust prices
   assets [BTC|ETH|0|1]         Asset summaries; with asset, recent price/trade view
   leaderboard                 Rolling 24h activity or current PAPER ownership, one page
     --metric pnl|volume|trades|paper --page N --q SEARCH
@@ -154,7 +156,7 @@ export function parseArgs(argv, env = process.env) {
   if (
     extra.length ||
     (argument !== undefined &&
-      !["wallet", "positions", "assets", "watchlist"].includes(command))
+      !["wallet", "positions", "risk", "assets", "watchlist"].includes(command))
   )
     invalid(`Unexpected argument for ${command}.`);
   for (const key of Object.keys(options))
@@ -238,6 +240,7 @@ export function parseArgs(argv, env = process.env) {
   }
   if (
     command === "wallet" ||
+    command === "risk" ||
     (command === "positions" && argument !== undefined)
   ) {
     path = `/api/wallets/${address(argument)}`;
@@ -425,6 +428,13 @@ export const POSITION_COLUMNS = [
   "intentId",
 ];
 export function selectData(config, body) {
+  if (config.command === "risk")
+    return body.marginRisk ?? {
+      address: body.address ?? config.argument.toLowerCase(),
+      snapshot: null,
+      stale: true,
+      error: "Margin-at-risk data is unavailable.",
+    };
   if (config.command === "tvl")
     return {
       tvlRaw: body.summary?.balances?.tvl ?? null,
@@ -469,6 +479,15 @@ export function selectData(config, body) {
   return body;
 }
 export function isFresh(config, body) {
+  // Risk belongs to the wallet snapshot and its references, independently of
+  // the history/portfolio requests included in the enclosing wallet response.
+  if (config.command === "risk") {
+    const risk = body.marginRisk;
+    return Boolean(risk?.snapshot) && risk.stale === false &&
+      risk.snapshot.stale === false && !risk.error &&
+      Array.isArray(risk.assets) &&
+      risk.assets.every((asset) => asset.reference?.stale === false);
+  }
   if (
     body.stale === true ||
     body.status?.stale === true ||

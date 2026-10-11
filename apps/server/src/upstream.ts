@@ -13,6 +13,7 @@ import { config, errorMessage } from "./config.js";
 import { accountsSchema, addressSchema, walletSchema } from "./schemas.js";
 import type { Store } from "./store.js";
 import { activityDelayed } from "./activity-health.js";
+import { readWalletMarginRisk } from "./wallet-risk.js";
 import {
   CoordinationError,
   LocalCoordinator,
@@ -732,8 +733,18 @@ export class Upstream {
     const times = results.flatMap((r) =>
       r.status === "fulfilled" ? [r.value.receivedAt] : [],
     );
+    const marginRisk = await readWalletMarginRisk(
+      this.store,
+      address,
+      snapshot.status === "fulfilled" ? snapshot.value : null,
+      Date.now(),
+      snapshot.status === "rejected"
+        ? errorMessage(snapshot.reason)
+        : undefined,
+    );
     return {
       address,
+      marginRisk,
       snapshot: snapshot.status === "fulfilled" ? snapshot.value.value : null,
       cashflows:
         cashflows.status === "fulfilled"

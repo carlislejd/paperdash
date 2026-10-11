@@ -1,3 +1,5 @@
+import type { WalletMarginRiskResponse } from "./margin-risk.js";
+
 export type Raw = string;
 export interface DataStatus {
   receivedAt: number | null;
@@ -311,6 +313,8 @@ export interface WalletResponse {
   receivedAt: number;
   stale: boolean;
   errors: string[];
+  /** Additive scenario from this same snapshot and retained reference prices. */
+  marginRisk?: WalletMarginRiskResponse;
 }
 export type StreamMessage =
   | { type: "overview"; data: Overview }

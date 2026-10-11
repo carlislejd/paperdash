@@ -20,6 +20,8 @@ import { FOLLOWING_LIMIT } from "../lib/following-storage";
 import { mergeHistory } from "../lib/wallet-history";
 import { closedHoldingTimeMs, formatHoldingTime } from "../lib/position-format";
 import { PositionMetrics } from "./PositionMetrics";
+import { WalletMarginRisk } from "./WalletMarginRisk";
+import { riskMatchesSnapshot } from "../lib/margin-risk-display";
 import {
   normalizeClosedPosition,
   type PositionDetails,
@@ -602,7 +604,6 @@ export function WalletDrawer({
           throw new Error(
             "Wallet response did not match the requested address.",
           );
-        cacheWallet(response);
         const current = dataRef.current;
         let next = response;
         if (
@@ -625,10 +626,32 @@ export function WalletDrawer({
             current.snapshot &&
             (!response.snapshot ||
               current.snapshot.accountRevision >
-                response.snapshot.accountRevision)
-          )
+                response.snapshot.accountRevision ||
+              current.snapshot.indexedThroughBlock >
+                response.snapshot.indexedThroughBlock ||
+              current.snapshot.indexedThroughTimestamp >
+                response.snapshot.indexedThroughTimestamp)
+          ) {
             next.snapshot = current.snapshot;
+            // Derived bands must remain attached to the snapshot they describe.
+            next.marginRisk = riskMatchesSnapshot(
+              current.marginRisk,
+              current.snapshot,
+              current.address,
+            )
+              ? {
+                  ...current.marginRisk!,
+                  stale: true,
+                  snapshot: { ...current.marginRisk!.snapshot!, stale: true },
+                }
+              : undefined;
+          }
         }
+        cacheWallet({
+          ...response,
+          snapshot: next.snapshot,
+          marginRisk: next.marginRisk,
+        });
         dataRef.current = next;
         setData(next);
         setError(null);
@@ -1033,6 +1056,13 @@ export function WalletDrawer({
                   key={wallet.address}
                   wallet={wallet}
                   onPosition={selectPosition}
+                />
+                <WalletMarginRisk
+                  key={`margin-${wallet.address}`}
+                  wallet={wallet}
+                  displayName={displayName}
+                  onPosition={selectPosition}
+                  refreshError={Boolean(error)}
                 />
                 <PortfolioChart history={wallet.portfolio} />
                 <section className="wd-activity" aria-label="Wallet activity">

@@ -23,6 +23,7 @@ node paperclub.mjs leaderboard --metric pnl --page 0 --pretty
 node paperclub.mjs leaderboard --metric paper --page 0 --pretty
 node paperclub.mjs assets --pretty
 node paperclub.mjs paper --pretty
+node paperclub.mjs risk 0x1234567890123456789012345678901234567890 --pretty
 ```
 
 The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API responses are the contents of `data`, without that wrapper. Use a JSON parser, not formatted dashboard text. No account, wallet connection, signing key or repository access is needed.
@@ -42,6 +43,7 @@ The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API respo
 | Observed trade counts and volume over the last 24 hours | `/api/assets` | `assets[].activity.counts`, `.notionalUsd`, `.windowFrom`, `.windowTo` |
 | BTC/ETH open interest and long/short share | `/api/assets` | `assets[].openInterest` |
 | Wallet balances, staking and initial history pages | `/api/wallets/ADDRESS` | `snapshot`, `cashflows`, `trades`, `portfolio` |
+| Wallet initial margin near recorded bust prices | `/api/wallets/ADDRESS` | `marginRisk.assets[].bands`, `.totals`, `.nearest`, snapshot/reference clocks and `coverage` |
 | Retained summaries and recent activity for selected wallets | `/api/wallets/batch?addresses=ADDRESS,ADDRESS` | `rows[].account`, each row's `receivedAt`/`stale`, and `activity` |
 | Wallet deposits/withdrawals | `/api/wallets/ADDRESS/cashflows` | `items`, `nextCursor`, `coverage` |
 | Wallet closed-position history | `/api/wallets/ADDRESS/trades` | `items`, `nextCursor`, `coverage` |
@@ -117,6 +119,14 @@ For chart highlights, `/api/assets/0/market?window=15m` (BTC) or `/api/assets/1/
 
 Wallet staking: `snapshot.paper.staked` is staked PAPER; `snapshot.lifetime.paperRewardsClaimedRaw` is claimed USDC rewards. Pending/claimable wallet rewards are currently unavailable. Do not interpret `snapshot.paper.pendingBase` as the total pending/claimable balance.
 
+### Wallet margin at risk
+
+`node paperclub.mjs risk ADDRESS` selects `marginRisk` from the existing wallet response. This is a hypothetical price scenario for the included open positions in one wallet snapshot. It is **not** a complete global inventory, a prediction of liquidations, or expected cash loss. Fixed initial margin is distinct from position notional and current account equity. `cashMarginRaw` and `queuedMarginRaw` split that initial margin; queued-balance funding is a claim, not newly borrowed cash. All margin fields use 18 decimals.
+
+Each asset's bands are nonoverlapping: at/beyond the reference; (0, 0.1%]; (0.1%, 0.25%]; (0.25%, 0.5%]; (0.5%, 1%]; (1%, 5%]; over 5%. `lowerBps` is exclusive and `upperBps` inclusive, except the at/beyond band covers all nonpositive distances. Long distance is `(reference − bust) / reference`; short distance is `(bust − reference) / reference`. `distanceBps / 100` is percent, with negative values on the far side of the recorded threshold. The approximate Hyperliquid midpoint reference is independent of the protocol's mark and snapshot block. Terminal/frozen-market metadata is unavailable, so even an at/beyond threshold does not establish liquidation eligibility.
+
+Inspect `snapshot.sourceAt`/`receivedAt`/`stale`, asset `reference.sourceAt`/`receivedAt`/`stale`, and top-level `stale`/`error`. These clocks are independent of the enclosing wallet history's age. Missing reference leaves exact margin totals usable but `bands: null`; missing snapshot is unavailable, not zero. `nearest` shows at most five thresholds per asset ordered by absolute distance. Aggregates include all valid snapshot rows, not only those five. `coverage.includedCount` and `excludedCount` describe interpretation of this bounded snapshot, never full protocol capture. `duplicateCount` counts rows excluded for repeated wallet-scoped position IDs and is included in `excludedCount`. Keep `partial: true` in reports. `risk --require-fresh` checks the risk snapshot and relevant references; it does not certify completeness. Older API responses without `marginRisk` mean unavailable.
+
 ### House health
 
 `node paperclub.mjs house` returns House Funds and its components from one publication: **LP balance + open house PnL − queue debt**. LP includes the payout reserve; do not subtract it twice. TVL is not available house backing, and these values alone do not establish solvency or a risk score. The source publishes approximate USD numbers; their raw 18-decimal representation preserves supplied precision without making them exact on-chain balances.
@@ -162,7 +172,7 @@ Use `q` for an address/name search where supported; observed volume/trade rankin
 
 ## Request behavior
 
-The CLI has bounded retries and timeouts. `--require-fresh` exits 3 on top-level stale/degraded/unavailable responses while retaining the JSON result on stdout; still inspect nested freshness and coverage yourself. Other exit codes: 0 success, 1 request failure, 2 invalid arguments. Errors are JSON on stderr.
+The CLI has bounded retries and timeouts. `--require-fresh` exits 3 on stale/degraded/unavailable responses while retaining the JSON result on stdout; `risk` uses its independent snapshot/reference freshness instead of unrelated wallet history. Still inspect nested freshness and coverage yourself. Other exit codes: 0 success, 1 request failure, 2 invalid arguments. Errors are JSON on stderr.
 
 For direct HTTP, use a timeout, honor `Retry-After` on 429, and back off on transient errors. Do not repeatedly retry 400/401/403. Reuse responses within a task; a refresh every 30–60 seconds is sufficient for ordinary agent conversations. Do not poll every wallet or fetch the dashboard HTML to extract numbers. No trading or account-write action is available through this interface.
 

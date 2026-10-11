@@ -68,6 +68,9 @@ describe("public CLI arguments and command contracts", () => {
     ["watchlist", wallet, "--page", "1"],
     ["leaderboard", "--metric", "volume", "--q", "Alice"],
     ["leaderboard", "--metric", "holders"],
+    ["risk"],
+    ["risk", "not-a-wallet"],
+    ["risk", wallet, "--history", "trades"],
   ])(
     "rejects invalid arguments without sending a request: %j",
     async (...args) => {
@@ -155,6 +158,44 @@ describe("public CLI arguments and command contracts", () => {
 });
 
 describe("CLI data fidelity and freshness", () => {
+  it("returns exact wallet risk with independent freshness in one existing profile request", async () => {
+    const io = output();
+    const risk = {
+      address: wallet, asOf: 10000, stale: false,
+      snapshot: { sourceAt: 9000, receivedAt: 9500, stale: false },
+      assets: [{ instrumentId: 0, totals: { initialMarginRaw: "10000000000000000000000000001" },
+        reference: { stale: false, sourceAt: 9800, receivedAt: 9900 }, bands: [] }],
+      coverage: { partial: true, includedCount: 2, excludedCount: 1 },
+    };
+    const fetch = vi.fn(async () => response({ marginRisk: risk, stale: true, errors: ["History delayed"] }));
+    expect(await runCli(["risk", wallet, "--require-fresh"], { ...io, fetch })).toBe(0);
+    expect(JSON.parse(io.text()).data).toEqual(risk);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][0]).toBe(`${DEFAULT_BASE_URL}/api/wallets/${wallet}`);
+  });
+  it.each([
+    undefined,
+    { snapshot: null, stale: true, assets: [] },
+    { snapshot: { stale: true }, stale: true, assets: [] },
+    { snapshot: { stale: false }, stale: true, assets: [{ reference: null }] },
+    { snapshot: { stale: false }, stale: true, assets: [{ reference: { stale: true } }] },
+  ])("does not report missing or delayed risk as fresh", async (marginRisk) => {
+    const io = output();
+    expect(await runCli(["risk", wallet, "--require-fresh"], {
+      ...io, fetch: async () => response({ address: wallet, marginRisk, stale: false }),
+    })).toBe(3);
+    expect(JSON.parse(io.text()).data.stale).toBe(true);
+    expect(io.error().error.code).toBe("data_not_fresh");
+  });
+  it("can report a fresh empty wallet without requiring irrelevant asset quotes", async () => {
+    const io = output();
+    const risk = { snapshot: { stale: false }, stale: false, assets: [],
+      coverage: { snapshotPositionCount: 0, includedCount: 0, excludedCount: 0 } };
+    expect(await runCli(["risk", wallet, "--require-fresh"], {
+      ...io, fetch: async () => response({ marginRisk: risk, stale: true }),
+    })).toBe(0);
+    expect(JSON.parse(io.text()).data).toEqual(risk);
+  });
   it("preserves current PAPER ownership precision and separate PnL/activity windows in one request", async () => {
     const io = output();
     const data = {
