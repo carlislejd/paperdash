@@ -24,7 +24,7 @@ import { EventHub, type StreamTopic } from "./event-hub.js";
 import { PublicReadCache, ReadCapacityError } from "./public-read-cache.js";
 import { applyEdgeCachePolicy } from "./edge-cache.js";
 import { readWalletBatch } from "./following.js";
-import { readProtocolCharts } from "./protocol-charts.js";
+import { readPaperEconomics, readProtocolCharts } from "./protocol-charts.js";
 export { EventHub } from "./event-hub.js";
 
 export async function buildApi(
@@ -205,6 +205,13 @@ export async function buildApi(
       req,
       reply,
       await reads.read("protocol-charts", () => readProtocolCharts(store)),
+    ),
+  );
+  app.get("/api/paper/economics", async (req, reply) =>
+    analyticsResponse(
+      req,
+      reply,
+      await reads.read("paper-economics", () => readPaperEconomics(store)),
     ),
   );
   app.get("/api/liquidations/stats", async (req, reply) =>

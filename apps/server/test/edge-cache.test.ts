@@ -93,6 +93,7 @@ describe("explicit native edge-cache policy", () => {
     ),
     "/api/house",
     "/api/protocol/charts",
+    "/api/paper/economics",
     "/api/position-metrics",
     "/api/liquidations/stats",
   ])(
@@ -164,6 +165,7 @@ describe("explicit native edge-cache policy", () => {
       "/api/%6fverview",
       "/api/house?x=1",
       "/api/protocol/charts?range=1d",
+      "/api/paper/economics?range=1d",
       "/api/liquidations/stats?instrument=0",
       "/api/accounts",
       "/api/accounts?q=0x1&page=0",

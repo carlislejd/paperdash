@@ -12,6 +12,7 @@ const snapshots = new Set([
   ),
   "/api/house",
   "/api/protocol/charts",
+  "/api/paper/economics",
   "/api/position-metrics",
   "/api/liquidations/stats",
 ]);

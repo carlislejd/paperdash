@@ -4,6 +4,7 @@
 
 - [Agent guide](https://papertrade.club/agents.md): API paths, CLI quick start, field meanings, supported time windows, freshness and coverage rules.
 - [Standalone CLI](https://papertrade.club/paperclub.mjs): Dependency-free Node.js 24 client; JSON output and bounded retries.
+- [PAPER economics](https://paperdash-api.onrender.com/api/paper/economics): Supply, staking participation, allocated rewards and partial hourly changes; allocations are not claimed payouts.
 - [Dashboard](https://papertrade.club/): Human-readable analytics and wallet profiles.
 
 JSON API base: https://paperdash-api.onrender.com

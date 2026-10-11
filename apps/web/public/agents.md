@@ -21,6 +21,7 @@ node paperclub.mjs overview --pretty
 node paperclub.mjs wallets --sort currentUnrealizedPnl --page 0 --pretty
 node paperclub.mjs leaderboard --metric pnl --page 0 --pretty
 node paperclub.mjs assets --pretty
+node paperclub.mjs paper --pretty
 ```
 
 The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API responses are the contents of `data`, without that wrapper. Use a JSON parser, not formatted dashboard text. No account, wallet connection, signing key or repository access is needed.
@@ -44,6 +45,7 @@ The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API respo
 | Wallet closed-position history | `/api/wallets/ADDRESS/trades` | `items`, `nextCursor`, `coverage` |
 | One position's margin, outcome and PAPER issuance | `/api/wallets/ADDRESS/trades` | Match `items[].positionId` within this wallet; inspect the outcome fields below and page with `nextCursor` if needed |
 | House funds, PAPER staked, rewards, annualized staking revenue | `/api/house` | `house`, `paper`, `annualizedStakingRevenue` |
+| PAPER economics, staking participation and hourly supply/reward changes | `/api/paper/economics` | `supplyRaw`, `stakedRaw`, `stakeRatioBps`, `allocatedRewardsRaw`, `pendingRewardsRaw`, `annualized`, `series` |
 | Liquidation totals over the last 1 or 24 hours | `/api/liquidations/stats` | `stats.hour`, `stats.day`, `windowTo` |
 | Estimated margin in liquidated positions | `/api/liquidations/stats` | `stats.hour.estimatedMarginUsd`, `stats.day.estimatedMarginUsd`, and each `marginObservationCount` |
 | Liquidations by asset, hourly chart and recent events | `/api/liquidations?instrument=0` | `stats`, `hourly`, `items`, `nextCursor` |
@@ -105,6 +107,12 @@ For chart highlights, `/api/assets/0/market?window=15m` (BTC) or `/api/assets/1/
 - Missing or null is unavailable, not zero. Never fabricate a missing value.
 
 Wallet staking: `snapshot.paper.staked` is staked PAPER; `snapshot.lifetime.paperRewardsClaimedRaw` is claimed USDC rewards. Pending/claimable wallet rewards are currently unavailable. Do not interpret `snapshot.paper.pendingBase` as the total pending/claimable balance.
+
+### PAPER economics
+
+`node paperclub.mjs paper` returns one bounded snapshot. Current supply, stake, allocated rewards and source-reported pending rewards are raw 18-decimal strings. `stakeRatioBps / 100` is percent of supply staked; null means unavailable, including zero supply. `allocatedRewardsRaw` is lifetime USDC allocated to stakers, not already distributed or claimed. `pendingRewardsRaw` is the protocol-reported pending amount, not a wallet's claimable balance. `annualized.usdPerYearRaw` is lifetime allocated USDC divided by elapsed protocol lifetime and multiplied by 365 days; it is not APY or a forecast.
+
+The hourly series are `supply`, `staked`, `allocated`, `supplyChange` and `rewardAllocation`. Numeric values are already in PAPER or USD, approximate, and may be null; do not rescale them by 10**18. `allocated` is cumulative lifetime allocated USDC. `supplyChange` is net supply change, not a count or exact total of attributed mint events. `rewardAllocation` is a change in lifetime allocated USDC, not a payout. Respect `gapBefore`, `partial`, the returned source time and per-series coverage. Missing or incompatible history stays unknown rather than zero. Global distributed/claimed rewards and historical per-token distributions are not currently available; current stake or reserves cannot reconstruct them.
 
 ### Position outcomes and receipts
 

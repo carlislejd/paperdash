@@ -87,11 +87,7 @@ export function OverviewCharts() {
           />
         </div>
       </section>
-      <HouseStats
-        charts={data}
-        chartRange={range}
-        chartsDelayed={Boolean(error || data?.stale)}
-      />
+      <HouseStats chartRange={range} />
     </>
   );
 }

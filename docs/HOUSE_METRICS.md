@@ -22,4 +22,6 @@ The default House Funds chart fits the available observations within that 24-hou
 
 House values and PAPER values may have independent source times. Missing values remain null. Freshness considers each source/receipt time, the collector heartbeat and source-loop errors; repeated receipt of an old house frame does not make its valuation fresh. The response includes `house`, `paper`, `sourceAt`, `receivedAt`, `sourceBlock`, `summarySourceAt`, `history`, `stale`, and coverage `{source:'retained-house-observations',approximate:true,observedFrom,partial:true}`.
 
+The PAPER panel now reads `/api/paper/economics` for a coherent summary and its own freshness rather than borrowing the house valuation's clock. `/api/house` keeps its existing PAPER fields for API compatibility. The new panel adds staking participation and hourly net supply/allocated-reward changes; see [PAPER economics](PAPER_ECONOMICS.md) for accounting and history limits.
+
 Public ticker liquidations use `kind:'liq'`; closed wallet outcomes use `kind:'Liquidated'`. A live liquidation feed made from retained ticker observations remains partial, even when its connection and collector are healthy. It must not claim a complete canonical liquidation archive.

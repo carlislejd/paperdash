@@ -9,6 +9,7 @@ import type {
   LeaderboardResponse,
   Overview,
   ProtocolChartsResponse,
+  PaperEconomicsResponse,
   WalletResponse,
   WalletBatchResponse,
 } from "../../packages/shared/src/types";
@@ -373,6 +374,75 @@ export function protocolChartsResponse(): ProtocolChartsResponse {
   };
 }
 
+export function paperEconomicsResponse(
+  at = Date.now(),
+): PaperEconomicsResponse {
+  const base = Math.floor(at / 3600000) * 3600000;
+  const series = (
+    kind:
+      | "supply"
+      | "staked"
+      | "supplyChange"
+      | "rewardAllocation"
+      | "allocated",
+  ): PaperEconomicsResponse["series"]["supply"] => ({
+    unit: kind === "rewardAllocation" || kind === "allocated" ? "USD" : "PAPER",
+    aggregation:
+      kind === "supply" || kind === "staked"
+        ? "snapshot"
+        : kind === "allocated"
+          ? "cumulative"
+          : "hourly-change",
+    points: Array.from({ length: 30 }, (_, index) => ({
+      time: base - (29 - index) * 3600000,
+      value:
+        index === 7
+          ? null
+          : kind === "supply"
+            ? 100_000_000 + index * 1_000_000
+            : kind === "staked"
+              ? 0
+              : kind === "allocated"
+                ? 16271 - (29 - index) * 100
+                : kind === "supplyChange"
+                  ? index === 18
+                    ? -2_000_000
+                    : 1_000_000
+                  : 500 + index * 5,
+      ...(index === 8 ? { gapBefore: true } : {}),
+      ...(index === 29 ? { partial: true } : {}),
+    })),
+    source: "protocol-history-and-retained-summary",
+    coverage: { observedFrom: base - 29 * 3600000, partial: true },
+  });
+  return {
+    sourceAt: at,
+    receivedAt: at,
+    stale: false,
+    supplyRaw: usd(125571374),
+    stakedRaw: "0",
+    allocatedRewardsRaw: usd(16271),
+    pendingRewardsRaw: usd(324),
+    stakeRatioBps: 0,
+    annualized: {
+      usdPerYearRaw: usd(1484728),
+      lifetimeRewardsRaw: usd(16271),
+      fromMs: at - 4 * 86400000,
+      toMs: at,
+      basis: "protocol-lifetime",
+      yearDays: 365,
+    },
+    series: {
+      supply: series("supply"),
+      allocated: series("allocated"),
+      staked: series("staked"),
+      supplyChange: series("supplyChange"),
+      rewardAllocation: series("rewardAllocation"),
+    },
+    coverage: { partial: true, historyApproximate: true },
+  };
+}
+
 export async function mockSources(
   page: Page,
   options: {
@@ -394,6 +464,12 @@ export async function mockSources(
     }
     if (url.pathname === "/api/overview") {
       await route.fulfill({ json: overview(options.stale) });
+      return;
+    }
+    if (url.pathname === "/api/paper/economics") {
+      await route.fulfill({
+        json: { ...paperEconomicsResponse(), stale: Boolean(options.stale) },
+      });
       return;
     }
     if (url.pathname === "/api/protocol/charts") {

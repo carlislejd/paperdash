@@ -117,6 +117,7 @@ describe("public CLI arguments and command contracts", () => {
       `${DEFAULT_BASE_URL}/api/assets/1/market`,
     );
     expect(parseArgs(["house"], {}).url).toBe(`${DEFAULT_BASE_URL}/api/house`);
+    expect(parseArgs(["paper"], {}).url).toBe(`${DEFAULT_BASE_URL}/api/paper/economics`);
     expect(
       parseArgs(
         ["liquidations", "--asset", "ETH", "--cursor", "opaque+/cursor"],
@@ -258,6 +259,7 @@ describe("CLI data fidelity and freshness", () => {
     ["overview", { summary: null, status }],
     ["health", { ready: true, degraded: true, status }],
     ["wallets", { accounts: [], stale: false, error: "Source failed" }],
+    ["paper", { supplyRaw: "1234567890123456789012345678", stale: true }],
   ])(
     "keeps results visible while --require-fresh exits 3 for %s",
     async (command, data) => {
@@ -283,8 +285,21 @@ describe("CLI data fidelity and freshness", () => {
     expect(JSON.parse(io.text()).data.stale).toBe(true);
     expect(io.stderr).not.toHaveBeenCalled();
   });
-  it("preserves house precision and partial liquidation statistics without reformatting", async () => {
+  it("preserves exact raw totals and partial statistics without reformatting", async () => {
     for (const [command, data] of [
+      [
+        "paper",
+        {
+          supplyRaw: "1234567890123456789012345678",
+          stakedRaw: "0",
+          allocatedRewardsRaw: "449264341827924961576",
+          pendingRewardsRaw: null,
+          stakeRatioBps: 0,
+          sourceAt: 1791644716000,
+          stale: false,
+          coverage: { historyApproximate: true, partial: true },
+        },
+      ],
       [
         "house",
         {

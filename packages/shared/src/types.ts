@@ -387,6 +387,32 @@ export interface ProtocolChartsResponse {
   error?: string;
 }
 
+export interface PaperEconomicsResponse {
+  sourceAt: number | null;
+  receivedAt: number | null;
+  stale: boolean;
+  error?: string;
+  supplyRaw: Raw | null;
+  stakedRaw: Raw | null;
+  /** Lifetime USDC allocated to stakers; not distributed or claimed USDC. */
+  allocatedRewardsRaw: Raw | null;
+  /** Source-reported protocol pending rewards, not wallet claimable rewards. */
+  pendingRewardsRaw: Raw | null;
+  /** Same-summary staked/supply ratio, truncated to integer basis points. */
+  stakeRatioBps: number | null;
+  annualized: AnnualizedStakingRevenue;
+  series: {
+    supply: ProtocolChartSeries;
+    staked: ProtocolChartSeries;
+    allocated: ProtocolChartSeries;
+    /** Signed net supply change; not a mint-event total. */
+    supplyChange: ProtocolChartSeries;
+    /** Nonnegative change in cumulative allocated USDC; not distributions. */
+    rewardAllocation: ProtocolChartSeries;
+  };
+  coverage: { partial: true; historyApproximate: true };
+}
+
 export interface LiquidationTotals {
   /** Approximate initial margin: sum(notionalUsd / leverage), not exact collateral accounting. Null until every retained observation in this window is covered. */
   estimatedMarginUsd?: number | null;

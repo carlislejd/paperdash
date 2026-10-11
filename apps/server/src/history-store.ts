@@ -152,6 +152,10 @@ export interface ProtocolChartObservation {
   complete: boolean;
   values: Partial<Record<ProtocolChartMetric, number | null>>;
   volumeRaw?: string;
+  /** Exact 18-decimal summary fields; absent from old numeric history rows. */
+  paperSupplyRaw?: string;
+  paperStakedRaw?: string;
+  allocatedRewardsRaw?: string;
 }
 
 export function historySchemaSql(prefix: string, postgres: boolean): string {
@@ -982,6 +986,17 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
           row.endpointAt >= row.time + 3600000 ||
           typeof row.generation !== "string" ||
           row.generation.length > 256 ||
+          [
+            row.paperSupplyRaw,
+            row.paperStakedRaw,
+            row.allocatedRewardsRaw,
+          ].some(
+            (raw) =>
+              raw !== undefined &&
+              (typeof raw !== "string" ||
+                raw.length > 78 ||
+                !/^(0|[1-9]\d*)$/.test(raw)),
+          ) ||
           Object.values(row.values).some(
             (v) => v !== null && (!Number.isFinite(v) || v < 0),
           )

@@ -35,6 +35,7 @@ const COMMAND_FLAGS = {
   assets: [],
   leaderboard: ["metric", "page", "q"],
   house: [],
+  paper: [],
   liquidations: ["asset", "cursor"],
   indexing: [],
   health: [],
@@ -59,6 +60,7 @@ Commands:
   leaderboard                 Rolling 24h ranking, one page
     --metric pnl|volume|trades --page N --q SEARCH
   house                       House Funds, PAPER and retained house history
+  paper                       PAPER supply, participation and allocated-reward history
   liquidations                Observed liquidations with rolling 1h/24h totals
     --asset BTC|ETH|0|1 --cursor CURSOR
   indexing                    Saved collector/backfill coverage
@@ -186,6 +188,7 @@ export function parseArgs(argv, env = process.env) {
     path = "/api/overview";
   if (command === "indexing") path = "/api/indexing";
   if (command === "house") path = "/api/house";
+  if (command === "paper") path = "/api/paper/economics";
   if (command === "liquidations") {
     path = "/api/liquidations";
     if (options.asset) {

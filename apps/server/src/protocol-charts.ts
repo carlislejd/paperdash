@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type {
   AnnualizedStakingRevenue,
+  PaperEconomicsResponse,
   ProtocolChartMetric,
   ProtocolChartSeries,
   ProtocolChartsResponse,
@@ -85,6 +86,9 @@ export async function retainProtocolChartSummary(
         stakingRewards: rawNumber(summary.fees.lifetime),
       },
       volumeRaw: summary.activity.volume,
+      paperSupplyRaw: summary.paper.supply,
+      paperStakedRaw: summary.paper.staked,
+      allocatedRewardsRaw: summary.fees.lifetime,
     },
   ]);
 }
@@ -169,11 +173,39 @@ function empty(): ProtocolChartsResponse {
     ) as ProtocolChartsResponse["series"],
   };
 }
+function emptyEconomics(): PaperEconomicsResponse {
+  return {
+    sourceAt: null,
+    receivedAt: null,
+    stale: true,
+    supplyRaw: null,
+    stakedRaw: null,
+    allocatedRewardsRaw: null,
+    pendingRewardsRaw: null,
+    stakeRatioBps: null,
+    annualized: annualizedStakingRevenue(null),
+    series: {
+      supply: emptySeries("paperSupply"),
+      staked: emptySeries("paperStaked"),
+      allocated: emptySeries("stakingRewards"),
+      supplyChange: {
+        ...emptySeries("paperSupply"),
+        aggregation: "hourly-change",
+      },
+      rewardAllocation: {
+        ...emptySeries("stakingRewards"),
+        aggregation: "hourly-change",
+      },
+    },
+    coverage: { partial: true, historyApproximate: true },
+  };
+}
 function series(
   metric: ProtocolChartMetric,
   histories: ProtocolChartObservation[],
   summaries: ProtocolChartObservation[],
   now: number,
+  delta?: "signed" | "nonnegative",
 ): ProtocolChartSeries {
   const selected = new Map<
     number,
@@ -202,10 +234,39 @@ function series(
       const discontinuity =
         !!previous &&
         (row.time - previous.time !== HOUR ||
+          // Summary genesis and history generations are different namespaces.
+          // They cannot establish a compatible pair for economic changes.
+          (delta !== undefined && row.origin !== previous.origin) ||
+          (delta !== undefined && row.generation === "genesis:unknown") ||
           (row.origin === previous.origin &&
             row.generation !== previous.generation));
       let value = row.values[metric] ?? null;
-      if (metric === "volume") {
+      let reset = false;
+      if (delta !== undefined) {
+        const before = previous?.values[metric];
+        if (
+          !previous ||
+          !previous.complete ||
+          discontinuity ||
+          value === null ||
+          before == null
+        )
+          value = null;
+        else {
+          const field =
+            metric === "paperSupply" ? "paperSupplyRaw" : "allocatedRewardsRaw";
+          const currentRaw = row[field];
+          const previousRaw = previous[field];
+          value =
+            currentRaw !== undefined && previousRaw !== undefined
+              ? rawNumber((BigInt(currentRaw) - BigInt(previousRaw)).toString())
+              : value - before;
+          if (delta === "nonnegative" && value < 0) {
+            value = null;
+            reset = true;
+          }
+        }
+      } else if (metric === "volume") {
         const before = previous?.values.volume;
         if (
           !previous ||
@@ -226,10 +287,12 @@ function series(
       return {
         time: row.time,
         value: value !== null && Number.isFinite(value) ? value : null,
-        ...(discontinuity ? { gapBefore: true } : {}),
+        ...(discontinuity || reset ? { gapBefore: true } : {}),
         ...(row.time === hour ||
         !row.complete ||
-        (metric === "volume" && previous && !previous.complete)
+        ((metric === "volume" || delta !== undefined) &&
+          previous &&
+          !previous.complete)
           ? { partial: true }
           : {}),
       };
@@ -238,12 +301,22 @@ function series(
     .slice(-169);
   return {
     ...emptySeries(metric),
+    ...(delta !== undefined ? { aggregation: "hourly-change" as const } : {}),
     points,
     coverage: {
       observedFrom: points.find((point) => point.value !== null)?.time ?? null,
       partial: true,
     },
   };
+}
+
+function stakeRatioBps(summary: ProtocolSummary | null): number | null {
+  if (!summary) return null;
+  const supply = BigInt(summary.paper.supply);
+  const staked = BigInt(summary.paper.staked);
+  return supply > 0n && staked >= 0n && staked <= supply
+    ? Number((staked * 10000n) / supply)
+    : null;
 }
 export async function refreshProtocolCharts(
   store: Context,
@@ -274,20 +347,47 @@ export async function refreshProtocolCharts(
     ) as ProtocolChartsResponse["series"],
   };
   await store.put("protocol-charts", data, now);
+  // Reuse this invocation's bounded observations and summary. Viewers read the
+  // saved response; economics adds no upstream request or history scan.
+  const current = summary?.value ?? null;
+  const economics: PaperEconomicsResponse = {
+    ...emptyEconomics(),
+    sourceAt,
+    receivedAt: now,
+    stale: data.stale,
+    supplyRaw: current?.paper.supply ?? null,
+    stakedRaw: current?.paper.staked ?? null,
+    allocatedRewardsRaw: current?.fees.lifetime ?? null,
+    pendingRewardsRaw: current?.paper.pendingRewards ?? null,
+    stakeRatioBps: stakeRatioBps(current),
+    annualized: annualizedStakingRevenue(current, now),
+    series: {
+      supply: data.series.paperSupply,
+      staked: data.series.paperStaked,
+      allocated: data.series.stakingRewards,
+      supplyChange: series("paperSupply", histories, summaries, now, "signed"),
+      rewardAllocation: series(
+        "stakingRewards",
+        histories,
+        summaries,
+        now,
+        "nonnegative",
+      ),
+    },
+  };
+  await store.put("paper-economics", economics, now);
 }
-export async function readProtocolCharts(
-  store: Pick<Store, "get">,
-  now = Date.now(),
-): Promise<ProtocolChartsResponse> {
-  const [saved, heartbeat] = await Promise.all([
-    store.get<ProtocolChartsResponse>("protocol-charts"),
-    store.get<{ at: number; errors?: Record<string, string> }>(
-      "collector-heartbeat",
-    ),
-  ]);
-  if (!saved)
-    return { ...empty(), error: "Waiting for retained protocol observations." };
-  const stale =
+
+type SnapshotHeartbeat = { at: number; errors?: Record<string, string> };
+function snapshotStale(
+  saved: {
+    value: { stale: boolean; sourceAt: number | null };
+    receivedAt: number;
+  },
+  heartbeat: { value: SnapshotHeartbeat } | null,
+  now: number,
+): boolean {
+  return (
     saved.value.stale ||
     !heartbeat ||
     now - saved.receivedAt > 30000 ||
@@ -301,7 +401,46 @@ export async function readProtocolCharts(
       heartbeat.value.errors?.summary ||
       heartbeat.value.errors?.history ||
       heartbeat.value.errors?.["protocol-charts"]
-    );
+    )
+  );
+}
+
+export async function readPaperEconomics(
+  store: Pick<Store, "get">,
+  now = Date.now(),
+): Promise<PaperEconomicsResponse> {
+  const [saved, heartbeat] = await Promise.all([
+    store.get<PaperEconomicsResponse>("paper-economics"),
+    store.get<SnapshotHeartbeat>("collector-heartbeat"),
+  ]);
+  if (!saved)
+    return {
+      ...emptyEconomics(),
+      error: "Waiting for retained PAPER observations.",
+    };
+  const stale = snapshotStale(saved, heartbeat, now);
+  return {
+    ...saved.value,
+    stale,
+    ...(stale
+      ? {
+          error:
+            "PAPER economics collection is delayed; showing retained observations.",
+        }
+      : {}),
+  };
+}
+export async function readProtocolCharts(
+  store: Pick<Store, "get">,
+  now = Date.now(),
+): Promise<ProtocolChartsResponse> {
+  const [saved, heartbeat] = await Promise.all([
+    store.get<ProtocolChartsResponse>("protocol-charts"),
+    store.get<SnapshotHeartbeat>("collector-heartbeat"),
+  ]);
+  if (!saved)
+    return { ...empty(), error: "Waiting for retained protocol observations." };
+  const stale = snapshotStale(saved, heartbeat, now);
   return {
     ...saved.value,
     stale,

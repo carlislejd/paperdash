@@ -17,6 +17,7 @@ node paperclub.mjs assets ETH
 node paperclub.mjs leaderboard --metric pnl --page 0
 node paperclub.mjs leaderboard --metric trades --page 0
 node paperclub.mjs house
+node paperclub.mjs paper --pretty
 node paperclub.mjs liquidations --asset ETH
 node paperclub.mjs indexing
 node paperclub.mjs health --require-fresh
@@ -33,6 +34,8 @@ Stdout contains one JSON object: `{command,url,fetchedAt,data}`. `data` preserve
 `tvl` selects `{tvlRaw,decimals,currency,source,status}`. `positions` without an address returns the global open-position **count**, with source/status. There is no verified complete public global open-position inventory behind this command. `positions ADDRESS` returns the wallet snapshot's open-position tuples, column names and freshness. Tuple columns are `positionId,instrumentId,isLong,useDebt,entryPriceRaw,marginRaw,leverage,bustPriceRaw,openedAtMs,intentId`. BTC price integers divide by 10; ETH by 100. `useDebt=true` means queued-balance funding and `false` means cash funding; it is not ordinary borrowed margin. `intentId` is not a transaction hash. Opening times are milliseconds; the enclosing wallet `indexedThroughTimestamp` is seconds.
 
 `house` preserves the coherent house valuation, separate PAPER summary source time and partial minute history. `liquidations` reads 50 retained observed liquidations plus cached rolling 1h/24h totals. Use `--asset BTC|ETH|0|1` to filter and `--cursor` for the next retained page. Notional means approximate USD execution size, not lost margin. No liquidation endpoint establishes complete canonical capture.
+
+`paper` reads one saved economics response: exact current `supplyRaw`, `stakedRaw`, `allocatedRewardsRaw` and source-reported `pendingRewardsRaw`, plus `stakeRatioBps` (100 basis points = 1%). Zero supply makes the ratio unavailable. `annualized.usdPerYearRaw` is the protocol-wide lifetime allocation run rate, not APY or a forecast. `series.supplyChange` is net supply change, not attributed mint events; `series.rewardAllocation` is allocated USDC change, not claimed or distributed cash. Historical chart values are approximate, bounded hourly observations with explicit nulls, gaps and partial hours. They are not raw 18-decimal strings. No global claimed/distributed totals or wallet claimable balance are inferred. See [PAPER economics definitions](PAPER_ECONOMICS.md).
 
 Liquidation `stats.hour/day.estimatedMarginUsd` sums approximate initial margin (`notionalUsd / entry leverage`) for the observed cohort; label it estimated. This numeric USD amount is not a raw 18-decimal value. `marginObservationCount` reports how many counted observations have valid contributions. During rollout/backfill, a missing/null estimate is unavailable, not zero. A genuine empty observed window can return zero. Totals are independent of the visible 50-row page.
 

@@ -152,13 +152,13 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   await expect(panel).toContainText("$16.27K");
   await expect(panel.locator(".annualized-revenue")).toContainText("$1.48M");
   await expect(panel.locator(".annualized-revenue")).toContainText(
-    "Historical rate, not a forecast",
+    "Historical run rate, not APY or a forecast",
   );
   const paper = panel.locator(".paper-details");
   await expect(paper.locator("h3")).toHaveText([
     "PAPER supply",
     "PAPER staked",
-    "Staking revenue",
+    "Rewards allocated",
   ]);
   await expect(paper.locator(".pc-chart-headline > strong")).toHaveText([
     "125.57M",
