@@ -20,6 +20,7 @@ node paperclub.mjs --help
 node paperclub.mjs overview --pretty
 node paperclub.mjs wallets --sort currentUnrealizedPnl --page 0 --pretty
 node paperclub.mjs leaderboard --metric pnl --page 0 --pretty
+node paperclub.mjs leaderboard --metric paper --page 0 --pretty
 node paperclub.mjs assets --pretty
 node paperclub.mjs paper --pretty
 ```
@@ -35,6 +36,7 @@ The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API respo
 | Top current unrealized PnL | `/api/accounts?sort=currentUnrealizedPnl&page=0&pageSize=10` | `accounts[].currentUnrealizedPnl`, `address`, `leaderboardName`, `currentOpenPositionCount` |
 | Top protocol-reported lifetime realized PnL | `/api/accounts?sort=realizedPnl&page=0&pageSize=10` | `accounts[].realizedPnl` |
 | Rolling 24-hour PnL leaderboard | `/api/leaderboard?metric=pnl&page=0` | `rows[].pnlRaw`, `rank`, `address`, `leaderboardName` |
+| Largest current PAPER owners, including staked tokens | `/api/leaderboard?metric=paper&page=0` | `rows[].paperTotalRaw`, `rank`, `paperOwnership`; accompanying `pnlRaw` remains rolling 24-hour PnL |
 | Most trades in the last 24 hours, by wallet | `/api/leaderboard?metric=trades&page=0` | `rows[].tradeCount` |
 | Most observed volume in the last 24 hours, by wallet | `/api/leaderboard?metric=volume&page=0` | `rows[].volumeUsd` |
 | Observed trade counts and volume over the last 24 hours | `/api/assets` | `assets[].activity.counts`, `.notionalUsd`, `.windowFrom`, `.windowTo` |
@@ -65,6 +67,12 @@ node paperclub.mjs leaderboard --metric pnl --page 0 --pretty
 Current unrealized PnL, lifetime realized PnL and rolling-24h PnL are different measures. If the user just asks for "top PnL", clarify the measure or explicitly state which one you chose. The rolling leaderboard's `pnlRaw` is protocol-reported window PnL; do not relabel it realized PnL. `currentUnrealizedPnlRaw`, when present in leaderboard rows, is a separate current snapshot. Directory `totalWindowedPnl` is not the rolling-24h leaderboard value.
 
 For the dashboard's positive open-PnL leaders, filter current-uPnL rows to `currentUnrealizedPnl > 0` and `currentOpenPositionCount > 0`. A page may then contain fewer than ten qualifying wallets. Compare raw amounts with integer/decimal arithmetic.
+
+### PAPER ownership
+
+`node paperclub.mjs leaderboard --metric paper` ranks current **staked + unstaked PAPER**, not lifetime issuance or rewards. `window: "current"` describes the ownership ranking; the accompanying `pnlRaw` remains protocol-reported rolling 24-hour PnL and observed activity remains bounded by `activityCoverage.windowFrom/windowTo`. PnL-ranked rows also expose `paperTotalRaw`; volume/trade rankings may leave it null. Keep all raw amounts as exact 18-decimal strings.
+
+`paperOwnership.trackedTotalRaw` is the source account directory's tracked PAPER total. It is not independently verified full protocol supply. `pageTotalRaw` sums this page; `pageShareBps / 100` is its percentage of tracked PAPER, or null when unavailable. The first page's share describes its returned leading accounts, not an arbitrary top-10 cohort. `count` counts accounts, including zero balances, not nonzero holders. Use `q=ADDRESS` or a name to find an account without crawling; ranks in filtered results apply to that filtered set, not the unfiltered global list. Ownership and account PnL share `accountReceivedAt` / `accountStale`; observed activity has separate freshness.
 
 ### Trade counts and supported time ranges
 

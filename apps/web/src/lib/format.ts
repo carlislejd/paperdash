@@ -44,6 +44,29 @@ export function formatRawUsd(
   const cents = (absolute + 5_000_000_000_000_000n) / 10_000_000_000_000_000n;
   return `${negative ? "−" : ""}$${(cents / 100n).toLocaleString("en-US")}.${(cents % 100n).toString().padStart(2, "0")}`;
 }
+/** Exact 18-decimal token amounts; compact output is only a display approximation. */
+export function formatRawToken(
+  raw: string | null | undefined,
+  compact = false,
+): string {
+  if (raw == null || !/^\d+$/.test(raw)) return "—";
+  if (compact) {
+    const value = rawToNumber(raw);
+    if (value === null) return "—";
+    return new Intl.NumberFormat("en-US", {
+      notation:
+        value >= 1e15 || (value > 0 && value < 0.01) ? "scientific" : "compact",
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
+  const value = BigInt(raw);
+  const whole = value / 10n ** 18n;
+  const fraction = (value % 10n ** 18n)
+    .toString()
+    .padStart(18, "0")
+    .replace(/0+$/, "");
+  return `${whole.toLocaleString("en-US")}${fraction ? `.${fraction}` : ""}`;
+}
 export const shortAddress = (address: string) =>
   `${address.slice(0, 6)}…${address.slice(-4)}`;
 export function relativeTime(time: number | null | undefined): string {

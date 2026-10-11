@@ -57,8 +57,8 @@ Commands:
     --history cashflows|trades [--cursor CURSOR]
   positions [ADDRESS]         Wallet open positions; without address, global count
   assets [BTC|ETH|0|1]         Asset summaries; with asset, recent price/trade view
-  leaderboard                 Rolling 24h ranking, one page
-    --metric pnl|volume|trades --page N --q SEARCH
+  leaderboard                 Rolling 24h activity or current PAPER ownership, one page
+    --metric pnl|volume|trades|paper --page N --q SEARCH
   house                       House Funds, PAPER and retained house history
   paper                       PAPER supply, participation and allocated-reward history
   liquidations                Observed liquidations with rolling 1h/24h totals
@@ -228,9 +228,9 @@ export function parseArgs(argv, env = process.env) {
       query.set("sort", sort);
     } else {
       const metric = options.metric ?? "pnl";
-      if (!["pnl", "volume", "trades"].includes(metric))
-        invalid("--metric must be pnl, volume or trades.");
-      if (metric !== "pnl" && !/^(?:0x)?[a-f0-9]{0,40}$/i.test(q))
+      if (!["pnl", "volume", "trades", "paper"].includes(metric))
+        invalid("--metric must be pnl, volume, trades or paper.");
+      if (["volume", "trades"].includes(metric) && !/^(?:0x)?[a-f0-9]{0,40}$/i.test(q))
         invalid("Volume/trade rankings accept an address prefix for --q.");
       query.set("metric", metric);
     }

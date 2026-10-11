@@ -294,7 +294,7 @@ export async function buildApi(
   app.get("/api/leaderboard", profileLimit, async (req, reply) => {
     const query = z
       .object({
-        metric: z.enum(["pnl", "volume", "trades"]).default("pnl"),
+        metric: z.enum(["pnl", "volume", "trades", "paper"]).default("pnl"),
         page: z.coerce.number().int().min(0).max(1000000).default(0),
         q: z
           .string()
@@ -304,7 +304,9 @@ export async function buildApi(
       })
       .refine(
         (value) =>
-          value.metric === "pnl" || /^(?:0x)?[a-f0-9]{0,40}$/.test(value.q),
+          value.metric === "pnl" ||
+          value.metric === "paper" ||
+          /^(?:0x)?[a-f0-9]{0,40}$/.test(value.q),
         {
           path: ["q"],
           message: "Observed activity search requires a wallet address prefix",

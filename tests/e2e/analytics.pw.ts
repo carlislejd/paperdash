@@ -78,8 +78,15 @@ test("leaderboard separates 24h PnL from partial observed rankings and pages wal
   const pnlRow = panel
     .getByRole("row")
     .filter({ has: page.getByRole("button", { name: /^Aoi / }) });
-  await expect(pnlRow.getByRole("cell").nth(3)).toHaveText("$3,000,000.00");
-  await expect(pnlRow.getByRole("cell").nth(4)).toHaveText("23");
+  await expect(pnlRow.locator(".leaderboard-value-volume")).toHaveText(
+    "$3,000,000.00",
+  );
+  await expect(pnlRow.locator(".leaderboard-value-trades")).toHaveText("23");
+  await expect(pnlRow.locator(".leaderboard-value-paper")).toHaveText("3M");
+  await expect(pnlRow.locator(".leaderboard-value-paper")).toHaveAttribute(
+    "title",
+    "3,003,199.186757525433019603 PAPER · staked + unstaked",
+  );
   await expect(pnlRow.locator(".leaderboard-upnl")).toHaveText(
     "+$1,250,000.00",
   );
@@ -95,7 +102,8 @@ test("leaderboard separates 24h PnL from partial observed rankings and pages wal
     .click();
   await expect(panel).toContainText("$3,000,000.00");
   await expect(panel).toContainText("Partial activity coverage");
-  await expect(pnlRow.getByRole("cell").nth(3)).toHaveText("—");
+  await expect(pnlRow.locator(".leaderboard-value-pnl")).toHaveText("—");
+  await expect(pnlRow.locator(".leaderboard-value-paper")).toHaveText("—");
   await expect(pnlRow.locator(".leaderboard-upnl")).toHaveText("—");
   await expect(pnlRow.locator(".leaderboard-upnl")).toHaveAttribute(
     "title",
@@ -113,18 +121,44 @@ test("leaderboard separates 24h PnL from partial observed rankings and pages wal
   await expect(
     panel.getByRole("cell", { name: "26", exact: true }),
   ).toBeVisible();
-  await panel.getByRole("button", { name: "24h PnL", exact: true }).click();
+  await panel.getByRole("button", { name: "PAPER", exact: true }).click();
   await expect(panel.getByRole("button", { name: /^Aoi / })).toBeVisible();
   await expect(
     panel.getByRole("button", { name: "Previous leaderboard page" }),
   ).toBeDisabled();
+  await expect(panel.locator(".analytics-eyebrow")).toHaveText(
+    "Current holdings",
+  );
+  await expect(panel).toContainText("Staked + unstaked PAPER");
+  await expect(panel.getByRole("columnheader").nth(2)).toHaveText(
+    "PAPER OWNED",
+  );
+  await expect(
+    panel.getByRole("columnheader", { name: "PAPER OWNED" }),
+  ).toHaveAttribute("aria-sort", "descending");
+  await expect(panel.getByRole("columnheader").nth(3)).toHaveText("24H PNL");
+  await expect(pnlRow.locator(".leaderboard-value-pnl")).toHaveText(
+    "+$5,001.00",
+  );
+  const ownership = panel.getByRole("definition");
+  await expect(ownership).toHaveText(["12.01M", "3M", "25.00%"]);
+  await expect(ownership.nth(1)).toHaveAttribute(
+    "title",
+    "3,003,199.186757525433019603 PAPER",
+  );
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(page.viewportSize()!.width);
   await page.screenshot({
-    path: `/tmp/paperclub-expanded-leaderboard-${test.info().project.name}.png`,
+    path: `/tmp/paperclub-paper-leaderboard-${test.info().project.name}.png`,
     fullPage: true,
   });
+  await panel.getByRole("button", { name: "24h PnL", exact: true }).click();
+  await expect(panel.getByRole("columnheader").nth(2)).toHaveText("24H PNL");
+  await expect(panel.getByRole("columnheader").nth(3)).toHaveText(
+    "PAPER OWNED",
+  );
+  await expect(panel.locator(".leaderboard-paper-summary")).toHaveCount(0);
   await panel.getByRole("button", { name: /^Aoi / }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 });
@@ -145,6 +179,7 @@ test("leaderboard distinguishes unavailable asset data from no observed trades",
         currentUnrealizedPnlRaw: null,
         tradeCount: null,
         volumeUsd: null,
+        paperTotalRaw: null,
       },
       {
         ...original,
@@ -155,6 +190,7 @@ test("leaderboard distinguishes unavailable asset data from no observed trades",
         currentUnrealizedPnlRaw: "0",
         tradeCount: 0,
         volumeUsd: 0,
+        paperTotalRaw: "0",
       },
     ];
     return route.fulfill({ json: data });
@@ -163,8 +199,12 @@ test("leaderboard distinguishes unavailable asset data from no observed trades",
   const rows = page.locator(".leaderboard-table tbody tr");
   await expect(rows.first().locator("td").last()).toHaveText("—");
   await expect(rows.first().locator(".leaderboard-upnl")).toHaveText("—");
+  await expect(rows.first().locator(".leaderboard-value-paper")).toHaveText(
+    "—",
+  );
   await expect(rows.nth(1).locator("td").last()).toHaveText("None observed");
   await expect(rows.nth(1).locator(".leaderboard-upnl")).toHaveText("$0.00");
+  await expect(rows.nth(1).locator(".leaderboard-value-paper")).toHaveText("0");
   await expect(page.locator(".leaderboard-asset-mark")).toHaveCount(0);
   await expect(page.locator(".analytics-coverage-note")).toContainText(
     "Activity data is delayed",

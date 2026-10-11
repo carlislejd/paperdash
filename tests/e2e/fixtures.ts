@@ -250,19 +250,22 @@ export function leaderboardResponse(
   page = 0,
   stale = false,
 ): LeaderboardResponse {
+  const sourceRanked = metric === "pnl" || metric === "paper";
   return {
-    window: "24h",
+    window: metric === "paper" ? "current" : "24h",
     metric,
     rows: [
       {
         address: page === 0 ? WALLET : SECOND_WALLET,
         leaderboardName: page === 0 ? "Aoi" : "Yuki",
         rank: page * 25 + 1,
-        pnlRaw: metric === "pnl" ? usd(page === 0 ? 5001 : -50) : null,
+        pnlRaw: sourceRanked ? usd(page === 0 ? 5001 : -50) : null,
+        paperTotalRaw: sourceRanked ? "3003199186757525433019603" : null,
         volumeUsd: 3000000,
         tradeCount: 23,
-        currentUnrealizedPnlRaw:
-          metric === "pnl" ? usd(page === 0 ? 1250000 : -125) : null,
+        currentUnrealizedPnlRaw: sourceRanked
+          ? usd(page === 0 ? 1250000 : -125)
+          : null,
         assetsTraded: [0, 1],
       },
     ],
@@ -270,8 +273,15 @@ export function leaderboardResponse(
     pageInfo: { page, totalPages: 2 },
     receivedAt: Date.now(),
     stale,
-    accountReceivedAt: metric === "pnl" ? Date.now() : null,
-    accountStale: metric === "pnl" && stale,
+    accountReceivedAt: sourceRanked ? Date.now() : null,
+    accountStale: sourceRanked && stale,
+    paperOwnership: sourceRanked
+      ? {
+          trackedTotalRaw: "12012796747030101732078412",
+          pageTotalRaw: "3003199186757525433019603",
+          pageShareBps: 2500,
+        }
+      : undefined,
     activityCoverage: {
       source: "retained-public-observations",
       partial: true,
@@ -283,13 +293,12 @@ export function leaderboardResponse(
       stale,
     },
     coverage: {
-      source:
-        metric === "pnl"
-          ? "papertrade-leaderboard"
-          : "retained-public-observations",
-      observedFrom: metric === "pnl" ? null : Date.now() - 7200000,
-      projectionBackfillComplete: metric === "pnl",
-      identityAmbiguous: metric !== "pnl",
+      source: sourceRanked
+        ? "papertrade-leaderboard"
+        : "retained-public-observations",
+      observedFrom: sourceRanked ? null : Date.now() - 7200000,
+      projectionBackfillComplete: sourceRanked,
+      identityAmbiguous: !sourceRanked,
     },
   };
 }

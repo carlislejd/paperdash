@@ -459,14 +459,16 @@ export class Upstream {
     };
   }
   async leaderboard(
-    metric: "pnl" | "volume" | "trades" = "pnl",
+    metric: LeaderboardResponse["metric"] = "pnl",
     page = 0,
     q = "",
   ): Promise<LeaderboardResponse> {
-    if (metric === "pnl") {
+    if (metric === "pnl" || metric === "paper") {
       const path = canonicalPath("/state/leaderboard/accounts", {
+        // Ownership is current in either source window; 24h keeps the
+        // accompanying totalWindowedPnl field consistent with the PnL ranking.
         window: "24h",
-        sortKey: "totalWindowedPnl",
+        sortKey: metric === "paper" ? "paperTotal" : "totalWindowedPnl",
         sortDir: "desc",
         page,
         pageSize: 25,
@@ -496,14 +498,20 @@ export class Upstream {
         (await activityDelayed(this.store, activityAt)) ||
         !activity.value.projectionBackfillComplete ||
         activity.value.observedFrom === null;
+      const trackedPaper = BigInt(result.value.summary.trackedPaper);
+      const pagePaper = result.value.accounts.reduce(
+        (total, account) => total + BigInt(account.paperTotal),
+        0n,
+      );
       return {
-        window: "24h",
+        window: metric === "paper" ? "current" : "24h",
         metric,
         rows: result.value.accounts.map((account, index) => ({
           address: account.address,
           leaderboardName: account.leaderboardName,
           rank: page * 25 + index + 1,
           pnlRaw: account.totalWindowedPnl,
+          paperTotalRaw: account.paperTotal,
           volumeUsd: activity?.value.volumesUsd[account.address] ?? null,
           tradeCount: activity?.value.counts[account.address] ?? null,
           currentUnrealizedPnlRaw: account.currentUnrealizedPnl,
@@ -515,6 +523,14 @@ export class Upstream {
         stale: result.stale,
         accountReceivedAt: result.receivedAt,
         accountStale: result.stale,
+        paperOwnership: {
+          trackedTotalRaw: result.value.summary.trackedPaper,
+          pageTotalRaw: pagePaper.toString(),
+          pageShareBps:
+            trackedPaper > 0n && pagePaper <= trackedPaper
+              ? Number((pagePaper * 10000n) / trackedPaper)
+              : null,
+        },
         activityCoverage: {
           source: "retained-public-observations",
           partial: true,
@@ -565,6 +581,7 @@ export class Upstream {
         leaderboardName: null,
         rank: page * 25 + index + 1,
         pnlRaw: null,
+        paperTotalRaw: null,
         volumeUsd: row.notionalUsd,
         tradeCount: row.count,
         currentUnrealizedPnlRaw: null,

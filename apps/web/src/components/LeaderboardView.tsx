@@ -1,6 +1,11 @@
 import { useState } from "react";
 import type { LeaderboardResponse } from "../../../../packages/shared/src/types";
-import { formatRawUsd, formatUsd, rawToNumber } from "../lib/format";
+import {
+  formatRawToken,
+  formatRawUsd,
+  formatUsd,
+  rawToNumber,
+} from "../lib/format";
 import { useAnalytics } from "../lib/use-analytics";
 import {
   AnalyticsNotice,
@@ -79,12 +84,13 @@ export function LeaderboardView({
   const message = error || data?.error;
   const columns = [
     metric,
-    ...(["pnl", "volume", "trades"] as const).filter(
+    ...(["pnl", "paper", "volume", "trades"] as const).filter(
       (value) => value !== metric,
     ),
   ];
   const columnLabels = {
     pnl: "24H PNL",
+    paper: "PAPER OWNED",
     volume: "OBS. VOLUME",
     trades: "OBS. TRADES",
   };
@@ -95,7 +101,9 @@ export function LeaderboardView({
     >
       <div className="analytics-heading">
         <div>
-          <span className="analytics-eyebrow">Rolling 24 hours</span>
+          <span className="analytics-eyebrow">
+            {metric === "paper" ? "Current holdings" : "Rolling 24 hours"}
+          </span>
           <h2 id="leaderboard-heading">Leaderboard</h2>
         </div>
         <div className="analytics-segments" aria-label="Leaderboard ranking">
@@ -107,6 +115,15 @@ export function LeaderboardView({
             }}
           >
             24h PnL
+          </button>
+          <button
+            aria-pressed={metric === "paper"}
+            onClick={() => {
+              setMetric("paper");
+              setPage(0);
+            }}
+          >
+            PAPER
           </button>
           <button
             aria-pressed={metric === "volume"}
@@ -132,7 +149,9 @@ export function LeaderboardView({
         <p className="analytics-description">
           {metric === "pnl"
             ? "Protocol-reported PnL over the past 24 hours."
-            : `Ranked by observed ${metric === "volume" ? "traded notional" : "executions"} over the past 24 hours.`}
+            : metric === "paper"
+              ? "Staked + unstaked PAPER · ranked by current holdings in tracked accounts."
+              : `Ranked by observed ${metric === "volume" ? "traded notional" : "executions"} over the past 24 hours.`}
         </p>
         <AnalyticsStatus
           receivedAt={data?.receivedAt}
@@ -142,10 +161,44 @@ export function LeaderboardView({
           onRefresh={refresh}
         />
       </div>
+      {metric === "paper" && (
+        <dl
+          className="leaderboard-paper-summary"
+          aria-label="Tracked PAPER ownership"
+        >
+          <div>
+            <dt>Tracked PAPER</dt>
+            <dd
+              title={`${formatRawToken(data?.paperOwnership?.trackedTotalRaw)} PAPER`}
+            >
+              {formatRawToken(data?.paperOwnership?.trackedTotalRaw, true)}
+            </dd>
+          </div>
+          <div>
+            <dt>This page</dt>
+            <dd
+              title={`${formatRawToken(data?.paperOwnership?.pageTotalRaw)} PAPER`}
+            >
+              {formatRawToken(data?.paperOwnership?.pageTotalRaw, true)}
+            </dd>
+          </div>
+          <div>
+            <dt>% of tracked PAPER</dt>
+            <dd>
+              {data?.paperOwnership?.pageShareBps != null &&
+              Number.isSafeInteger(data.paperOwnership.pageShareBps) &&
+              data.paperOwnership.pageShareBps >= 0 &&
+              data.paperOwnership.pageShareBps <= 10000
+                ? `${(data.paperOwnership.pageShareBps / 100).toFixed(2)}%`
+                : "—"}
+            </dd>
+          </div>
+        </dl>
+      )}
       <p className="analytics-coverage-note">
         Partial activity coverage · trade counts, volume and assets cover
-        observed opens, closes and liquidations in the past 24 hours. Current
-        uPnL is a separate account snapshot.
+        observed opens, closes and liquidations in the past 24 hours. PAPER
+        ownership and current uPnL are separate account snapshots.
         {data?.activityCoverage?.stale ? " Activity data is delayed." : ""}
         {data?.accountStale && data.accountReceivedAt != null
           ? " Account valuations are delayed."
@@ -158,7 +211,9 @@ export function LeaderboardView({
       >
         <table className="wallet-table leaderboard-table">
           <caption className="sr-only">
-            Rolling 24-hour public wallet leaderboard
+            {metric === "paper"
+              ? "Current PAPER ownership with 24-hour wallet activity"
+              : "Rolling 24-hour public wallet leaderboard with current PAPER ownership"}
           </caption>
           <thead>
             <tr>
@@ -169,6 +224,11 @@ export function LeaderboardView({
                   key={column}
                   className="numeric"
                   aria-sort={metric === column ? "descending" : undefined}
+                  title={
+                    column === "paper"
+                      ? "Current staked + unstaked PAPER; not a 24-hour change"
+                      : undefined
+                  }
                 >
                   {columnLabels[column]}
                 </th>
@@ -189,7 +249,7 @@ export function LeaderboardView({
                     <td colSpan={2}>
                       <span className="skeleton-line" />
                     </td>
-                    <td colSpan={5}>
+                    <td colSpan={6}>
                       <span className="skeleton-line short" />
                     </td>
                   </tr>
@@ -212,13 +272,22 @@ export function LeaderboardView({
                       {columns.map((column) => (
                         <td
                           key={column}
-                          className={`numeric ${column === "pnl" ? (pnl !== null && pnl > 0 ? "positive" : pnl !== null && pnl < 0 ? "negative" : "muted") : column === metric ? "table-balance" : "muted"}`}
+                          className={`numeric leaderboard-value-${column} ${column === "pnl" ? (pnl !== null && pnl > 0 ? "positive" : pnl !== null && pnl < 0 ? "negative" : "muted") : column === metric ? "table-balance" : "muted"}`}
+                          title={
+                            column === "paper"
+                              ? row.paperTotalRaw == null
+                                ? "Current PAPER ownership unavailable for this ranking"
+                                : `${formatRawToken(row.paperTotalRaw)} PAPER · staked + unstaked${data.accountStale ? " · last available" : ""}`
+                              : undefined
+                          }
                         >
                           {column === "pnl" ? (
                             <>
                               {pnl !== null && pnl > 0 ? "+" : ""}
                               {formatRawUsd(row.pnlRaw)}
                             </>
+                          ) : column === "paper" ? (
+                            formatRawToken(row.paperTotalRaw, true)
                           ) : column === "volume" ? (
                             formatUsd(row.volumeUsd)
                           ) : (
@@ -254,14 +323,14 @@ export function LeaderboardView({
           <p>
             {message && !data
               ? "Try refreshing this snapshot."
-              : "No public wallet results were returned for this window."}
+              : "No public wallet results were returned for this ranking."}
           </p>
         </div>
       )}
       <div className="table-footer analytics-table-footer">
         <span>
           {data?.count.toLocaleString() ?? "—"} ranked wallets ·{" "}
-          {metric === "pnl"
+          {metric === "pnl" || metric === "paper"
             ? "protocol-reported"
             : "retained public observations"}
         </span>

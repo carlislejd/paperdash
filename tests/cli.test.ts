@@ -67,6 +67,7 @@ describe("public CLI arguments and command contracts", () => {
     ["watchlist", Array(26).fill(wallet).join(",")],
     ["watchlist", wallet, "--page", "1"],
     ["leaderboard", "--metric", "volume", "--q", "Alice"],
+    ["leaderboard", "--metric", "holders"],
   ])(
     "rejects invalid arguments without sending a request: %j",
     async (...args) => {
@@ -113,6 +114,9 @@ describe("public CLI arguments and command contracts", () => {
     expect(
       parseArgs(["leaderboard", "--metric", "trades", "--q", "0xab"], {}).url,
     ).toBe(`${DEFAULT_BASE_URL}/api/leaderboard?page=0&metric=trades&q=0xab`);
+    expect(
+      parseArgs(["leaderboard", "--metric", "paper", "--page", "1", "--q", "Alice"], {}).url,
+    ).toBe(`${DEFAULT_BASE_URL}/api/leaderboard?page=1&metric=paper&q=Alice`);
     expect(parseArgs(["assets", "eth"], {}).url).toBe(
       `${DEFAULT_BASE_URL}/api/assets/1/market`,
     );
@@ -151,6 +155,22 @@ describe("public CLI arguments and command contracts", () => {
 });
 
 describe("CLI data fidelity and freshness", () => {
+  it("preserves current PAPER ownership precision and separate PnL/activity windows in one request", async () => {
+    const io = output();
+    const data = {
+      metric: "paper", window: "current",
+      rows: [{ address: wallet, rank: 26, paperTotalRaw: "3003199186757525433019603", pnlRaw: "1234567890123456789", tradeCount: null }],
+      paperOwnership: { trackedTotalRaw: "9".repeat(40), pageTotalRaw: "3003199186757525433019603", pageShareBps: 0 },
+      count: 15000, pageInfo: { page: 1, totalPages: 600 },
+      accountReceivedAt: 123, accountStale: false,
+      activityCoverage: { windowFrom: 1, windowTo: 86400001, stale: true, partial: true },
+      receivedAt: 123, stale: false,
+    };
+    const fetch = vi.fn(async () => response(data));
+    expect(await runCli(["leaderboard", "--metric", "paper", "--page", "1"], { ...io, fetch })).toBe(0);
+    expect(JSON.parse(io.text()).data).toEqual(data);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
   it("preserves watchlist row ages and partial activity while failing freshness for missing wallets", async () => {
     const io = output();
     const data = {

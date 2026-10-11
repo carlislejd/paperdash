@@ -16,6 +16,7 @@ node paperclub.mjs assets
 node paperclub.mjs assets ETH
 node paperclub.mjs leaderboard --metric pnl --page 0
 node paperclub.mjs leaderboard --metric trades --page 0
+node paperclub.mjs leaderboard --metric paper --page 0
 node paperclub.mjs house
 node paperclub.mjs paper --pretty
 node paperclub.mjs liquidations --asset ETH
@@ -41,7 +42,9 @@ Liquidation `stats.hour/day.estimatedMarginUsd` sums approximate initial margin 
 
 Freshness is separate from completeness. By default stale/partial observations remain usable and exit successfully. `--require-fresh` returns exit 3 for stale, unavailable or degraded results, while still printing the result to stdout. It does **not** establish complete history or a gap-free feed. The leaderboard's volume/trade modes count retained public execution observations, including opens, closes and liquidations; PnL uses the source rolling-24h ranking. Retained coverage remains partial.
 
-`wallets --sort currentUnrealizedPnl` orders the directory by current unrealized PnL from account snapshots. It is not a time-window PnL ranking. `leaderboard --metric pnl` uses the source rolling 24-hour PnL ranking; `--metric trades` and `--metric volume` rank retained observations in the past 24 hours. Custom start/end times and other leaderboard windows are not supported.
+`wallets --sort currentUnrealizedPnl` orders the directory by current unrealized PnL from account snapshots. It is not a time-window PnL ranking. `leaderboard --metric pnl` uses the source rolling 24-hour PnL ranking; `--metric trades` and `--metric volume` rank retained observations in the past 24 hours. `--metric paper` ranks current ownership (staked plus unstaked PAPER), with `window: "current"`; its accompanying `pnlRaw` still describes rolling 24-hour PnL. Custom start/end times and other historical leaderboard windows are not supported.
+
+Source-ranked PnL and PAPER rows expose `paperTotalRaw` as an exact 18-decimal string. Observed volume/trade rankings leave ownership unavailable. `paperOwnership.trackedTotalRaw` is the source directory's tracked PAPER total, not independently verified protocol supply; `pageTotalRaw` is this page's total, and `pageShareBps / 100` is its percentage of tracked PAPER (null when unavailable). `count` counts matching accounts, including zero balances, not positive PAPER holders. Name/address filters are supported for PnL and PAPER; filtered ranks describe the filtered set. No wallet crawl is needed.
 
 `watchlist ADDRESS,ADDRESS` makes one bounded request for 1–25 addresses. It does not read the website's browser-saved list, store a list or start a watch loop. It returns per-wallet retained account summaries plus a capped recent observed-execution feed. Each row's `receivedAt` and `stale` describe that valuation; the activity feed has independent freshness. Missing account values remain null. The request can renew a temporary collector refresh request for a known wallet, but never performs a per-wallet upstream fetch in the HTTP handler. Source refreshes share a fixed collector budget, so a queued refresh is not a guarantee of immediate fresh data. The feed is not a complete execution count or historical ledger.
 

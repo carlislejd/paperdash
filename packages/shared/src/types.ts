@@ -187,13 +187,15 @@ export interface AssetsResponse {
   error?: string;
 }
 export interface LeaderboardResponse {
-  window: "24h";
-  metric: "pnl" | "volume" | "trades";
+  window: "24h" | "current";
+  metric: "pnl" | "volume" | "trades" | "paper";
   rows: {
     address: string;
     leaderboardName: string | null;
     rank: number;
     pnlRaw: Raw | null;
+    /** Current unstaked plus staked PAPER from the source account snapshot. */
+    paperTotalRaw?: Raw | null;
     volumeUsd: number | null;
     tradeCount: number | null;
     /** Current account snapshot, distinct from the ranking's 24h P&L. */
@@ -208,6 +210,13 @@ export interface LeaderboardResponse {
   error?: string;
   accountReceivedAt?: number | null;
   accountStale?: boolean;
+  paperOwnership?: {
+    /** Global tracked account holdings, including for a filtered page; not supply. */
+    trackedTotalRaw: Raw;
+    /** Sum of current page's source account holdings, not all filtered matches. */
+    pageTotalRaw: Raw;
+    pageShareBps: number | null;
+  };
   activityCoverage?: {
     source: "retained-public-observations";
     partial: true;
