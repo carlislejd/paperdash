@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 
 export const DEFAULT_BASE_URL = "https://paperdash-api.onrender.com";
@@ -522,5 +523,16 @@ export async function runCli(argv = process.argv.slice(2), dependencies = {}) {
     return failure.exitCode;
   }
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  process.exitCode = await runCli();
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  try {
+    // Node resolves module symlinks, while argv can retain aliases such as /tmp.
+    return (
+      realpathSync(process.argv[1]) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+}
+if (isMainModule()) process.exitCode = await runCli();

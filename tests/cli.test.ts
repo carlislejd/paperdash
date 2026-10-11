@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { execFile } from "node:child_process";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
   DEFAULT_BASE_URL,
@@ -451,5 +455,34 @@ describe("CLI bounded request behavior", () => {
         "no-such-command",
       ]),
     ).rejects.toMatchObject({ code: 2 });
+  });
+  it("runs through symlinks without executing when imported by another module", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "paperclub-cli-"));
+    try {
+      const linkedCli = join(directory, "paperclub public.mjs");
+      await symlink(resolve("scripts/paperdash.mjs"), linkedCli);
+      const help = await promisify(execFile)(process.execPath, [
+        linkedCli,
+        "--help",
+      ]);
+      expect(help.stdout).toContain("Paperclub public, read-only CLI");
+      expect(help.stderr).toBe("");
+
+      const importer = join(directory, "importer.mjs");
+      await writeFile(
+        importer,
+        `globalThis.fetch = () => { throw new Error("Unexpected network call"); };
+await import(${JSON.stringify(pathToFileURL(linkedCli).href)});
+console.log("imported without running");\n`,
+      );
+      const imported = await promisify(execFile)(process.execPath, [
+        importer,
+        "--help",
+      ]);
+      expect(imported.stdout).toBe("imported without running\n");
+      expect(imported.stderr).toBe("");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
