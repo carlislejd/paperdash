@@ -108,14 +108,6 @@ export function positionReceiptModel(
   });
   const fields = [
     amount("Initial margin", p.initialMarginRaw, "USDC"),
-    simple(
-      "Margin funding",
-      p.funding === "cash"
-        ? "Cash"
-        : p.funding === "queued-balance"
-          ? "Queued balance"
-          : "—",
-    ),
     amount("Entry notional", p.entryNotionalRaw, "USD"),
     simple("Entry leverage", formatLeverage(p.leverage)),
     amount("Entry price", p.entryPriceRaw, "USD", p.priceScaleRaw),
@@ -131,7 +123,6 @@ export function positionReceiptModel(
     ),
     amount("User fee", p.userPaidFeeRaw, "USDC"),
     amount("PAPER issued", p.paperMintedRaw, "PAPER"),
-    amount("Eligible loss basis", p.paperMintBasisRaw, "USD"),
     simple("Opened", receiptDate(p.openedAt)),
     simple(
       open ? "Snapshot time" : "Closed",

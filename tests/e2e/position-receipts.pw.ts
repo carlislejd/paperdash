@@ -136,7 +136,7 @@ test("closed receipt freezes independently of polling, exports frozen values and
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("open details share the snapshot age, queued funding and missing-price state; wallet link sharing has no fake receipt URL", async ({
+test("open details share the snapshot age and missing-price state; wallet link sharing has no fake receipt URL", async ({
   page,
 }) => {
   const at = Date.now();
@@ -192,7 +192,6 @@ test("open details share the snapshot age, queued funding and missing-price stat
     .getByRole("button", { name: "View market short position 15" })
     .click();
   const receipt = page.getByRole("dialog", { name: "Market 99 Short" });
-  await expect(receipt).toContainText("Queued balance");
   await expect(receipt).toContainText("Last available");
   await expect(
     receipt

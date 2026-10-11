@@ -11,8 +11,7 @@ Keep these measures separate:
 - Initial margin is the source's 18-decimal accounting amount. It is not entry notional, account equity, or independently reconciled cash lost.
 - Entry notional is initial margin multiplied by entry leverage with integer arithmetic.
 - Display adjusted PnL as supplied and keep the reported user fee separate; do not infer settled cash or combine it with PAPER issuance as a return. Adjusted PnL is not labeled net of the user fee. The user fee is not total protocol fees: a separate LP-side loss-fee carve can exist without increasing the user's loss.
-- PAPER minted is a token amount, not USDC revenue or a dollar valuation. The mint basis is eligible USD loss; the optional batch total has a separate meaning and must never be presented as this position's issuance.
-- Open-position tuples distinguish cash funding from queued-balance funding (`useDebt`). This is not ordinary borrowed margin. Closed history does not supply that flag, so its funding remains unknown.
+- PAPER minted is a token amount, not USDC revenue or a dollar valuation. Receipts show the reported PAPER issued; the internal eligible-loss mint basis is omitted. An optional batch total has a separate meaning and must never be presented as this position's issuance.
 - Entry and exit prices on outcomes use the row's own `priceScaleRaw`. Open BTC and ETH positions use the verified instrument scale; an unknown instrument must not inherit BTC's scale.
 - A bust price is shown only when the position snapshot records it. Do not derive a missing historical bust price from leverage.
 - Holding duration ends at the outcome timestamp, including a liquidation. It does not continue until a queued payout settles.

@@ -56,15 +56,9 @@ describe("frozen position receipt presentation", () => {
     expect(model.fields.find((f) => f.label === "Entry notional")?.exact).toBe(
       "10,000,000,000,000 USD",
     );
-    expect(model.fields.find((f) => f.label === "Margin funding")?.value).toBe(
-      "—",
-    );
     expect(model.fields.find((f) => f.label === "User fee")?.exact).toBe(
       "0 USDC",
     );
-    expect(
-      model.fields.find((f) => f.label === "Eligible loss basis")?.exact,
-    ).toBe("10,000,000,000 USD");
     const position = closed();
     position.adjustedPnlRaw = "449264341827924961576";
     position.userPaidFeeRaw = "8985286836558499231";
@@ -91,7 +85,7 @@ describe("frozen position receipt presentation", () => {
       ).toBe(expected);
     }
   });
-  it("freezes selected source state and keeps clocks, queued balance and unknown prices truthful", () => {
+  it("freezes selected source state and keeps clocks and unknown prices truthful", () => {
     const source = closed(),
       frozen = freezePositionReceipt(source, "Name", true);
     source.adjustedPnlRaw = "0";
@@ -105,9 +99,6 @@ describe("frozen position receipt presentation", () => {
     )!;
     const model = positionReceiptModel(
       freezePositionReceipt(open, null, false),
-    );
-    expect(model.fields.find((f) => f.label === "Margin funding")?.value).toBe(
-      "Queued balance",
     );
     expect(model.fields.find((f) => f.label === "Entry price")?.value).toBe(
       "—",
