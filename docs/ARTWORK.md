@@ -22,12 +22,13 @@ Use case: background-extraction. Edit target: the attached original manga illust
 
 Browser and saved-link icons use an origami crane in lavender on an ink tile. The angular wing, bent neck and broad folded facets keep the silhouette legible at small sizes. The canonical icon source is `apps/web/public/favicon.svg`, with the same crane geometry as the header and empty-state marks. Run `node scripts/generate-icons.mjs` to regenerate PNG/ICO variants with the installed Playwright Chromium. Explicit icon URLs are versioned to refresh older cached marks.
 
-The character remains in the larger shared-link preview, while the dashboard itself stays compact. That illustration was edited with the built-in image-generation tool using the existing original illustration and cutout, then encoded as a 1200 × 630 JPEG. The earlier portrait is retained as source artwork and is no longer used as an icon.
+The current shared-link preview is the image supplied by the user on October 10, 2026, copied unchanged as a 1200 × 713 PNG. It depicts a pink-haired manga character beside plush animals. The earlier generated headphone-character previews and portrait are retained as source artwork and cached-link assets; they are no longer used for current link previews or browser icons.
 
 - `apps/web/public/art/observer-avatar.webp`: retained 512px portrait master.
 - `apps/web/public/favicon-16.png`, `favicon-32.png`, `favicon-192.png`, and `favicon.ico`: browser icons.
 - `apps/web/public/apple-touch-icon.png`: 180px icon for saved home-screen links.
-- `apps/web/public/art/paperclub-social-v2.jpg`: current shared-link preview artwork with the lavender origami crane, 1200 × 630 JPEG.
+- `apps/web/public/art/paperclub-social-v3.png`: current user-supplied shared-link preview, unchanged 1200 × 713 PNG.
+- `apps/web/public/art/paperclub-social-v2.jpg`: retained earlier preview with the lavender origami crane, 1200 × 630 JPEG.
 - `apps/web/public/art/paperclub-social-v1.jpg`: retained earlier paperclub preview so cached image links remain valid.
 - `apps/web/public/art/paperdash-social.jpg`: retained earlier preview so cached image links remain valid.
 
