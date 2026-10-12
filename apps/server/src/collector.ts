@@ -362,7 +362,11 @@ export class Collector {
       (path, schema) => this.upstream.request(path, schema),
     );
     this.loop("wallet-indexer", config.walletIndexInterval, async () => {
-      await historyIndexer.tick({ maxRequests: config.walletIndexRequests });
+      await historyIndexer.tick({
+        maxRequests: config.walletIndexRequests,
+        sourceConcurrency: config.requestConcurrency,
+        shouldStop: () => this.stopped,
+      });
     });
     this.loop("indexing-status", 30000, async () => {
       await this.store.put("indexing-status", await this.store.history.stats());

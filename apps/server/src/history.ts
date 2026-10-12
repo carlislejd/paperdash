@@ -5,7 +5,7 @@ import {
   historySchema,
   portfolioSchema,
 } from "./schemas.js";
-import type { HistoryJob, HistoryStore } from "./history-store.js";
+import type { HistoryJob, HistoryLane, HistoryStore } from "./history-store.js";
 
 export type HistoryLoader = <T>(
   path: string,
@@ -22,50 +22,103 @@ function path(base: string, params: Record<string, string | number | null>) {
 export class HistoryIndexer {
   private running = false;
   private lane = 0;
+  private retryAt = 0;
   constructor(
     private store: HistoryStore,
     private load: HistoryLoader,
     private now = Date.now,
   ) {}
-  async tick(options: { maxRequests?: number } = {}): Promise<number> {
-    if (this.running) return 0;
+  async tick(
+    options: {
+      maxRequests?: number;
+      sourceConcurrency?: number;
+      shouldStop?: () => boolean;
+    } = {},
+  ): Promise<number> {
+    const canClaim = () =>
+      !options.shouldStop?.() && this.now() >= this.retryAt;
+    if (this.running || !canClaim()) return 0;
     this.running = true;
     let requests = 0;
+    const limit = Math.max(1, Math.min(10, options.maxRequests ?? 2));
+    // Leave source capacity for global/foreground reads. The shared request
+    // gate still owns admission and spacing across every API and collector.
+    const width = Math.min(
+      2,
+      Math.max(1, (options.sourceConcurrency ?? 3) - 1),
+    );
+    const lanes: readonly HistoryLane[] = [
+      "active",
+      "backfill",
+      "active",
+      "fair",
+    ];
     try {
-      for (
-        ;
-        requests < Math.max(1, Math.min(10, options.maxRequests ?? 2));
-        requests++
-      ) {
-        const job = await this.store.claimJob(
-          this.now(),
-          120000,
-          this.lane++ % 2 ? "fair" : "active",
-        );
-        if (!job) break;
-        try {
-          await this.run(job);
-        } catch (error) {
-          const e = error as {
-            message?: string;
-            status?: number;
-            retryAt?: number;
-          };
-          await this.store.failJob(
-            job,
-            e.message ?? "History indexing failed",
-            this.now(),
-            e.retryAt,
-            job.state.cursor !== null &&
-              (e.status === 400 ||
-                e.status === 404 ||
-                /repeated a cursor/.test(e.message ?? "")),
-          );
+      while (requests < limit && canClaim()) {
+        const jobs: HistoryJob[] = [];
+        let claimFailed = false;
+        let claimError: unknown;
+        // Claim in order before starting a bounded chunk. A wallet's primary
+        // and correction jobs must never fetch/commit the same ledger at once.
+        while (jobs.length < width && requests < limit && canClaim()) {
+          try {
+            const job = await this.store.claimJob(
+              this.now(),
+              120000,
+              lanes[this.lane],
+              jobs.map(({ address, kind }) => ({ address, kind })),
+            );
+            if (!job) break;
+            jobs.push(job);
+            requests++;
+            this.lane = (this.lane + 1) % lanes.length;
+          } catch (error) {
+            claimFailed = true;
+            claimError = error;
+            break;
+          }
         }
+        // Do not refill as individual jobs finish. In particular, a database
+        // failure in failJob must not return early while a sibling still writes.
+        const results = await Promise.allSettled(
+          jobs.map((job) => this.runJob(job)),
+        );
+        if (claimFailed) throw claimError;
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed?.status === "rejected") throw failed.reason;
+        if (!jobs.length) break;
       }
       return requests;
     } finally {
       this.running = false;
+    }
+  }
+  private async runJob(job: HistoryJob): Promise<void> {
+    try {
+      await this.run(job);
+    } catch (error) {
+      const e = error as {
+        message?: string;
+        status?: number;
+        retryAt?: number;
+      };
+      if (e.status === 429)
+        this.retryAt = Math.max(
+          this.retryAt,
+          Number.isFinite(e.retryAt) && e.retryAt! > this.now()
+            ? e.retryAt!
+            : this.now() + 5000,
+        );
+      await this.store.failJob(
+        job,
+        e.message ?? "History indexing failed",
+        this.now(),
+        e.retryAt,
+        job.state.cursor !== null &&
+          (e.status === 400 ||
+            e.status === 404 ||
+            /repeated a cursor/.test(e.message ?? "")),
+      );
     }
   }
   private async run(job: HistoryJob) {
@@ -91,6 +144,7 @@ export class HistoryIndexer {
         range,
         this.now(),
         job.priority > 0 ? 300000 : 86400000,
+        { adaptive: true },
       );
     } else {
       const value = await this.load(
@@ -108,6 +162,7 @@ export class HistoryIndexer {
         value,
         this.now(),
         job.priority > 0 ? 60000 : 6 * 3600000,
+        { adaptive: true },
       );
     }
   }

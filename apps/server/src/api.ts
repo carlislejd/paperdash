@@ -171,11 +171,25 @@ export async function buildApi(
             "collector-heartbeat",
           ),
         ]);
+        const now = Date.now();
+        const expired = (at: unknown, maxAge: number) =>
+          typeof at !== "number" ||
+          !Number.isFinite(at) ||
+          at <= 0 ||
+          at > now + 5000 ||
+          now - at > maxAge;
         return {
           indexing: indexing?.value ?? null,
           receivedAt: indexing?.receivedAt ?? null,
           collectorAt: heartbeat?.value.at ?? null,
-          stale: !heartbeat || Date.now() - heartbeat.value.at > 30000,
+          // Other collector loops can keep the heartbeat alive after queue
+          // reporting stalls. Allow three normal 30-second status intervals.
+          stale:
+            !indexing ||
+            !heartbeat ||
+            expired(indexing.receivedAt, 90000) ||
+            expired(heartbeat.value.at, 30000) ||
+            Boolean(heartbeat.value.errors?.["indexing-status"]),
           // The source does not promise a complete global execution archive.
           coverage: "available-source-history-and-retained-observations",
         };

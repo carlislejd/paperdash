@@ -9,6 +9,11 @@ import { enqueuePositionMetrics } from "./position-metrics-store.js";
 
 export type LedgerKind = "cashflows" | "trades";
 export type JobKind = LedgerKind | "portfolio";
+export type HistoryLane = "active" | "backfill" | "fair";
+export interface HistoryScheduleOptions {
+  /** Apply the collector's adaptive cadence; explicit callers retain refreshMs. */
+  adaptive?: boolean;
+}
 export interface HistoryCoverage {
   backfillComplete: boolean;
   sourceComplete: boolean | null;
@@ -33,6 +38,10 @@ export interface JobState {
   pages: number;
   failures: number;
   lastSuccessAt: number | null;
+  /** Completed unchanged head cycles, capped at two; never a backfill counter. */
+  unchangedCycles?: number;
+  /** A change anywhere in a multi-page head cycle prevents slowing its cadence. */
+  cycleChanged?: boolean;
   error?: string;
   purpose?: "head" | "pending";
   jobKind?: LedgerKind;
@@ -87,13 +96,15 @@ export interface HistoryStore {
   claimJob(
     now?: number,
     leaseMs?: number,
-    lane?: "active" | "fair",
+    lane?: HistoryLane,
+    exclude?: readonly { address: string; kind: JobKind }[],
   ): Promise<HistoryJob | null>;
   commitPage(
     job: HistoryJob,
     page: HistoryPage<Record<string, unknown>>,
     at: number,
     refreshMs: number,
+    options?: HistoryScheduleOptions,
   ): Promise<void>;
   commitPortfolio(
     job: HistoryJob,
@@ -101,6 +112,7 @@ export interface HistoryStore {
     range: string,
     at: number,
     refreshMs: number,
+    options?: HistoryScheduleOptions,
   ): Promise<void>;
   failJob(
     job: HistoryJob,
@@ -129,6 +141,13 @@ export interface HistoryStore {
     oldestDueAt: number | null;
     backfillComplete: number;
     pendingCorrections: number;
+    /** Disjoint due counts, including leased work, whose sum equals pending. */
+    activeDue: number;
+    backfillDue: number;
+    maintenanceDue: number;
+    correctionsDue: number;
+    oldestActiveDueAt: number | null;
+    oldestBackfillDueAt: number | null;
   }>;
   retainProtocol(
     points: { time: number; value: number }[],
@@ -272,13 +291,31 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
     state: JobState,
     at: number,
     nextRun: number,
+    activeRefreshMs?: number,
   ): Statement {
+    const table = job.correctionId ? t("corrections") : t("jobs");
+    const active = `EXISTS (SELECT 1 FROM ${t("wallets")} w WHERE w.address=${table}.address AND w.active_until>? AND w.priority>0)`;
+    const jsonParam = db.prefix ? "CAST(? AS jsonb)" : "?";
+    const timeParam = db.prefix ? "CAST(? AS bigint)" : "?";
+    const stateSql = activeRefreshMs
+      ? `CASE WHEN ${active} THEN ${jsonParam} ELSE ${jsonParam} END`
+      : "?";
+    const stateParams = activeRefreshMs
+      ? [at, JSON.stringify({ ...state, unchangedCycles: 0 }), JSON.stringify(state)]
+      : [JSON.stringify(state)];
+    const activeAt = at + (activeRefreshMs ?? 0);
+    const nextSql = activeRefreshMs
+      ? `CASE WHEN ${active} AND ${timeParam}>${timeParam} THEN ${timeParam} ELSE ${timeParam} END`
+      : "?";
+    const nextParams = activeRefreshMs
+      ? [at, nextRun, activeAt, activeAt, nextRun]
+      : [nextRun];
     if (job.correctionId)
       return {
-        sql: `UPDATE ${t("corrections")} SET state=?,next_run=?,locked_until=0,token=NULL,updated_at=? WHERE id=? AND token=? AND locked_until>?`,
+        sql: `UPDATE ${t("corrections")} SET state=${stateSql},next_run=${nextSql},locked_until=0,token=NULL,updated_at=? WHERE id=? AND token=? AND locked_until>?`,
         params: [
-          JSON.stringify(state),
-          nextRun,
+          ...stateParams,
+          ...nextParams,
           at,
           job.correctionId,
           job.token,
@@ -287,10 +324,10 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         requireChanges: 1,
       };
     return {
-      sql: `UPDATE ${t("jobs")} SET state=?,next_run=?,locked_until=0,token=NULL,updated_at=? WHERE address=? AND kind=? AND token=? AND locked_until>?`,
+      sql: `UPDATE ${t("jobs")} SET state=${stateSql},next_run=${nextSql},locked_until=0,token=NULL,updated_at=? WHERE address=? AND kind=? AND token=? AND locked_until>?`,
       params: [
-        JSON.stringify(state),
-        nextRun,
+        ...stateParams,
+        ...nextParams,
         at,
         job.address,
         job.kind,
@@ -298,6 +335,14 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         at,
       ],
       requireChanges: 1,
+    };
+  }
+  function activityLock(address: string): Statement {
+    // Discovery takes this row first too. Serialize activation and checkpoint
+    // so a signal during an in-flight request cannot leave a cold 24h schedule.
+    return {
+      sql: `UPDATE ${t("wallets")} SET priority=priority WHERE address=?`,
+      params: [address],
     };
   }
   function point(
@@ -347,30 +392,45 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
             sql: `INSERT INTO ${t("jobs")} (address,kind,state,next_run,locked_until,updated_at) VALUES(?,?,?,?,0,?) ON CONFLICT(address,kind) DO NOTHING`,
             params: [address, kind, JSON.stringify(freshState()), at, at],
           });
-          if (priority > 0)
+          if (priority > 0) {
+            const cadence = kind === "portfolio" ? 300000 : 60000;
             statements.push({
-              sql: `UPDATE ${t("jobs")} SET next_run=? WHERE address=? AND kind=? AND next_run>? AND updated_at<? AND locked_until<=? AND ${db.prefix ? "(state->>'failures')::integer" : "json_extract(state,'$.failures')"}=0`,
+              sql: `UPDATE ${t("jobs")} SET next_run=CASE WHEN updated_at+?>? THEN updated_at+? ELSE ? END WHERE address=? AND kind=? AND next_run>? AND next_run>updated_at+? AND locked_until<=? AND ${db.prefix ? "(state->>'failures')::integer" : "json_extract(state,'$.failures')"}=0`,
               params: [
+                cadence,
+                at,
+                cadence,
                 at,
                 address,
                 kind,
                 at,
-                at - (kind === "portfolio" ? 300000 : 60000),
+                cadence,
                 at,
               ],
             });
+          }
         }
         if (priority > 0)
           statements.push({
-            sql: `UPDATE ${t("corrections")} SET next_run=? WHERE address=? AND id LIKE 'head:%' AND next_run>? AND updated_at<? AND locked_until<=? AND ${db.prefix ? "(state->>'failures')::integer" : "json_extract(state,'$.failures')"}=0`,
-            params: [at, address, at, at - 60000, at],
+            sql: `UPDATE ${t("corrections")} SET next_run=CASE WHEN updated_at+60000>? THEN updated_at+60000 ELSE ? END WHERE address=? AND id LIKE 'head:%' AND next_run>? AND next_run>updated_at+60000 AND locked_until<=? AND ${db.prefix ? "(state->>'failures')::integer" : "json_extract(state,'$.failures')"}=0`,
+            params: [at, at, address, at, at],
           });
       }
       if (statements.length) await db.batch(statements);
     },
-    async claimJob(now = Date.now(), leaseMs = 120000, lane = "fair") {
-      // The indexer alternates an active lane with a oldest-due lane, so a large
-      // initial inventory cannot starve viewed wallets or stop deep backfills.
+    async claimJob(now = Date.now(), leaseMs = 120000, lane = "fair", exclude = []) {
+      // Claims are sequential within a collector batch. Exclude every ledger
+      // already claimed for that batch, including its independent corrections.
+      const incomplete = db.prefix
+        ? "((j.state->>'complete')::boolean=false OR j.state->>'cursor' IS NOT NULL)"
+        : "(json_extract(j.state,'$.complete')=0 OR json_extract(j.state,'$.cursor') IS NOT NULL)";
+      const excluded = (address: string, kind: string) => exclude.length
+        ? `AND NOT (${exclude.map(() => `(${address}=? AND ${kind}=?)`).join(" OR ")})`
+        : "";
+      const excludedParams = exclude.flatMap(({ address, kind }) => [address, kind]);
+      const correctionKind = db.prefix
+        ? "COALESCE(c.state->>'jobKind','cashflows')"
+        : "COALESCE(json_extract(c.state,'$.jobKind'),'cashflows')";
       const candidates = await db.rows<{
         address: string;
         kind: JobKind;
@@ -378,8 +438,8 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         next_run: string | number;
         priority: number;
       }>(
-        `SELECT j.address,j.kind,j.state,j.next_run,CASE WHEN w.active_until>? THEN w.priority ELSE 0 END AS priority FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? AND j.locked_until<=? ${lane === "active" ? "AND w.active_until>? AND w.priority>0" : ""} ORDER BY j.next_run,j.address,j.kind LIMIT 8`,
-        [now, now, now, ...(lane === "active" ? [now] : [])],
+        `SELECT j.address,j.kind,j.state,j.next_run,CASE WHEN w.active_until>? THEN w.priority ELSE 0 END AS priority FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? AND j.locked_until<=? ${lane === "active" ? "AND w.active_until>? AND w.priority>0" : lane === "backfill" ? `AND ${incomplete}` : ""} ${excluded("j.address", "j.kind")} ORDER BY j.next_run,j.address,j.kind LIMIT 8`,
+        [now, now, now, ...(lane === "active" ? [now] : []), ...excludedParams],
       );
       const corrections = await db.rows<{
         id: string;
@@ -387,8 +447,8 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         state: unknown;
         next_run: number | string;
       }>(
-        `SELECT c.id,c.address,c.state,c.next_run FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=? AND c.locked_until<=? ${lane === "active" ? "AND w.active_until>? AND w.priority>0" : ""} ORDER BY c.next_run LIMIT 2`,
-        [now, now, ...(lane === "active" ? [now] : [])],
+        `SELECT c.id,c.address,c.state,c.next_run FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=? AND c.locked_until<=? ${lane === "active" ? "AND w.active_until>? AND w.priority>0" : lane === "backfill" ? "AND 1=0" : ""} ${excluded("c.address", correctionKind)} ORDER BY c.next_run,c.id LIMIT 2`,
+        [now, now, ...(lane === "active" ? [now] : []), ...excludedParams],
       );
       const jobs = [
         ...candidates.map((r) => ({
@@ -443,9 +503,9 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
             throw error;
         }
       }
-      return lane === "active" ? api.claimJob(now, leaseMs, "fair") : null;
+      return lane !== "fair" ? api.claimJob(now, leaseMs, "fair", exclude) : null;
     },
-    async commitPage(job, page, at, refreshMs) {
+    async commitPage(job, page, at, refreshMs, options = {}) {
       if (job.kind === "portfolio")
         throw new Error("Wrong job kind for ledger page");
       const pendingCorrection = Boolean(
@@ -465,8 +525,8 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         throw new Error("Upstream history repeated a cursor");
       const identified = identify(job, page.items);
       const existing = identified.rows.length
-        ? await db.rows<{ record_key: string }>(
-            `SELECT record_key FROM ${t("records")} WHERE address=? AND kind=? AND record_key IN (${identified.rows.map(() => "?").join(",")})`,
+        ? await db.rows<{ record_key: string; payload_hash: string }>(
+            `SELECT record_key,payload_hash FROM ${t("records")} WHERE address=? AND kind=? AND record_key IN (${identified.rows.map(() => "?").join(",")})`,
             [job.address, job.kind, ...identified.rows.map((r) => r.key)],
           )
         : [];
@@ -480,6 +540,17 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
           (r) => known.has(r.key) && lastTime !== undefined && r.at > lastTime,
         );
       const done = page.nextCursor === null || overlap;
+      const adaptiveHead = options.adaptive && !job.correctionId &&
+        job.state.complete && job.state.phase === "head";
+      const hashes = new Map(existing.map((r) => [r.record_key, r.payload_hash]));
+      const cycleChanged = Boolean(job.state.cycleChanged) ||
+        identified.rows.some((r) => hashes.get(r.key) !== r.hash);
+      const unchangedCycles = adaptiveHead && done && job.priority <= 0 && !cycleChanged
+        ? Math.min(2, (job.state.unchangedCycles ?? 0) + 1)
+        : 0;
+      const nextRefreshMs = adaptiveHead && done && job.priority <= 0
+        ? Math.min(24 * 3600000, refreshMs * 2 ** unchangedCycles)
+        : refreshMs;
       const tracked = new Set(job.state.targets ?? []);
       const pendingRows = identified.rows.filter(
         ({ payload: r }) =>
@@ -512,8 +583,15 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         error: undefined,
         carryTime: done ? undefined : identified.carryTime,
         occurrences: done ? undefined : identified.occurrences,
+        ...(options.adaptive && !job.correctionId ? {
+          unchangedCycles: adaptiveHead && !done && job.priority <= 0
+            ? (job.state.unchangedCycles ?? 0)
+            : unchangedCycles,
+          cycleChanged: adaptiveHead && !done ? cycleChanged : undefined,
+        } : {}),
       };
       const statements: Statement[] = [
+        ...(options.adaptive && !pendingCorrection ? [activityLock(job.address)] : []),
         checkpoint(
           job,
           pendingCorrection
@@ -531,8 +609,9 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
           pendingCorrection
             ? at + (missingTargets ? 3600000 : 300000)
             : done
-              ? at + refreshMs
+              ? at + nextRefreshMs
               : at + 1000,
+          options.adaptive && !pendingCorrection ? 60000 : undefined,
         ),
       ];
       for (const row of identified.rows) {
@@ -584,9 +663,13 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
       }
       if (!job.correctionId) {
         const headId = `head:${job.address}:${job.kind}`;
-        if (!done && !job.state.complete)
+        if (!done && !job.state.complete) {
+          const timeParam = db.prefix ? "CAST(? AS bigint)" : "?";
+          const headNext = options.adaptive
+            ? `CASE WHEN EXISTS (SELECT 1 FROM ${t("wallets")} WHERE address=? AND active_until>? AND priority>0) THEN ${timeParam} ELSE ${timeParam} END`
+            : "?";
           statements.push({
-            sql: `INSERT INTO ${t("corrections")} (id,address,state,next_run,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,
+            sql: `INSERT INTO ${t("corrections")} (id,address,state,next_run,updated_at) VALUES(?,?,?,${headNext},?) ON CONFLICT(id) DO NOTHING`,
             params: [
               headId,
               job.address,
@@ -596,10 +679,13 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
                 purpose: "head",
                 jobKind: job.kind,
               }),
-              at + refreshMs,
+              ...(options.adaptive
+                ? [job.address, at, at + Math.min(refreshMs, 60000), at + refreshMs]
+                : [at + refreshMs]),
               at,
             ],
           });
+        }
         if (done)
           statements.push({
             sql: `DELETE FROM ${t("corrections")} WHERE id=?`,
@@ -635,7 +721,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
       }
       await db.batch(statements);
     },
-    async commitPortfolio(job, value, range, at, refreshMs) {
+    async commitPortfolio(job, value, range, at, refreshMs, options = {}) {
       if (job.kind !== "portfolio")
         throw new Error("Wrong job kind for portfolio");
       const prior = job.state.portfolio;
@@ -693,11 +779,13 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
       };
       const gaps = new Set(value.gapIndices);
       const statements: Statement[] = [
+        ...(options.adaptive ? [activityLock(job.address)] : []),
         checkpoint(
           job,
           state,
           at,
           generationChanged && !full ? at + 1000 : at + refreshMs,
+          options.adaptive ? 300000 : undefined,
         ),
       ];
       statements.push({
@@ -939,14 +1027,38 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         `SELECT count(*) AS count,sum(CASE WHEN next_run<=? THEN 1 ELSE 0 END) AS pending,sum(CASE WHEN ${failureExpr}>0 THEN 1 ELSE 0 END) AS failed,sum(CASE WHEN ${purposeExpr}='pending' THEN 1 ELSE 0 END) AS unresolved FROM ${t("corrections")}`,
         [at],
       );
+      const continuing = db.prefix
+        ? "((j.state->>'complete')::boolean=false OR j.state->>'cursor' IS NOT NULL)"
+        : "(json_extract(j.state,'$.complete')=0 OR json_extract(j.state,'$.cursor') IS NOT NULL)";
+      // Active includes both primary and correction jobs. The remaining three
+      // categories are inactive: initial/continuing primary work, completed
+      // primary maintenance, and corrections. Leased due jobs still count.
+      const [due] = await db.rows<{
+        active_due: string | number | null;
+        backfill_due: string | number | null;
+        maintenance_due: string | number | null;
+        corrections_due: string | number | null;
+        oldest_active: string | number | null;
+        oldest_backfill: string | number | null;
+      }>(
+        `SELECT sum(CASE WHEN active=1 THEN 1 ELSE 0 END) AS active_due,sum(CASE WHEN active=0 AND category='backfill' THEN 1 ELSE 0 END) AS backfill_due,sum(CASE WHEN active=0 AND category='maintenance' THEN 1 ELSE 0 END) AS maintenance_due,sum(CASE WHEN active=0 AND category='correction' THEN 1 ELSE 0 END) AS corrections_due,min(CASE WHEN active=1 THEN next_run ELSE NULL END) AS oldest_active,min(CASE WHEN active=0 AND category='backfill' THEN next_run ELSE NULL END) AS oldest_backfill FROM (SELECT j.next_run,CASE WHEN w.active_until>? AND w.priority>0 THEN 1 ELSE 0 END AS active,CASE WHEN ${continuing} THEN 'backfill' ELSE 'maintenance' END AS category FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? UNION ALL SELECT c.next_run,CASE WHEN w.active_until>? AND w.priority>0 THEN 1 ELSE 0 END AS active,'correction' AS category FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=?) due`,
+        [at, at, at, at],
+      );
       return {
         wallets: Number(wallets.count),
         jobs: Number(jobs.count) + Number(corrections.count),
-        pending: Number(jobs.pending ?? 0) + Number(corrections.pending ?? 0),
+        pending: Number(due.active_due ?? 0) + Number(due.backfill_due ?? 0) +
+          Number(due.maintenance_due ?? 0) + Number(due.corrections_due ?? 0),
         failed: Number(failed.count) + Number(corrections.failed ?? 0),
         oldestDueAt: jobs.oldest === null ? null : Number(jobs.oldest),
         backfillComplete: Number(complete.count),
         pendingCorrections: Number(corrections.unresolved ?? 0),
+        activeDue: Number(due.active_due ?? 0),
+        backfillDue: Number(due.backfill_due ?? 0),
+        maintenanceDue: Number(due.maintenance_due ?? 0),
+        correctionsDue: Number(due.corrections_due ?? 0),
+        oldestActiveDueAt: due.oldest_active === null ? null : Number(due.oldest_active),
+        oldestBackfillDueAt: due.oldest_backfill === null ? null : Number(due.oldest_backfill),
       };
     },
     async retainProtocol(points, at = Date.now()) {
