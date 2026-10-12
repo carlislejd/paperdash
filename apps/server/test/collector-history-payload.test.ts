@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Collector, protocolHistoryDigest } from "../src/collector.js";
 import { createStore, type Store } from "../src/store.js";
 import { Upstream } from "../src/upstream.js";
@@ -40,6 +40,7 @@ afterEach(async () => {
   await upstream.close();
   bus.close();
   await store.close();
+  vi.restoreAllMocks();
 });
 // Exercise the actual persistence/publication boundary without starting any
 // source sockets, timers or HTTP requests.
@@ -58,6 +59,66 @@ async function messages(type: string) {
 }
 
 describe("live TVL history payload suppression", () => {
+  it("holds publication until a new summary and its active-minute sample are coherent", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(minute + 10000);
+    await observe(100);
+    const originalSample = store.sample.bind(store);
+    let entered!: () => void;
+    const writingSample = new Promise<void>((resolve) => (entered = resolve));
+    let resume!: () => void;
+    const pausedSample = new Promise<void>((resolve) => (resume = resolve));
+    vi.spyOn(store, "sample").mockImplementationOnce(async (time, value) => {
+      entered();
+      await pausedSample;
+      await originalSample(time, value);
+    });
+    const samplesRead = vi.spyOn(store, "samples");
+    const update = collector["retainSummary"](summary(120, minute + 2000));
+    await writingSample;
+    expect(
+      (await store.get<ProtocolSummary>("summary"))!.value.balances.tvl,
+    ).toBe(String(120n * 10n ** 18n));
+    const publication = publish();
+    try {
+      // Yield while the publication is queued, without depending on a timer.
+      expect(await messages("history")).toHaveLength(1);
+      expect(samplesRead).not.toHaveBeenCalled();
+    } finally {
+      resume();
+      await Promise.all([update, publication]);
+    }
+    expect(await messages("history")).toHaveLength(1);
+    expect(await messages("metrics")).toHaveLength(2);
+    const saved = (await store.get<Overview>("overview"))!.value;
+    expect(saved.summary!.balances.tvl).toBe(String(120n * 10n ** 18n));
+    expect(saved.history.at(-1)).toEqual({ time: minute, value: 120 });
+  });
+  it("rejects regressing summaries and allows recovery after a failed sample write", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(minute + 10000);
+    await observe(100);
+    await expect(
+      collector["retainSummary"](summary(90, minute - 1)),
+    ).rejects.toThrow("moved backward");
+    expect((await store.samples()).at(-1)?.value).toBe(100);
+    vi.spyOn(store, "sample").mockRejectedValueOnce(
+      new Error("Sample write failed"),
+    );
+    await expect(
+      collector["retainSummary"](summary(120, minute + 1000)),
+    ).rejects.toThrow("Sample write failed");
+    // Genuine failed persistence remains significant; the chain is not wedged
+    // and the existing mismatch digest still sends the retained history.
+    await publish();
+    expect(await messages("history")).toHaveLength(2);
+    await collector["retainSummary"](summary(130, minute + 2000));
+    await publish();
+    expect(
+      (await store.get<Overview>("overview"))!.value.history.at(-1),
+    ).toEqual({
+      time: minute,
+      value: 130,
+    });
+  });
   it("retains the latest minute sample and full snapshot while sending metrics rather than duplicate 300-point histories", async () => {
     for (let i = 299; i > 0; i--)
       await store.sample(minute - i * 60000, 1000 + i);

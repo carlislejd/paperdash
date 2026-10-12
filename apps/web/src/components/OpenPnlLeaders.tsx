@@ -43,56 +43,58 @@ export function OpenPnlLeaders({
           {delayed ? "Last available" : relativeTime(data?.receivedAt)}
         </span>
       </div>
-      <ol className="open-pnl-list" aria-busy={loading}>
-        {rows.map((account, index) => (
-          <li key={account.address}>
-            <button
-              className="open-pnl-row"
-              onClick={() => onWallet(account.address)}
-            >
-              <span className="open-pnl-rank">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <Avatar address={account.address} />
-              <span className="open-pnl-wallet">
-                <strong>
-                  {account.leaderboardName || shortAddress(account.address)}
-                </strong>
-                <small>
-                  {account.currentOpenPositionCount.toLocaleString()} open{" "}
-                  {account.currentOpenPositionCount === 1
-                    ? "position"
-                    : "positions"}
-                </small>
-              </span>
-              <span className="open-pnl-value">
-                <span
-                  className="open-pnl-bar"
-                  aria-hidden="true"
-                  style={{
-                    width: `${Math.max(1, ((rawToNumber(account.currentUnrealizedPnl) ?? 0) / maximum) * 100)}%`,
-                  }}
-                />
-                <strong
-                  className="positive"
-                  title={formatRawUsd(account.currentUnrealizedPnl)}
-                >
-                  +{formatRawUsd(account.currentUnrealizedPnl, true)}
-                </strong>
-              </span>
-            </button>
-          </li>
-        ))}
-      </ol>
-      {!rows.length && (
-        <p className="open-pnl-empty">
-          {loading
-            ? "Loading open PnL…"
-            : !data
-              ? "Open PnL is unavailable."
-              : "No positive open PnL in the current ranking."}
-        </p>
-      )}
+      <div className="open-pnl-stage">
+        <ol className="open-pnl-list" aria-busy={loading}>
+          {rows.map((account, index) => (
+            <li key={account.address}>
+              <button
+                className="open-pnl-row"
+                onClick={() => onWallet(account.address)}
+              >
+                <span className="open-pnl-rank">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <Avatar address={account.address} />
+                <span className="open-pnl-wallet">
+                  <strong>
+                    {account.leaderboardName || shortAddress(account.address)}
+                  </strong>
+                  <small>
+                    {account.currentOpenPositionCount.toLocaleString()} open{" "}
+                    {account.currentOpenPositionCount === 1
+                      ? "position"
+                      : "positions"}
+                  </small>
+                </span>
+                <span className="open-pnl-value">
+                  <span
+                    className="open-pnl-bar"
+                    aria-hidden="true"
+                    style={{
+                      width: `${Math.max(1, ((rawToNumber(account.currentUnrealizedPnl) ?? 0) / maximum) * 100)}%`,
+                    }}
+                  />
+                  <strong
+                    className="positive"
+                    title={formatRawUsd(account.currentUnrealizedPnl)}
+                  >
+                    +{formatRawUsd(account.currentUnrealizedPnl, true)}
+                  </strong>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+        {!rows.length && (
+          <p className="open-pnl-empty">
+            {loading
+              ? "Loading open PnL…"
+              : !data
+                ? "Open PnL is unavailable."
+                : "No positive open PnL in the current ranking."}
+          </p>
+        )}
+      </div>
       <div className="open-pnl-footer">
         <span>
           {delayed

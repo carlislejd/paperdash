@@ -293,20 +293,7 @@ export class Collector {
         "/query/protocol/summary",
         summarySchema,
       );
-      const previous = await this.store.get<ProtocolSummary>("summary");
-      if (
-        previous &&
-        BigInt(summary.source.block) < BigInt(previous.value.source.block)
-      )
-        throw new Error(
-          "Upstream protocol summary moved backward; retaining the newer observation.",
-        );
-      await this.store.put("summary", summary);
-      await retainProtocolChartSummary(this.store, summary);
-      await this.store.sample(
-        Math.floor(summary.source.at / 60000) * 60000,
-        Number(BigInt(summary.balances.tvl)) / 1e18,
-      );
+      await this.retainSummary(summary);
     });
     this.loop("wallet-summaries", 5000, () =>
       refreshWatchedWallet(this.store, this.upstream),
@@ -619,6 +606,33 @@ export class Collector {
       });
     this.intakePublication = task;
     this.track(task);
+  }
+  private async retainSummary(summary: ProtocolSummary): Promise<void> {
+    // A publication reads summary and samples separately. Serialize these
+    // writes with those reads so no other loop can publish a new summary with
+    // the previous active-minute sample (then resend the complete history).
+    // Source requests remain outside this short persistence/publication lane.
+    const run = this.chain.then(async () => {
+      if (this.stopped) return;
+      const previous = await this.store.get<ProtocolSummary>("summary");
+      if (
+        previous &&
+        BigInt(summary.source.block) < BigInt(previous.value.source.block)
+      )
+        throw new Error(
+          "Upstream protocol summary moved backward; retaining the newer observation.",
+        );
+      await this.store.put("summary", summary);
+      await this.store.sample(
+        Math.floor(summary.source.at / 60000) * 60000,
+        Number(BigInt(summary.balances.tvl)) / 1e18,
+      );
+    });
+    // Preserve the original failure for the summary loop while letting later
+    // publications/refreshes proceed and expose any actual persistence error.
+    this.chain = run.catch(() => {});
+    await run;
+    if (!this.stopped) await retainProtocolChartSummary(this.store, summary);
   }
   private publish(): Promise<void> {
     const run = this.chain.then(async () => {

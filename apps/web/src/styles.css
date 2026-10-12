@@ -67,6 +67,23 @@
 .overview-activity-grid .activity-panel {
   padding-left: 22px;
 }
+.overview-activity-grid .trade-stage {
+  min-height: 525px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.overview-activity-grid .trade-row {
+  height: 52px;
+}
+.overview-activity-grid .trade-description strong {
+  white-space: nowrap;
+}
+.open-pnl-stage {
+  min-height: 540px;
+  display: flex;
+  flex-direction: column;
+}
 .overview-activity-grid .trade-list {
   max-height: none;
   overflow: visible;
@@ -573,6 +590,13 @@ button svg {
   margin-left: 10px;
   font-size: 22px;
   vertical-align: 2px;
+}
+.feed-read-state {
+  margin-left: auto;
+  width: 72px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 9px;
 }
 .pause-button {
   font-size: 9px;

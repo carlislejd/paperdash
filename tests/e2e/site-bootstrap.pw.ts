@@ -145,6 +145,15 @@ test("production bootstrap redirects before data/tracking and initializes one ca
   const suffix = `/shared/deep%2Flink?view=assets&asset=1&wallet=${WALLET}&note=a%26b#saved-chart`;
   await page.goto(`${legacy}${suffix}`);
   await expect(page).toHaveURL(`${canonical}${suffix}`);
+  await expect(page.locator('link[rel="preconnect"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="preconnect"]')).toHaveAttribute(
+    "href",
+    api,
+  );
+  await expect(page.locator('link[rel="preconnect"]')).toHaveAttribute(
+    "crossorigin",
+    "anonymous",
+  );
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect
     .poll(() =>

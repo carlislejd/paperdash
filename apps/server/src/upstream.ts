@@ -380,7 +380,11 @@ export class Upstream {
         stale:
           Date.now() - saved.receivedAt >
           (options.staleAfter ?? Math.max(ttl * 3, 30000)),
-        ...(failure ? { error: failure.message } : {}),
+        // Error records outlive their backoff. A later successful refresh must
+        // not make that historical failure reappear on the next cache expiry.
+        ...(failure && Date.now() < failure.until
+          ? { error: failure.message }
+          : {}),
       };
     }
     try {

@@ -244,7 +244,7 @@ export function LeaderboardView({
           </thead>
           <tbody>
             {loading && !data
-              ? Array.from({ length: 5 }, (_, i) => (
+              ? Array.from({ length: 25 }, (_, i) => (
                   <tr key={i} className="skeleton-row">
                     <td colSpan={2}>
                       <span className="skeleton-line" />

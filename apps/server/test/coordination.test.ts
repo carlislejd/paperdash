@@ -138,6 +138,90 @@ describe("shared cache and request admission", () => {
     expect(loader).toHaveBeenCalledTimes(1);
   });
 
+  it("does not resurface an expired failure after recovery and another cache expiry", async () => {
+    const s = await store();
+    const coordinator = new LocalCoordinator();
+    const first = upstream(s, coordinator);
+    const second = upstream(s, coordinator);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(100000);
+    await s.put("cache:recovered", "retained", 60000);
+    const failed = vi.fn(async () => {
+      throw new Error("Old source replica regressed");
+    });
+    expect(
+      await first.cached("recovered", 1000, failed, { wait: true }),
+    ).toMatchObject({ stale: true, error: "Old source replica regressed" });
+    const oldFailure = await s.get("cache-error:recovered");
+    const recovered = vi.fn(async () => "recovered");
+    expect(await second.cached("recovered", 1000, recovered)).toMatchObject({
+      value: "retained",
+      stale: true,
+      error: "Old source replica regressed",
+    });
+    expect(recovered).not.toHaveBeenCalled();
+
+    clock.mockReturnValue(106000);
+    expect(
+      await second.cached("recovered", 1000, recovered, { wait: true }),
+    ).toEqual({ value: "recovered", receivedAt: 106000, stale: false });
+    clock.mockReturnValue(108000);
+    let resolve!: (value: string) => void;
+    const refresh = vi.fn(
+      () => new Promise<string>((done) => (resolve = done)),
+    );
+    expect(await first.cached("recovered", 1000, refresh)).toEqual({
+      value: "recovered",
+      receivedAt: 106000,
+      stale: false,
+    });
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    const completion = first.cached("recovered", 1000, refresh, { wait: true });
+    resolve("latest");
+    await expect(completion).resolves.toEqual({
+      value: "latest",
+      receivedAt: 108000,
+      stale: false,
+    });
+    expect(await s.get("cache-error:recovered")).toEqual(oldFailure);
+  });
+
+  it("keeps genuinely stale data stale and publishes a new failure after old backoff expires", async () => {
+    const s = await store();
+    const coordinator = new LocalCoordinator();
+    const first = upstream(s, coordinator);
+    const second = upstream(s, coordinator);
+    vi.spyOn(Date, "now").mockReturnValue(100000);
+    await s.put("cache:retry", "old data", 1000);
+    await s.put("cache-error:retry", {
+      until: 99000,
+      message: "Expired failure",
+    });
+    let reject!: (error: Error) => void;
+    const refresh = vi.fn(
+      () => new Promise<string>((_, fail) => (reject = fail)),
+    );
+    expect(await first.cached("retry", 1000, refresh)).toEqual({
+      value: "old data",
+      receivedAt: 1000,
+      stale: true,
+    });
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    const completion = first.cached("retry", 1000, refresh, { wait: true });
+    reject(new Error("New current failure"));
+    await expect(completion).resolves.toMatchObject({
+      stale: true,
+      error: "New current failure",
+    });
+    expect(await second.cached("retry", 1000, refresh)).toMatchObject({
+      stale: true,
+      error: "New current failure",
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(await s.get("cache-error:retry")).toMatchObject({
+      value: { until: 105000, message: "New current failure" },
+    });
+  });
+
   it("reacquires the shared request budget for every HTTP retry", async () => {
     const coordinator = new LocalCoordinator();
     const acquire = vi.spyOn(coordinator, "acquire");

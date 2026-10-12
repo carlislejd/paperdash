@@ -101,7 +101,37 @@ function TradeFeed({
   const [market, setMarket] = useState("All");
   const [paused, setPaused] = useState(false);
   const frozen = useRef<TradeEvent[]>([]);
-  const visible = (paused ? frozen.current : trades)
+  const [held, setHeld] = useState({
+    pointer: false,
+    focus: false,
+    press: false,
+  });
+  const stopped = paused || held.pointer || held.focus || held.press;
+  const hold = (kind: "pointer" | "focus" | "press") => {
+    if (!stopped) frozen.current = trades;
+    setHeld((value) => ({ ...value, [kind]: true }));
+  };
+  useEffect(() => {
+    if (!held.press) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Keep a touched target frozen through click, including a release outside
+    // the list; pointer cancellation must not leave the feed stuck.
+    const release = () => {
+      timer = setTimeout(
+        () => setHeld((value) => ({ ...value, press: false })),
+        0,
+      );
+    };
+    const cancel = () => setHeld((value) => ({ ...value, press: false }));
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", cancel);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", cancel);
+    };
+  }, [held.press]);
+  const visible = (stopped ? frozen.current : trades)
     .filter(
       (t) => market === "All" || t.instrument === (market === "BTC" ? 0 : 1),
     )
@@ -110,10 +140,13 @@ function TradeFeed({
     <section className="activity-panel" id="activity">
       <div className="section-heading">
         <h2>Live trades</h2>
+        <span className="feed-read-state">
+          {!paused && stopped ? "Paused while reading" : ""}
+        </span>
         <button
           className="text-button pause-button"
           onClick={() => {
-            if (!paused) frozen.current = trades;
+            if (!stopped) frozen.current = trades;
             setPaused(!paused);
           }}
         >
@@ -133,64 +166,89 @@ function TradeFeed({
         <span
           className={`connection-dot ${connected ? "" : "waiting"}`}
           title={
-            connected ? "Public stream connected" : "Public stream reconnecting"
+            stopped
+              ? "Feed paused while reading"
+              : connected
+                ? "Public stream connected"
+                : "Public stream reconnecting"
           }
         />
       </div>
-      {visible.length ? (
-        <div className="trade-list">
-          {visible.map((trade) => (
-            <button
-              key={trade.id}
-              className="trade-row"
-              onClick={() => onWallet(trade.wallet)}
-            >
-              <Avatar address={trade.wallet} />
-              <span className="trade-description">
-                <strong>{shortAddress(trade.wallet)}</strong>
-                <span>
-                  {trade.kind === "liq"
-                    ? "Liquidated"
-                    : trade.kind === "close"
-                      ? "Closed"
-                      : "Opened"}{" "}
-                  {trade.instrument === 0
-                    ? "BTC"
-                    : trade.instrument === 1
-                      ? "ETH"
-                      : `Asset ${trade.instrument}`}{" "}
-                  <span
-                    className={trade.side === "long" ? "positive" : "negative"}
-                  >
-                    {trade.side}
-                  </span>{" "}
-                  · {trade.leverage}×
+      <div className="trade-stage">
+        {visible.length ? (
+          <div
+            className="trade-list"
+            onPointerDownCapture={() => hold("press")}
+            onPointerEnter={(event) => {
+              if (event.pointerType === "mouse") hold("pointer");
+            }}
+            onPointerLeave={() =>
+              setHeld((value) => ({ ...value, pointer: false }))
+            }
+            onFocusCapture={() => hold("focus")}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget))
+                setHeld((value) => ({ ...value, focus: false }));
+            }}
+          >
+            {visible.map((trade, slot) => (
+              <button
+                // Slots replace their contents instead of moving nine existing
+                // controls on every tick. Interaction freezes the selected targets.
+                key={slot}
+                data-trade-id={trade.id}
+                className="trade-row"
+                onClick={() => onWallet(trade.wallet)}
+              >
+                <Avatar address={trade.wallet} />
+                <span className="trade-description">
+                  <strong>{shortAddress(trade.wallet)}</strong>
+                  <span>
+                    {trade.kind === "liq"
+                      ? "Liquidated"
+                      : trade.kind === "close"
+                        ? "Closed"
+                        : "Opened"}{" "}
+                    {trade.instrument === 0
+                      ? "BTC"
+                      : trade.instrument === 1
+                        ? "ETH"
+                        : `Asset ${trade.instrument}`}{" "}
+                    <span
+                      className={
+                        trade.side === "long" ? "positive" : "negative"
+                      }
+                    >
+                      {trade.side}
+                    </span>{" "}
+                    · {trade.leverage}×
+                  </span>
                 </span>
-              </span>
-              <span className="trade-amount">
-                {formatUsd(trade.notionalUsd, true)}
-                <small>{relativeTime(trade.ts)}</small>
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="activity-empty">
-          <div className="empty-orbit">
-            <PaperMark size={39} />
+                <span className="trade-amount">
+                  {formatUsd(trade.notionalUsd, true)}
+                  <small>{relativeTime(trade.ts)}</small>
+                </span>
+              </button>
+            ))}
           </div>
-          <h3>{paused ? "Feed paused" : "No recent trades"}</h3>
-          <p>
-            {paused
-              ? "Resume to see new activity."
-              : "Opens, closes, and liquidations appear here."}
-          </p>
-          <span className="waiting-label">
-            <i />
-            {connected ? "Stream connected" : "Connecting"}
-          </span>
-        </div>
-      )}
+        ) : (
+          <div className="activity-empty">
+            <div className="empty-orbit">
+              <PaperMark size={39} />
+            </div>
+            <h3>{paused ? "Feed paused" : "No recent trades"}</h3>
+            <p>
+              {paused
+                ? "Resume to see new activity."
+                : "Opens, closes, and liquidations appear here."}
+            </p>
+            <span className="waiting-label">
+              <i />
+              {connected ? "Stream connected" : "Connecting"}
+            </span>
+          </div>
+        )}
+      </div>
       <div className="panel-footnote">
         Public executions · recent activity <Icon name="circle" size={13} />
       </div>
@@ -648,7 +706,7 @@ function App() {
                     </thead>
                     <tbody>
                       {loadingAccounts && !accounts
-                        ? Array.from({ length: 5 }, (_, i) => (
+                        ? Array.from({ length: walletPageSize }, (_, i) => (
                             <tr key={i} className="skeleton-row">
                               <td>{String(i + 1).padStart(2, "0")}</td>
                               <td>

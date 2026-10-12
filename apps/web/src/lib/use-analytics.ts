@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson, pollDelay } from "./api";
 import { subscribeLiveEvents } from "./live-events";
 
 // Keep recent panels ready when navigating back; polling still refreshes them.
-const snapshots = new Map<string, unknown>();
+const snapshots = new Map<
+  string,
+  { data: unknown; checkedAt: number; error: string }
+>();
+const refreshInterval = 5000;
+const cachedData = <T>(path: string) =>
+  (snapshots.get(path)?.data as T | undefined) ?? null;
 
 export function useAnalytics<T>(
   path: string,
@@ -17,24 +23,28 @@ export function useAnalytics<T>(
     loading: boolean;
   }>(() => ({
     path,
-    data: (snapshots.get(path) as T | undefined) ?? null,
+    data: cachedData<T>(path),
     error: "",
     loading: true,
   }));
   const [retry, setRetry] = useState(0);
+  const handledRetry = useRef(0);
   const refresh = useCallback(() => setRetry((value) => value + 1), []);
 
   useEffect(() => {
     const controller = new AbortController();
     let pending = false;
     let failures = 0;
-    let lastReadAt = 0;
+    const cached = snapshots.get(path);
+    const forced = handledRetry.current !== retry;
+    handledRetry.current = retry;
+    let lastReadAt = cached?.checkedAt ?? 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     setState({
       path,
-      data: (snapshots.get(path) as T | undefined) ?? null,
-      error: "",
-      loading: true,
+      data: cachedData<T>(path),
+      error: cached?.error ?? "",
+      loading: !cached || forced,
     });
     const read = async () => {
       if (pending || document.hidden || controller.signal.aborted) return;
@@ -46,7 +56,7 @@ export function useAnalytics<T>(
         const data = await fetchJson<T>(path, { signal: controller.signal });
         if (controller.signal.aborted) return;
         snapshots.delete(path);
-        snapshots.set(path, data);
+        snapshots.set(path, { data, checkedAt: Date.now(), error: "" });
         // A long session with many search queries must not grow without bound.
         if (snapshots.size > 24)
           snapshots.delete(snapshots.keys().next().value!);
@@ -54,6 +64,9 @@ export function useAnalytics<T>(
         setState({ path, data, error: "", loading: false });
       } catch (error) {
         nextDelay = pollDelay(error, ++failures);
+        const saved = snapshots.get(path);
+        if (!controller.signal.aborted && saved)
+          snapshots.set(path, { ...saved, error: (error as Error).message });
         if (!controller.signal.aborted)
           setState((previous) => ({
             ...previous,
@@ -66,7 +79,20 @@ export function useAnalytics<T>(
           timer = setTimeout(() => void read(), nextDelay);
       }
     };
-    void read();
+    // A remount reuses only the unexpired part of a successful read's normal
+    // cadence. Errors and explicit refreshes always take the existing retry path.
+    const remaining =
+      cached && !cached.error && !forced && cached.checkedAt <= Date.now()
+        ? Math.max(
+            0,
+            Math.min(
+              refreshInterval,
+              cached.checkedAt + refreshInterval - Date.now(),
+            ),
+          )
+        : 0;
+    if (remaining > 0) timer = setTimeout(() => void read(), remaining);
+    else void read();
     const unsubscribe = liveLiquidations
       ? subscribeLiveEvents((message) => {
           if (
@@ -85,7 +111,7 @@ export function useAnalytics<T>(
           clearTimeout(timer);
           timer = setTimeout(
             () => void read(),
-            Math.max(0, lastReadAt + 5000 - Date.now()),
+            Math.max(0, lastReadAt + refreshInterval - Date.now()),
           );
         })
       : undefined;
@@ -106,7 +132,7 @@ export function useAnalytics<T>(
     ...(state.path === path
       ? state
       : {
-          data: (snapshots.get(path) as T | undefined) ?? null,
+          data: cachedData<T>(path),
           error: "",
           loading: true,
         }),

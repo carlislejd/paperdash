@@ -2,6 +2,43 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { readFile } from "node:fs/promises";
 
+export function apiConnectionHint(
+  apiUrl: string | undefined,
+  siteOrigin: string,
+): Plugin {
+  return {
+    name: "paperclub-api-connection-hint",
+    apply: "build",
+    transformIndexHtml() {
+      if (!apiUrl) return [];
+      let api: URL;
+      try {
+        api = new URL(apiUrl);
+      } catch {
+        return [];
+      }
+      if (
+        !["https:", "http:"].includes(api.protocol) ||
+        api.username ||
+        api.password ||
+        api.origin === siteOrigin
+      )
+        return [];
+      return [
+        {
+          tag: "link",
+          attrs: {
+            rel: "preconnect",
+            href: api.origin,
+            crossorigin: "anonymous",
+          },
+          injectTo: "head-prepend",
+        },
+      ];
+    },
+  };
+}
+
 function publicCli(): Plugin {
   return {
     name: "paperclub-public-cli",
@@ -43,6 +80,7 @@ function shareMetadata(siteUrl: string, usingLocalOrigin: boolean): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), [
     "VITE_SITE_URL",
+    "VITE_API_URL",
     "RENDER_EXTERNAL_URL",
     "VITE_CF_WEB_ANALYTICS_TOKEN",
   ]);
@@ -78,6 +116,7 @@ export default defineConfig(({ mode }) => {
     envDir: process.cwd(),
     plugins: [
       react(),
+      apiConnectionHint(env.VITE_API_URL, origin.origin),
       shareMetadata(`${origin.origin}/`, !configuredOrigin),
       publicCli(),
     ],
