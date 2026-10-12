@@ -51,6 +51,10 @@ export class HistoryIndexer {
       "active",
       "backfill",
       "active",
+      "retry",
+      "active",
+      "backfill",
+      "active",
       "fair",
     ];
     try {

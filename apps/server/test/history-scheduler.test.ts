@@ -115,7 +115,7 @@ describe("bounded history scheduling", () => {
       "active",
       "backfill",
       "active",
-      "fair",
+      "retry",
       "active",
       "backfill",
     ]);
@@ -153,24 +153,33 @@ describe("bounded history scheduling", () => {
     );
   });
 
-  it("preserves weighted lane turns across ticks and does not spend a turn on an empty claim", async () => {
-    const h = harness([job(1), job(2), job(3), job(4)]);
+  it("reserves retry turns across default two-job ticks without spending turns on empty or stopped claims", async () => {
+    const h = harness(Array.from({ length: 16 }, (_, i) => job(i + 1)));
     h.claimJob.mockResolvedValueOnce(null);
-    const indexer = new HistoryIndexer(
-      h.store,
-      loadWith(async () => page),
-      () => at,
-    );
+    const loader = vi.fn(async () => page);
+    const indexer = new HistoryIndexer(h.store, loadWith(loader), () => at);
     expect(await indexer.tick({ maxRequests: 1 })).toBe(0);
-    for (let i = 0; i < 4; i++)
-      expect(await indexer.tick({ maxRequests: 1 })).toBe(1);
-    expect(h.claimJob.mock.calls.map((args) => args[2])).toEqual([
+    for (let i = 0; i < 8; i++) {
+      expect(await indexer.tick({ shouldStop: () => true })).toBe(0);
+      expect(await indexer.tick()).toBe(2);
+      expect(loader).toHaveBeenCalledTimes((i + 1) * 2);
+    }
+    const pattern = [
       "active",
+      "backfill",
+      "active",
+      "retry",
       "active",
       "backfill",
       "active",
       "fair",
+    ];
+    expect(h.claimJob.mock.calls.map((args) => args[2])).toEqual([
+      "active", // Empty claim keeps the first actual turn available.
+      ...pattern,
+      ...pattern,
     ]);
+    expect(h.commitPage).toHaveBeenCalledTimes(16);
   });
 
   it("drains its sibling before exposing a failure to persist a job error", async () => {

@@ -9,7 +9,7 @@ import { enqueuePositionMetrics } from "./position-metrics-store.js";
 
 export type LedgerKind = "cashflows" | "trades";
 export type JobKind = LedgerKind | "portfolio";
-export type HistoryLane = "active" | "backfill" | "fair";
+export type HistoryLane = "active" | "backfill" | "retry" | "fair";
 export interface HistoryScheduleOptions {
   /** Apply the collector's adaptive cadence; explicit callers retain refreshMs. */
   adaptive?: boolean;
@@ -180,10 +180,14 @@ export interface ProtocolChartObservation {
 export function historySchemaSql(prefix: string, postgres: boolean): string {
   const json = postgres ? "jsonb" : "TEXT";
   const int = postgres ? "bigint" : "INTEGER";
+  const failed = postgres
+    ? "(state->>'failures')::integer>0"
+    : "json_extract(state,'$.failures')>0";
   return `
 CREATE TABLE IF NOT EXISTS ${prefix}history_wallets(address TEXT PRIMARY KEY,priority INTEGER NOT NULL,active_until ${int} NOT NULL,last_seen ${int} NOT NULL);
 CREATE TABLE IF NOT EXISTS ${prefix}history_jobs(address TEXT NOT NULL,kind TEXT NOT NULL,state ${json} NOT NULL,next_run ${int} NOT NULL,locked_until ${int} NOT NULL DEFAULT 0,token TEXT,updated_at ${int} NOT NULL,PRIMARY KEY(address,kind));
 CREATE INDEX IF NOT EXISTS ${prefix}history_jobs_due ON ${prefix}history_jobs(next_run,locked_until);
+CREATE INDEX IF NOT EXISTS ${prefix}history_jobs_retry_due ON ${prefix}history_jobs(next_run,locked_until) WHERE ${failed};
 CREATE TABLE IF NOT EXISTS ${prefix}history_records(address TEXT NOT NULL,kind TEXT NOT NULL,record_key TEXT NOT NULL,source_at ${int} NOT NULL,payload ${json} NOT NULL,payload_hash TEXT NOT NULL,ambiguous INTEGER NOT NULL,received_at ${int} NOT NULL,PRIMARY KEY(address,kind,record_key));
 CREATE INDEX IF NOT EXISTS ${prefix}history_records_page ON ${prefix}history_records(address,kind,source_at DESC,record_key DESC);
 CREATE TABLE IF NOT EXISTS ${prefix}history_pages(id TEXT PRIMARY KEY,address TEXT NOT NULL,kind TEXT NOT NULL,cursor TEXT,payload ${json} NOT NULL,received_at ${int} NOT NULL);
@@ -192,6 +196,7 @@ CREATE TABLE IF NOT EXISTS ${prefix}history_points(scope TEXT NOT NULL,time ${in
 CREATE TABLE IF NOT EXISTS ${prefix}history_portfolio_batches(id TEXT PRIMARY KEY,address TEXT NOT NULL,range_name TEXT NOT NULL,payload ${json} NOT NULL,received_at ${int} NOT NULL);
 CREATE TABLE IF NOT EXISTS ${prefix}history_corrections(id TEXT PRIMARY KEY,address TEXT NOT NULL,state ${json} NOT NULL,next_run ${int} NOT NULL,locked_until ${int} NOT NULL DEFAULT 0,token TEXT,updated_at ${int} NOT NULL);
 CREATE INDEX IF NOT EXISTS ${prefix}history_corrections_due ON ${prefix}history_corrections(next_run,locked_until);
+CREATE INDEX IF NOT EXISTS ${prefix}history_corrections_retry_due ON ${prefix}history_corrections(next_run,locked_until) WHERE ${failed};
 `;
 }
 const parsed = <T>(v: unknown): T =>
@@ -431,6 +436,9 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
       const correctionKind = db.prefix
         ? "COALESCE(c.state->>'jobKind','cashflows')"
         : "COALESCE(json_extract(c.state,'$.jobKind'),'cashflows')";
+      const failed = (alias: string) => db.prefix
+        ? `(${alias}.state->>'failures')::integer>0`
+        : `json_extract(${alias}.state,'$.failures')>0`;
       const candidates = await db.rows<{
         address: string;
         kind: JobKind;
@@ -438,7 +446,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         next_run: string | number;
         priority: number;
       }>(
-        `SELECT j.address,j.kind,j.state,j.next_run,CASE WHEN w.active_until>? THEN w.priority ELSE 0 END AS priority FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? AND j.locked_until<=? ${lane === "active" ? "AND w.active_until>? AND w.priority>0" : lane === "backfill" ? `AND ${incomplete}` : ""} ${excluded("j.address", "j.kind")} ORDER BY j.next_run,j.address,j.kind LIMIT 8`,
+        `SELECT j.address,j.kind,j.state,j.next_run,CASE WHEN w.active_until>? THEN w.priority ELSE 0 END AS priority FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? AND j.locked_until<=? ${lane === "active" ? "AND w.active_until>? AND w.priority>0" : lane === "backfill" ? `AND ${incomplete}` : lane === "retry" ? `AND ${failed("j")}` : ""} ${excluded("j.address", "j.kind")} ORDER BY j.next_run,j.address,j.kind LIMIT 8`,
         [now, now, now, ...(lane === "active" ? [now] : []), ...excludedParams],
       );
       const corrections = await db.rows<{
@@ -447,7 +455,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         state: unknown;
         next_run: number | string;
       }>(
-        `SELECT c.id,c.address,c.state,c.next_run FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=? AND c.locked_until<=? ${lane === "active" ? "AND w.active_until>? AND w.priority>0" : lane === "backfill" ? "AND 1=0" : ""} ${excluded("c.address", correctionKind)} ORDER BY c.next_run,c.id LIMIT 2`,
+        `SELECT c.id,c.address,c.state,c.next_run FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=? AND c.locked_until<=? ${lane === "active" ? "AND w.active_until>? AND w.priority>0" : lane === "backfill" ? "AND 1=0" : lane === "retry" ? `AND ${failed("c")}` : ""} ${excluded("c.address", correctionKind)} ORDER BY c.next_run,c.id LIMIT 2`,
         [now, now, ...(lane === "active" ? [now] : []), ...excludedParams],
       );
       const jobs = [
