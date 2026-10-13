@@ -1,15 +1,25 @@
 import { useEffect, useState } from "react";
-import type { ProtocolChartsResponse } from "../../../../packages/shared/src/types";
+import type {
+  PaperEconomicsResponse,
+  ProtocolChartsResponse,
+} from "../../../../packages/shared/src/types";
 import { useAnalytics } from "../lib/use-analytics";
 import { ChartCard } from "./ChartCard";
 import { HouseStats } from "./HouseStats";
+import { PaperDailyCharts } from "./PaperDailyCharts";
 
 export function OverviewCharts() {
   const readHours = () =>
     new URLSearchParams(location.search).get("range") === "7d" ? 168 : 24;
   const [hours, setHours] = useState(readHours);
+  const readLegacyTvl = () =>
+    new URLSearchParams(location.search).get("chart") === "tvl";
+  const [legacyTvl, setLegacyTvl] = useState(readLegacyTvl);
   useEffect(() => {
-    const changed = () => setHours(readHours());
+    const changed = () => {
+      setHours(readHours());
+      setLegacyTvl(readLegacyTvl());
+    };
     window.addEventListener("popstate", changed);
     return () => window.removeEventListener("popstate", changed);
   }, []);
@@ -22,6 +32,7 @@ export function OverviewCharts() {
   };
   const { data, error, loading, refresh } =
     useAnalytics<ProtocolChartsResponse>("/api/protocol/charts");
+  const paper = useAnalytics<PaperEconomicsResponse>("/api/paper/economics");
   const to = data?.sourceAt ?? Date.now();
   const range = {
     from: Math.max(
@@ -43,8 +54,10 @@ export function OverviewCharts() {
     <>
       <section className="overview-chart-section" aria-label="Protocol charts">
         <div className="overview-chart-toolbar">
-          <p>Hourly history · expand or save any chart</p>
-          <div className="range-control" aria-label="Protocol chart range">
+          <p>
+            Daily PAPER & rewards · hourly trading · expand or save any chart
+          </p>
+          <div className="range-control" aria-label="Trading history range">
             {[24, 168].map((value) => (
               <button
                 key={value}
@@ -57,16 +70,7 @@ export function OverviewCharts() {
           </div>
         </div>
         <div className="overview-chart-grid">
-          <ChartCard
-            {...common}
-            id="tvl"
-            title="TVL"
-            unit="USDC"
-            kind="line"
-            color="green"
-            points={data?.series.tvl.points ?? []}
-            coverage="Hourly snapshots · available history"
-          />
+          <PaperDailyCharts resource={paper} />
           <ChartCard
             {...common}
             id="volume"
@@ -87,7 +91,22 @@ export function OverviewCharts() {
           />
         </div>
       </section>
-      <HouseStats chartRange={range} />
+      {/* Keep previously shared TVL links working without a duplicate overview card. */}
+      {legacyTvl && (
+        <div hidden>
+          <ChartCard
+            {...common}
+            id="tvl"
+            title="TVL"
+            unit="USDC"
+            kind="line"
+            color="green"
+            points={data?.series.tvl.points ?? []}
+            coverage="Hourly snapshots · available history"
+          />
+        </div>
+      )}
+      <HouseStats chartRange={range} paper={paper} />
     </>
   );
 }

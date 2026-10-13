@@ -58,10 +58,15 @@ async function sources(page: Page, empty = false) {
     history: empty
       ? []
       : [
-          { time: at - 600000, fundsRaw: raw(1000000) },
-          { time: at - 480000, fundsRaw: raw(1100000) },
-          { time: at - 60000, fundsRaw: raw(1150000), gapBefore: true },
-          { time: at, fundsRaw: raw(1200000) },
+          { time: at - 600000, fundsRaw: raw(1000000), lpRaw: raw(1000000) },
+          { time: at - 480000, fundsRaw: raw(1100000), lpRaw: raw(1100000) },
+          {
+            time: at - 60000,
+            fundsRaw: raw(1150000),
+            lpRaw: raw(1150000),
+            gapBefore: true,
+          },
+          { time: at, fundsRaw: raw(1200000), lpRaw: raw(1200000) },
         ],
     coverage: {
       source: "retained-house-observations",
@@ -73,7 +78,7 @@ async function sources(page: Page, empty = false) {
   await page.route("**/api/house", (route) => route.fulfill({ json: house }));
 }
 
-test("overview gives ten live trades full room and fits the House chart to retained history", async ({
+test("overview gives ten live trades full room and fits the LP chart to retained history", async ({
   page,
 }, testInfo) => {
   await sources(page);
@@ -82,12 +87,10 @@ test("overview gives ten live trades full room and fits the House chart to retai
   const leaders = page.getByRole("region", { name: "Top open PnL" });
   await expect(feed.locator(".trade-row")).toHaveCount(10);
   await expect(leaders.locator(".open-pnl-row")).toHaveCount(10);
-  const list = await feed
-    .locator(".trade-list")
-    .evaluate((element) => ({
-      scroll: element.scrollHeight,
-      client: element.clientHeight,
-    }));
+  const list = await feed.locator(".trade-list").evaluate((element) => ({
+    scroll: element.scrollHeight,
+    client: element.clientHeight,
+  }));
   expect(list.scroll).toBeLessThanOrEqual(list.client + 1);
   const feedBox = (await feed.boundingBox())!;
   const leadersBox = (await leaders.boundingBox())!;
@@ -108,7 +111,7 @@ test("overview gives ten live trades full room and fits the House chart to retai
     ).toBeLessThan(1);
   } else expect(feedBox.y).toBeGreaterThan(leadersBox.y + leadersBox.height);
 
-  const chart = page.getByRole("region", { name: "House funds chart card" });
+  const chart = page.getByRole("region", { name: "LP balance chart card" });
   await expect(chart).toContainText("Available history · up to 24h");
   const plot = chart.getByRole("img");
   const plotBox = (await plot.boundingBox())!;
@@ -139,12 +142,12 @@ test("overview gives ten live trades full room and fits the House chart to retai
   });
 });
 
-test("House chart leaves absent observations unavailable at its comfortable default height", async ({
+test("LP chart leaves absent observations unavailable at its comfortable default height", async ({
   page,
 }, testInfo) => {
   await sources(page, true);
   await page.goto("/");
-  const chart = page.getByRole("region", { name: "House funds chart card" });
+  const chart = page.getByRole("region", { name: "LP balance chart card" });
   await expect(chart.locator(".pc-chart-headline > strong")).toHaveText("—");
   await expect(chart).toContainText("awaiting observations");
   await expect(chart).toContainText("No observations in this range");

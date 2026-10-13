@@ -186,6 +186,41 @@
   line-height: 1.6;
   margin: 10px 0 0;
 }
+.lp-thresholds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 20px;
+  margin: 8px 0 18px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.lp-thresholds h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  margin: 0 0 5px;
+}
+.lp-thresholds h3 strong {
+  color: #9078ad;
+  font-size: 20px;
+  font-weight: 600;
+}
+.lp-thresholds > div:nth-child(2) h3 strong {
+  color: #506746;
+}
+.lp-thresholds p {
+  color: var(--muted);
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.lp-thresholds .lp-threshold-note {
+  grid-column: 1 / -1;
+  font-size: 9px;
+}
 .liquidation-summary {
   display: flex;
   align-items: baseline;

@@ -397,15 +397,20 @@ export type ProtocolChartMetric =
   | "paperStaked"
   | "stakingRewards";
 export interface ProtocolChartPoint {
-  /** UTC hour start; values are the latest available endpoint in that hour. */
+  /** UTC bucket start (hourly by default; daily for daily-change series). */
   time: number;
   value: number | null;
   gapBefore?: boolean;
   partial?: boolean;
+  /** Actual cumulative endpoints used for a daily change, when available. */
+  observedFromMs?: number;
+  observedToMs?: number;
+  /** Exact 18-decimal endpoint difference, when both endpoints retain raw values. */
+  valueRaw?: Raw;
 }
 export interface ProtocolChartSeries {
   unit: "USD" | "PAPER" | "positions";
-  aggregation: "snapshot" | "hourly-change" | "cumulative";
+  aggregation: "snapshot" | "hourly-change" | "daily-change" | "cumulative";
   points: ProtocolChartPoint[];
   source:
     "protocol-history-and-retained-summary" | "retained-summary-observations";
@@ -441,6 +446,15 @@ export interface PaperEconomicsResponse {
     /** Signed net supply change; not a mint-event total. */
     supplyChange: ProtocolChartSeries;
     /** Nonnegative change in cumulative allocated USDC; not distributions. */
+    rewardAllocation: ProtocolChartSeries;
+  };
+  /** Optional until all collectors have published the additive daily payload. */
+  daily?: {
+    intervalMs: 86400000;
+    timeZone: "UTC";
+    /** Signed net supply change, not a sum of mint events. */
+    supplyChange: ProtocolChartSeries;
+    /** Change in lifetime staker allocations, not distributions or claims. */
     rewardAllocation: ProtocolChartSeries;
   };
   coverage: { partial: true; historyApproximate: true };

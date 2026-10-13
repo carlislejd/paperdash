@@ -29,6 +29,18 @@ The charts reuse retained protocol history and summary observations. Historical 
 
 New hourly summary observations also retain exact raw supply, staked and allocated-reward strings in the existing stored JSON. Compatible raw endpoint pairs are subtracted before conversion to chart numbers. This preserves precision going forward without changing old records or pretending numeric source history has become exact.
 
+### Daily calendar bars
+
+The additive `daily` block contains `intervalMs: 86400000`, `timeZone: "UTC"`, and `supplyChange` / `rewardAllocation` series with `aggregation: "daily-change"`. It covers seven UTC calendar days, including today. Existing `series` fields remain hourly and unchanged; older responses can omit `daily` during rollout.
+
+Daily values are differences between comparable cumulative endpoints, not sums of hourly bars. `daily.supplyChange` is signed net PAPER supply growth, including a negative value if supply falls; it is not attributed mint issuance. `daily.rewardAllocation` is newly allocated USDC, not distributed or claimed rewards. An allocation counter decrease anywhere in the retained daily sequence makes that day unavailable, even if its ending value subsequently recovers.
+
+Each point's `time` is UTC midnight. `observedFromMs` and `observedToMs` report the actual endpoints used; the end can precede the response's overall `sourceAt`. `value` is a display number. Optional `valueRaw` is the exact signed 18-decimal difference when both endpoints retain raw integers, subtracted before number conversion.
+
+Completed historical days require complete midnight boundaries and a coherent sequence of retained hourly observations. A compatible summary sequence can supply a partial daily observation, including today's growing value from the latest summary. Its boundary sample must be within one minute before midnight; the actual endpoint remains explicit and the point remains `partial: true`. Today's point is always partial. Sources and generation namespaces are never joined to manufacture a daily difference.
+
+Missing boundaries, missing hours, null observations and generation changes produce null points with `gapBefore: true`, not zeros or estimates. Closed historical days are preferred over partial summary observations when both are available. The daily payload reuses the same bounded observations and summary as the hourly payload, without additional upstream requests or per-viewer history reads.
+
 Source timestamps, receipt timestamps and freshness are preserved separately. Re-serving a cached response does not create a new source observation. The collector prepares shared cached results from already collected data; viewers do not trigger new upstream history requests or full-history scans. This scoped release needs no new event index or historical mint backfill.
 
 ## Allocation, distribution and claims

@@ -95,3 +95,37 @@ test("a shared chart link opens directly and closes without retaining its query"
   await expect(dialog).toHaveCount(0);
   expect(new URL(page.url()).searchParams.has("chart")).toBe(false);
 });
+
+test("legacy TVL and House funds links still open after LP balance takes the featured chart", async ({
+  page,
+}) => {
+  await mockSources(page);
+  await page.goto("/?view=overview&chart=tvl&range=7d");
+  const tvl = page.getByRole("dialog", { name: "TVL", exact: true });
+  await expect(tvl).toBeVisible();
+  await expect(tvl).toContainText("7 days");
+  await page.keyboard.press("Escape");
+  await expect(tvl).toHaveCount(0);
+  const lp = page.getByRole("region", {
+    name: "LP balance chart card",
+    exact: true,
+  });
+  const funds = page.getByRole("region", {
+    name: "House funds chart card",
+    exact: true,
+  });
+  await expect(lp).not.toHaveClass(/pc-chart-card--compact/);
+  await expect(funds).toHaveClass(/pc-chart-card--compact/);
+  await funds
+    .getByRole("button", { name: "Expand House funds chart", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "House funds", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.goto("/?view=overview&chart=house-funds&range=7d");
+  await expect(
+    page.getByRole("dialog", { name: "House funds", exact: true }),
+  ).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("chart")).toBe("house-funds");
+});

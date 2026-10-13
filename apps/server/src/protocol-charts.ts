@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type {
   AnnualizedStakingRevenue,
   PaperEconomicsResponse,
+  ProtocolChartPoint,
   ProtocolChartMetric,
   ProtocolChartSeries,
   ProtocolChartsResponse,
@@ -12,6 +13,10 @@ import type { ProtocolChartObservation } from "./history-store.js";
 import { protocolHistorySchema } from "./schemas.js";
 
 const HOUR = 3600000;
+const DAY = 86400000;
+// Summary polling is not a midnight checkpoint. Only accept a baseline near
+// that boundary, and always label such observed daily intervals as partial.
+const DAY_BOUNDARY_TOLERANCE = 60000;
 const YEAR = 365 * 86400000;
 // Official production deployment genesisMs, also returned by summary.source.genesis.
 // An unknown deployment must not annualize from an assumed first chart sample.
@@ -71,26 +76,32 @@ export async function retainProtocolChartSummary(
   if (!Number.isSafeInteger(at) || at < 0 || at > now + 30000)
     throw new Error("Invalid protocol summary chart timestamp");
   await store.history.retainProtocolCharts("summary", [
-    {
-      time: Math.floor(at / HOUR) * HOUR,
-      endpointAt: at,
-      sourceAt: at,
-      generation: `genesis:${summary.source.genesis ?? "unknown"}`,
-      complete: false,
-      values: {
-        tvl: rawNumber(summary.balances.tvl),
-        openPositions: summary.activity.open,
-        volume: rawNumber(summary.activity.volume),
-        paperSupply: rawNumber(summary.paper.supply),
-        paperStaked: rawNumber(summary.paper.staked),
-        stakingRewards: rawNumber(summary.fees.lifetime),
-      },
-      volumeRaw: summary.activity.volume,
-      paperSupplyRaw: summary.paper.supply,
-      paperStakedRaw: summary.paper.staked,
-      allocatedRewardsRaw: summary.fees.lifetime,
-    },
+    summaryObservation(summary),
   ]);
+}
+function summaryObservation(
+  summary: ProtocolSummary,
+): ProtocolChartObservation {
+  const at = summary.source.at;
+  return {
+    time: Math.floor(at / HOUR) * HOUR,
+    endpointAt: at,
+    sourceAt: at,
+    generation: `genesis:${summary.source.genesis ?? "unknown"}`,
+    complete: false,
+    values: {
+      tvl: rawNumber(summary.balances.tvl),
+      openPositions: summary.activity.open,
+      volume: rawNumber(summary.activity.volume),
+      paperSupply: rawNumber(summary.paper.supply),
+      paperStaked: rawNumber(summary.paper.staked),
+      stakingRewards: rawNumber(summary.fees.lifetime),
+    },
+    volumeRaw: summary.activity.volume,
+    paperSupplyRaw: summary.paper.supply,
+    paperStakedRaw: summary.paper.staked,
+    allocatedRewardsRaw: summary.fees.lifetime,
+  };
 }
 
 export async function retainProtocolChartHistory(
@@ -197,7 +208,143 @@ function emptyEconomics(): PaperEconomicsResponse {
         aggregation: "hourly-change",
       },
     },
+    daily: {
+      intervalMs: DAY,
+      timeZone: "UTC",
+      supplyChange: {
+        ...emptySeries("paperSupply"),
+        aggregation: "daily-change",
+      },
+      rewardAllocation: {
+        ...emptySeries("stakingRewards"),
+        aggregation: "daily-change",
+      },
+    },
     coverage: { partial: true, historyApproximate: true },
+  };
+}
+
+/** Calendar changes are calculated from coherent cumulative endpoints, never
+ * summed from possibly missing hourly bars or joined across source namespaces. */
+function dailySeries(
+  metric: "paperSupply" | "stakingRewards",
+  histories: ProtocolChartObservation[],
+  summaries: ProtocolChartObservation[],
+  now: number,
+): ProtocolChartSeries {
+  const today = Math.floor(now / DAY) * DAY;
+  const firstDay = today - 6 * DAY;
+  const rawField =
+    metric === "paperSupply" ? "paperSupplyRaw" : "allocatedRewardsRaw";
+  const origins = ([histories, summaries] as const).map((rows) => {
+    const hours = new Map<number, ProtocolChartObservation>();
+    for (const row of rows) {
+      if (
+        row.time < firstDay - HOUR ||
+        row.time > now ||
+        row.endpointAt > now + 30000
+      )
+        continue;
+      const previous = hours.get(row.time);
+      if (!previous || row.endpointAt >= previous.endpointAt)
+        hours.set(row.time, row);
+    }
+    return hours;
+  });
+  function candidate(
+    day: number,
+    origin: "history" | "summary",
+  ): ProtocolChartPoint | null {
+    const hours = origins[origin === "history" ? 0 : 1];
+    const baseline = hours.get(day - HOUR);
+    const current = day === today;
+    const last = current
+      ? [...hours.values()]
+          .filter((row) => row.time >= day && row.time < day + DAY)
+          .sort((a, b) => a.endpointAt - b.endpointAt)
+          .at(-1)
+      : hours.get(day + DAY - HOUR);
+    if (!baseline || !last || baseline.generation === "genesis:unknown")
+      return null;
+    if (origin === "history") {
+      if (!baseline.complete || baseline.endpointAt !== day - 1) return null;
+      if (!current && (!last.complete || last.endpointAt !== day + DAY - 1))
+        return null;
+    } else if (
+      day - baseline.endpointAt > DAY_BOUNDARY_TOLERANCE ||
+      (!current && day + DAY - last.endpointAt > DAY_BOUNDARY_TOLERANCE)
+    )
+      return null;
+    let previous: ProtocolChartObservation | undefined;
+    for (let time = baseline.time; time <= last.time; time += HOUR) {
+      const row = hours.get(time);
+      const value = row?.values[metric];
+      if (
+        !row ||
+        value == null ||
+        row.generation !== baseline.generation ||
+        (origin === "history" && row !== last && !row.complete)
+      )
+        return null;
+      if (metric === "stakingRewards" && previous) {
+        const beforeRaw = previous[rawField],
+          currentRaw = row[rawField];
+        const decreased =
+          beforeRaw !== undefined && currentRaw !== undefined
+            ? BigInt(currentRaw) < BigInt(beforeRaw)
+            : value < previous.values[metric]!;
+        if (decreased) return null;
+      }
+      previous = row;
+    }
+    const beforeRaw = baseline[rawField],
+      afterRaw = last[rawField];
+    const difference =
+      beforeRaw !== undefined && afterRaw !== undefined
+        ? (BigInt(afterRaw) - BigInt(beforeRaw)).toString()
+        : undefined;
+    const value =
+      difference !== undefined
+        ? rawNumber(difference)
+        : last.values[metric]! - baseline.values[metric]!;
+    if (!Number.isFinite(value) || (metric === "stakingRewards" && value < 0))
+      return null;
+    return {
+      time: day,
+      value,
+      observedFromMs: baseline.endpointAt,
+      observedToMs: last.endpointAt,
+      ...(difference === undefined ? {} : { valueRaw: difference }),
+      ...(current || origin === "summary" || !last.complete
+        ? { partial: true }
+        : {}),
+    };
+  }
+  const points: ProtocolChartPoint[] =
+    histories.length || summaries.length
+      ? Array.from({ length: 7 }, (_, index) => {
+          const day = firstDay + index * DAY;
+          const historical = candidate(day, "history");
+          const observed = candidate(day, "summary");
+          const selected =
+            day === today &&
+            observed &&
+            (!historical || observed.observedToMs! >= historical.observedToMs!)
+              ? observed
+              : historical ?? observed;
+          return (
+            selected ?? { time: day, value: null, partial: true, gapBefore: true }
+          );
+        })
+      : [];
+  return {
+    ...emptySeries(metric),
+    aggregation: "daily-change",
+    points,
+    coverage: {
+      observedFrom: points.find((point) => point.value !== null)?.time ?? null,
+      partial: true,
+    },
   };
 }
 function series(
@@ -350,6 +497,15 @@ export async function refreshProtocolCharts(
   // Reuse this invocation's bounded observations and summary. Viewers read the
   // saved response; economics adds no upstream request or history scan.
   const current = summary?.value ?? null;
+  // This same summary drives the headline. Include it even if the separate
+  // hourly-retention write has not happened yet; this adds no storage read.
+  const dailySummaries =
+    current &&
+    Number.isSafeInteger(current.source.at) &&
+    current.source.at >= 0 &&
+    current.source.at <= now + 30000
+      ? [...summaries, summaryObservation(current)]
+      : summaries;
   const economics: PaperEconomicsResponse = {
     ...emptyEconomics(),
     sourceAt,
@@ -373,6 +529,12 @@ export async function refreshProtocolCharts(
         now,
         "nonnegative",
       ),
+    },
+    daily: {
+      intervalMs: DAY,
+      timeZone: "UTC",
+      supplyChange: dailySeries("paperSupply", histories, dailySummaries, now),
+      rewardAllocation: dailySeries("stakingRewards", histories, dailySummaries, now),
     },
   };
   await store.put("paper-economics", economics, now);

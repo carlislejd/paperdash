@@ -6,6 +6,7 @@ import {
 } from "./image-export";
 import {
   chartGeometry,
+  chartBucketCaption,
   chartColorValue,
   chartStackGeometry,
   formatChartNumber,
@@ -42,7 +43,7 @@ export function chartExportMetadata(snapshot: ChartExportSnapshot): string[] {
     `Data timestamp: ${formatChartTime(snapshot.sourceAt)}`,
     `${snapshot.stale ? "Last available · " : ""}${snapshot.coverage}`,
     snapshot.kind === "bar"
-      ? "Hourly UTC buckets · hatched bars are partial"
+      ? chartBucketCaption(snapshot.bucketMs)
       : "Gaps indicate unavailable observations",
     ...(snapshot.kind === "bar" && snapshot.segments?.length
       ? [

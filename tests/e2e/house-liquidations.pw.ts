@@ -181,7 +181,14 @@ test("house funds show signed billion values, retained gaps and PAPER independen
     name: "House and PAPER statistics",
   });
   await expect(
-    panel.locator(".house-funds .pc-chart-headline strong").first(),
+    panel
+      .getByRole("region", { name: "LP balance chart card" })
+      .locator(".pc-chart-headline strong"),
+  ).toHaveText("$1M");
+  await expect(
+    panel
+      .getByRole("region", { name: "House funds chart card" })
+      .locator(".pc-chart-headline strong"),
   ).toHaveText("-$10B");
   await expect(panel).toContainText("125.57M");
   await expect(panel).toContainText("$16.27K");
@@ -204,6 +211,16 @@ test("house funds show signed billion values, retained gaps and PAPER independen
     paper.locator(".pc-chart-headline > strong").first(),
   ).toHaveAttribute("title", "125,571,374 PAPER");
   await expect(panel).toContainText("LP balance + open house PnL − queue debt");
+  const thresholds = panel.getByRole("region", {
+    name: "LP and PAPER thresholds",
+  });
+  await expect(thresholds.locator("h3")).toHaveText([
+    "$2M Mint threshold",
+    "$5M Staking surplus",
+  ]);
+  await expect(thresholds).toContainText("Eligible losses");
+  await expect(thresholds).toContainText("below the cap; payouts are separate");
+  await expect(thresholds).toContainText("Thresholds use protocol tracked LP");
   const d = await panel
     .locator(".house-funds > .pc-chart-card .pc-chart-plot path")
     .getAttribute("d");
@@ -224,7 +241,7 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   await expect(change).toContainText("Queue debt effect");
   const componentCards = panel.locator(".house-components .pc-chart-card");
   await expect(componentCards.locator("h3")).toHaveText([
-    "LP balance",
+    "House funds",
     "Open house PnL",
     "Queue debt",
   ]);
@@ -311,12 +328,17 @@ test("house legacy history keeps current amounts and marks missing components an
   const housePanel = page.locator(".house-funds");
   await expect(
     housePanel.locator(".house-components .pc-chart-headline strong"),
-  ).toHaveText(["$1M", "-$10B", "$1K"]);
+  ).toHaveText(["-$10B", "-$10B", "$1K"]);
   await expect(
     housePanel
       .locator(".house-components")
       .getByRole("img", { name: /no observations/ }),
-  ).toHaveCount(3);
+  ).toHaveCount(2);
+  await expect(
+    housePanel
+      .getByRole("region", { name: "LP balance chart card" })
+      .getByRole("img"),
+  ).toHaveAttribute("aria-label", /no observations/);
   await expect(housePanel).toContainText(
     "Change unavailable for the available history",
   );

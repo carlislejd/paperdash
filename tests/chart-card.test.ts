@@ -4,6 +4,7 @@ import {
   chartGeometry,
   chartStackGeometry,
   chartColorValue,
+  chartBucketCaption,
   cloneChartSegments,
   chartPoints,
   chartRange,
@@ -12,6 +13,7 @@ import {
   formatChartNumber,
   formatChartTime,
   HOUR_MS,
+  DAY_MS,
   nearestChartPoint,
   type ChartSegment,
 } from "../apps/web/src/lib/chart-data";
@@ -103,6 +105,56 @@ describe("shareable chart geometry", () => {
     expect(geometry.bars.every((bar) => bar.width > 0 && bar.height > 0)).toBe(
       true,
     );
+  });
+
+  it("uses daily widths, preserves missing days, and grows the partial current-day bar", () => {
+    const points = [
+      { time: from, value: 0 },
+      { time: from + DAY_MS, value: 100 },
+      { time: from + 2 * DAY_MS, value: null },
+      { time: from + 3 * DAY_MS, value: 12, partial: true },
+    ];
+    const at = from + 3 * DAY_MS + 6 * HOUR_MS;
+    const daily = chartGeometry(
+      points,
+      { from, to: at, label: "Available UTC days" },
+      "bar",
+      900,
+      200,
+      DAY_MS,
+    );
+    expect(daily.bars.map((bar) => bar.time)).toEqual([
+      from,
+      from + DAY_MS,
+      from + 3 * DAY_MS,
+    ]);
+    expect(daily.bars[0].height).toBe(1);
+    expect(daily.bars[2].width).toBeCloseTo(daily.bars[0].width / 4);
+    expect(daily.bars[2].partial).toBe(true);
+    const later = chartGeometry(
+      [...points.slice(0, 3), { ...points[3], value: 24 }],
+      { from, to: at, label: "Available UTC days" },
+      "bar",
+      900,
+      200,
+      DAY_MS,
+    );
+    expect(later.points.at(-1)?.value).toBe(24);
+    expect(later.bars[2].partial).toBe(true);
+    expect(later.bars[2].height).toBeCloseTo(daily.bars[2].height * 2);
+    const fullDaySlots = chartGeometry(
+      points,
+      { from, to: from + 4 * DAY_MS, label: "4 UTC days" },
+      "bar",
+      900,
+      200,
+      DAY_MS,
+    );
+    expect(fullDaySlots.bars[2].width).toBeCloseTo(fullDaySlots.bars[0].width);
+    expect(fullDaySlots.bars[2].partial).toBe(true);
+    expect(
+      later.bars.every((bar) => bar.width > 0 && Number.isFinite(bar.y)),
+    ).toBe(true);
   });
 
   it("sorts, bounds, and combines duplicate gap/partial evidence", () => {
@@ -198,6 +250,33 @@ describe("shareable chart geometry", () => {
 });
 
 describe("chart sharing metadata", () => {
+  it("keeps daily and default hourly bucket captions consistent in exported metadata", () => {
+    for (const bucketMs of [undefined, HOUR_MS, 0, NaN])
+      expect(chartBucketCaption(bucketMs)).toBe(
+        "Hourly UTC buckets · hatched bars are partial",
+      );
+    expect(chartBucketCaption(DAY_MS)).toBe(
+      "Daily UTC buckets · hatched bars are partial",
+    );
+    expect(chartBucketCaption(60000)).toBe(
+      "UTC buckets · hatched bars are partial",
+    );
+    const metadata = chartExportMetadata({
+      title: "Rewards allocated / day",
+      unit: "USDC",
+      kind: "bar",
+      points: [{ time: from, value: 42, partial: true }],
+      range: { from, to: from + DAY_MS, label: "Today UTC" },
+      sourceAt: from + 6 * HOUR_MS,
+      bucketMs: DAY_MS,
+      coverage: "New allocations · current day partial",
+      stale: false,
+      color: "green",
+    });
+    expect(metadata).toContain("Daily UTC buckets · hatched bars are partial");
+    expect(metadata.join(" ")).not.toContain("Hourly");
+    expect(metadata).toContain("Data timestamp: 10 Oct 2026, 06:00 UTC");
+  });
   it("uses explicit UTC timestamps across date boundaries and never fabricates missing timestamps", () => {
     expect(formatChartTime(from)).toBe("10 Oct 2026, 00:00 UTC");
     expect(formatChartTime(null)).toBe("Unavailable");

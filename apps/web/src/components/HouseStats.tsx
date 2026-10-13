@@ -3,7 +3,7 @@ import type { HouseResponse } from "../../../../packages/shared/src/types";
 import { useAnalytics } from "../lib/use-analytics";
 import { formatRawUsd, rawToNumber } from "../lib/format";
 import { ChartCard } from "./ChartCard";
-import { PaperEconomics } from "./PaperEconomics";
+import { PaperEconomics, type PaperEconomicsResource } from "./PaperEconomics";
 import {
   formatChartTime,
   validChartTime,
@@ -12,7 +12,7 @@ import {
 import "./protocol-stats.css";
 
 const components = [
-  { id: "house-lp", title: "LP balance", field: "lpRaw" },
+  { id: "house-funds", title: "House funds", field: "fundsRaw" },
   { id: "house-open-pnl", title: "Open house PnL", field: "openPnlRaw" },
   { id: "house-queue-debt", title: "Queue debt", field: "queueDebtRaw" },
 ] as const;
@@ -119,9 +119,11 @@ function HouseChange({ change }: { change: HouseResponse["change"] }) {
 
 export function HouseStats({
   chartRange,
+  paper,
 }: {
   chartRange?: ChartRange;
-} = {}) {
+  paper: PaperEconomicsResource;
+}) {
   const { data, error, loading, refresh } =
     useAnalytics<HouseResponse>("/api/house");
   const id = useId();
@@ -129,7 +131,7 @@ export function HouseStats({
     () =>
       (data?.history ?? []).map((point) => ({
         ...point,
-        value: rawToNumber(point.fundsRaw),
+        value: rawToNumber(point.lpRaw),
       })),
     [data?.history],
   );
@@ -161,21 +163,46 @@ export function HouseStats({
     <section className="house-panel" aria-label="House and PAPER statistics">
       <div className="house-funds">
         <ChartCard
-          id="house-funds"
-          title="House funds"
+          id="house-lp"
+          title="LP balance"
           unit="USDC"
           kind="line"
           points={points}
           range={houseRange}
           sourceAt={data?.sourceAt ?? null}
-          valueLabel={formatRawUsd(data?.house?.fundsRaw, true)}
-          valueTitle={formatRawUsd(data?.house?.fundsRaw)}
+          valueLabel={formatRawUsd(data?.house?.lpRaw, true)}
+          valueTitle={formatRawUsd(data?.house?.lpRaw)}
           coverage="Estimated · available observations · gaps unknown"
           stale={stale}
           loading={loading}
           error={houseError}
           onRetry={refresh}
         />
+        <section className="lp-thresholds" aria-label="LP and PAPER thresholds">
+          <div>
+            <h3>
+              <strong>$2M</strong> Mint threshold
+            </h3>
+            <p>
+              Eligible losses can mint up to 100 PAPER per $1 of eligible loss
+              basis. Above $2M tracked LP, the rate tapers with its high-water
+              mark.
+            </p>
+          </div>
+          <div>
+            <h3>
+              <strong>$5M</strong> Staking surplus
+            </h3>
+            <p>
+              Above $5M tracked LP, excess can fund staker rewards. Fee-share
+              rewards can also accrue below the cap; payouts are separate.
+            </p>
+          </div>
+          <p className="lp-threshold-note">
+            Thresholds use protocol tracked LP. Staker distributions do not
+            reset the mint curve’s high-water mark.
+          </p>
+        </section>
         <div className="house-components" aria-describedby={id}>
           {components.map(({ id, title, field }) => (
             <ChartCard
@@ -201,7 +228,7 @@ export function HouseStats({
           ))}
         </div>
         <p id={id} className="protocol-method">
-          LP balance + open house PnL − queue debt · estimated
+          House funds = LP balance + open house PnL − queue debt · estimated
         </p>
         <HouseChange change={data?.change} />
         {error && (
@@ -210,7 +237,7 @@ export function HouseStats({
           </button>
         )}
       </div>
-      <PaperEconomics chartRange={chartRange} />
+      <PaperEconomics chartRange={chartRange} resource={paper} />
     </section>
   );
 }

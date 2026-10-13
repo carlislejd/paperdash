@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   chartFilename,
   chartColorValue,
+  chartBucketCaption,
   chartGeometry,
   chartShareUrl,
   chartStackGeometry,
@@ -273,6 +274,7 @@ function ChartPlot({
                     <rect
                       key={index}
                       data-series={bar.segmentId}
+                      data-partial={bar.partial}
                       x={bar.x}
                       y={bar.y}
                       width={bar.width}
@@ -288,6 +290,7 @@ function ChartPlot({
                 : geometry.bars.map((bar, index) => (
                     <rect
                       key={index}
+                      data-partial={bar.partial}
                       x={bar.x}
                       y={bar.y}
                       width={bar.width}
@@ -424,7 +427,7 @@ function ChartPlot({
             ) : (
               <span>
                 {kind === "bar"
-                  ? "Hourly UTC buckets · hatched bars are partial"
+                  ? chartBucketCaption(bucketMs)
                   : "Gaps indicate unavailable observations"}
               </span>
             )}

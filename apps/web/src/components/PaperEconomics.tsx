@@ -1,5 +1,4 @@
 import type { PaperEconomicsResponse } from "../../../../packages/shared/src/types";
-import { useAnalytics } from "../lib/use-analytics";
 import { formatRawUsd, rawToNumber } from "../lib/format";
 import {
   formatChartNumber,
@@ -22,9 +21,21 @@ function paperTitle(raw: string | null | undefined): string {
   return `${whole.toLocaleString("en-US")}${fraction ? `.${fraction}` : ""} PAPER`;
 }
 
-export function PaperEconomics({ chartRange }: { chartRange?: ChartRange }) {
-  const { data, error, loading, refresh } =
-    useAnalytics<PaperEconomicsResponse>("/api/paper/economics");
+export interface PaperEconomicsResource {
+  data: PaperEconomicsResponse | null;
+  error: string;
+  loading: boolean;
+  refresh: () => void;
+}
+
+export function PaperEconomics({
+  chartRange,
+  resource,
+}: {
+  chartRange?: ChartRange;
+  resource: PaperEconomicsResource;
+}) {
+  const { data, error, loading, refresh } = resource;
   const sourceAt = validChartTime(data?.sourceAt) ? data.sourceAt : null;
   const to = sourceAt ?? Date.now();
   const hours =
@@ -144,33 +155,6 @@ export function PaperEconomics({ chartRange }: { chartRange?: ChartRange }) {
             </button>
           </p>
         )}
-      </div>
-      <div
-        className="paper-economics-charts"
-        role="region"
-        aria-label="PAPER hourly history"
-      >
-        <ChartCard
-          {...common}
-          id="paper-supply-change"
-          title="Net PAPER change / hour"
-          unit="PAPER"
-          kind="bar"
-          points={data?.series?.supplyChange?.points ?? []}
-          valueCaption="Latest hour"
-          coverage="Net supply change, not position issuance · approximate history · partial hours marked; gaps unknown"
-        />
-        <ChartCard
-          {...common}
-          id="paper-reward-allocation"
-          title="Rewards allocated / hour"
-          unit="USDC"
-          kind="bar"
-          color="green"
-          points={data?.series?.rewardAllocation?.points ?? []}
-          valueCaption="Latest hour"
-          coverage="New allocations, not distributions or claims · approximate history · partial hours marked; gaps unknown"
-        />
       </div>
     </>
   );

@@ -448,6 +448,56 @@ export function paperEconomicsResponse(
       supplyChange: series("supplyChange"),
       rewardAllocation: series("rewardAllocation"),
     },
+    daily: {
+      intervalMs: 86400000,
+      timeZone: "UTC",
+      ...(Object.fromEntries(
+        (["supplyChange", "rewardAllocation"] as const).map((kind) => [
+          kind,
+          {
+            unit: kind === "rewardAllocation" ? "USD" : "PAPER",
+            aggregation: "daily-change",
+            points: Array.from({ length: 7 }, (_, index) => {
+              const time =
+                Math.floor(at / 86400000) * 86400000 - (6 - index) * 86400000;
+              const value =
+                index === 2
+                  ? null
+                  : index === 1
+                    ? 0
+                    : kind === "supplyChange"
+                      ? index === 3
+                        ? -2_000_000
+                        : (index + 1) * 1_000_000
+                      : index === 6
+                        ? 125
+                        : (index + 1) * 100;
+              return {
+                time,
+                value,
+                ...(value === null
+                  ? {}
+                  : {
+                      valueRaw: usd(value),
+                      observedFromMs: time,
+                      observedToMs: index === 6 ? at : time + 86400000,
+                    }),
+                ...(index === 3 ? { gapBefore: true } : {}),
+                ...(index === 6 ? { partial: true } : {}),
+              };
+            }),
+            source: "protocol-history-and-retained-summary",
+            coverage: {
+              observedFrom: Math.floor(at / 86400000) * 86400000 - 6 * 86400000,
+              partial: true,
+            },
+          },
+        ]),
+      ) as Pick<
+        NonNullable<PaperEconomicsResponse["daily"]>,
+        "supplyChange" | "rewardAllocation"
+      >),
+    },
     coverage: { partial: true, historyApproximate: true },
   };
 }

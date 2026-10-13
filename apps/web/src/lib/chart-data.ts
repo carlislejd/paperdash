@@ -1,5 +1,5 @@
 export interface ChartPoint {
-  /** Source observation time, or the start of an hourly UTC bucket. */
+  /** Source observation time, or the start of a UTC bucket. */
   time: number;
   value: number | null;
   gapBefore?: boolean;
@@ -36,6 +36,16 @@ export function cloneChartSegments(
 }
 export const CHART_POINT_LIMIT = 2048;
 export const HOUR_MS = 3_600_000;
+export const DAY_MS = 24 * HOUR_MS;
+
+/** Match the effective geometry interval in both the interactive chart and PNG. */
+export function chartBucketCaption(bucketMs = HOUR_MS): string {
+  const interval =
+    Number.isFinite(bucketMs) && bucketMs > 0 ? bucketMs : HOUR_MS;
+  const period =
+    interval === DAY_MS ? "Daily " : interval === HOUR_MS ? "Hourly " : "";
+  return `${period}UTC buckets · hatched bars are partial`;
+}
 
 export function validChartTime(
   time: number | null | undefined,

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { mockSources, paperEconomicsResponse } from "./fixtures";
 
-test("PAPER uses its own coherent totals and clock, shares hourly changes and preserves range without wallet reads", async ({
+test("PAPER uses its own coherent totals and clock, shares daily changes and preserves range without wallet reads", async ({
   page,
 }) => {
   const at = Date.UTC(2026, 9, 10, 12, 25);
@@ -45,20 +45,43 @@ test("PAPER uses its own coherent totals and clock, shares hourly changes and pr
   await expect(
     paper.getByRole("region", { name: "PAPER supply chart card" }),
   ).toContainText("12:24 UTC");
-  const hourly = page.getByRole("region", { name: "PAPER hourly history" });
-  await expect(hourly).toContainText(
-    "Net supply change, not position issuance",
-  );
-  await expect(hourly).toContainText(
-    "New allocations, not distributions or claims",
-  );
+  const history = page.getByRole("region", {
+    name: "Protocol charts",
+    exact: true,
+  });
+  const daily = history.getByRole("region", {
+    name: "Staking rewards / day chart card",
+  });
+  const growth = history.getByRole("region", {
+    name: "PAPER supply growth / day chart card",
+  });
+  await expect(growth).toContainText(/Net supply (change|growth)/);
+  await expect(daily).toContainText(/not (distributions|cash distributions)/);
+  await expect(daily).toContainText("Today so far");
+  await expect(
+    daily.locator('.pc-chart-plot rect[data-partial="true"]'),
+  ).toHaveCount(1);
+  await expect(daily).toContainText("Daily UTC buckets");
+  await expect(
+    page.getByRole("region", { name: "TVL chart card", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    history.locator(".overview-chart-grid > .pc-chart-card"),
+  ).toHaveCount(4);
+  await expect(
+    page.getByRole("region", { name: "PAPER hourly history" }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: `/tmp/paperclub-daily-overview-${test.info().project.name}.png`,
+    fullPage: false,
+  });
   await page.getByRole("button", { name: "7d", exact: true }).click();
-  await expect(hourly).toContainText("7 days");
-  const expand = hourly.getByRole("button", {
-    name: "Expand Rewards allocated / hour chart",
+  await expect(history).toContainText(/7.*days/);
+  const expand = daily.getByRole("button", {
+    name: "Expand Staking rewards / day chart",
   });
   await expand.click();
-  const dialog = page.getByRole("dialog", { name: "Rewards allocated / hour" });
+  const dialog = page.getByRole("dialog", { name: "Staking rewards / day" });
   await expect(dialog).toContainText("approximate history");
   await dialog.getByRole("img").focus();
   await page.keyboard.press("End");
@@ -77,10 +100,14 @@ test("PAPER uses its own coherent totals and clock, shares hourly changes and pr
   expect(reads).toBeLessThanOrEqual(2);
   expect(walletReads).toEqual([]);
   await page.getByRole("button", { name: "24h", exact: true }).click();
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur();
+  });
   await paper.screenshot({
     path: `/tmp/paperclub-paper-economics-${test.info().project.name}.png`,
   });
-  await hourly.screenshot({
+  await history.screenshot({
     path: `/tmp/paperclub-paper-history-${test.info().project.name}.png`,
   });
   expect(
@@ -110,6 +137,9 @@ test("zero, unavailable and failed refresh stay distinct while PAPER keeps the l
     data.stakeRatioBps = null;
     data.annualized.usdPerYearRaw = null;
     for (const series of Object.values(data.series)) series.points = [];
+    if (data.daily)
+      for (const key of ["supplyChange", "rewardAllocation"] as const)
+        data.daily[key].points = [];
     return route.fulfill({ json: data });
   });
   await page.goto("/");
@@ -160,4 +190,169 @@ test("an older API rollout leaves PAPER unavailable rather than borrowing House 
   await expect(
     paper.locator(".paper-details .pc-chart-headline > strong"),
   ).toHaveText(["—", "—", "—"]);
+});
+
+test("daily rewards grow inside a full UTC-day slot while missing days, zero and signed supply stay distinct", async ({
+  page,
+}) => {
+  const at = Date.UTC(2026, 9, 10, 12, 25);
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(new Date(at));
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+  });
+  await mockSources(page);
+  let reads = 0,
+    amount = 125;
+  await page.route("**/api/paper/economics", (route) => {
+    reads++;
+    const data = paperEconomicsResponse(at);
+    data.daily!.rewardAllocation.points.at(-1)!.value = amount;
+    data.daily!.rewardAllocation.points.at(-1)!.valueRaw = (
+      BigInt(amount) *
+      10n ** 18n
+    ).toString();
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/?chart=paper-reward-allocation");
+  const dialog = page.getByRole("dialog", {
+    name: "Staking rewards / day",
+    exact: true,
+  });
+  await expect(dialog).toContainText("Today so far");
+  await expect(dialog.locator(".pc-chart-headline > strong")).toHaveText("125");
+  await expect(dialog).toContainText("Daily UTC buckets");
+  const bars = dialog.locator(".pc-chart-plot rect[data-partial]");
+  await expect(bars).toHaveCount(6);
+  const partial = bars.last();
+  await expect(partial).toHaveAttribute("data-partial", "true");
+  const before = await partial.evaluate((e) => ({
+    height: Number(e.getAttribute("height")),
+    width: Number(e.getAttribute("width")),
+  }));
+  expect(before.width).toBeCloseTo(
+    Number(await bars.first().getAttribute("width")),
+    4,
+  );
+  await dialog.getByRole("img").focus();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowRight");
+  await expect(dialog.locator(".pc-chart-inspect")).toContainText("0 USDC");
+  await page.keyboard.press("ArrowRight");
+  await expect(dialog.locator(".pc-chart-inspect")).toContainText("— USDC");
+  await page.keyboard.press("End");
+  await expect(dialog.locator(".pc-chart-inspect")).toContainText(
+    "10 Oct 2026, 00:00 UTC · bucket start · partial",
+  );
+  amount = 250;
+  const beforeReads = reads;
+  await page.clock.fastForward(5000);
+  await expect.poll(() => reads).toBe(beforeReads + 1);
+  await expect(dialog.locator(".pc-chart-headline > strong")).toHaveText("250");
+  expect(Number(await partial.getAttribute("height"))).toBeCloseTo(
+    before.height * 2,
+    4,
+  );
+  expect(Number(await partial.getAttribute("width"))).toBeCloseTo(
+    before.width,
+    4,
+  );
+  await page.keyboard.press("Escape");
+  const growth = page.getByRole("region", {
+    name: "PAPER supply growth / day chart card",
+    exact: true,
+  });
+  await growth.getByRole("img").focus();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(growth.locator(".pc-chart-inspect")).toContainText(
+    "-2,000,000 PAPER",
+  );
+});
+
+test("old daily payload stays unavailable without borrowing hourly values or fabricating zero", async ({
+  page,
+}) => {
+  await mockSources(page);
+  await page.route("**/api/paper/economics", (route) => {
+    const data = paperEconomicsResponse();
+    delete data.daily;
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/?chart=paper-supply-change");
+  const dialog = page.getByRole("dialog", {
+    name: "PAPER supply growth / day",
+    exact: true,
+  });
+  await expect(dialog.locator(".pc-chart-headline > strong")).toHaveText("—");
+  await expect(dialog).toContainText("No observations in this range");
+  await expect(dialog.locator(".pc-chart-plot rect[data-partial]")).toHaveCount(
+    0,
+  );
+  await page.keyboard.press("Escape");
+  const rewards = page.getByRole("region", {
+    name: "Staking rewards / day chart card",
+    exact: true,
+  });
+  await expect(rewards.locator(".pc-chart-headline > strong")).toHaveText("—");
+  await expect(
+    rewards.locator(".pc-chart-plot rect[data-partial]"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "PAPER economics", exact: true }),
+  ).toContainText("$16.27K");
+});
+
+test("fresh daily history from yesterday cannot become today's headline and today's observed zero stays zero", async ({
+  page,
+}) => {
+  const at = Date.UTC(2026, 9, 11, 0, 0, 15);
+  const today = Math.floor(at / 86_400_000) * 86_400_000;
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(new Date(at));
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+  });
+  await mockSources(page);
+  let includeToday = false;
+  await page.route("**/api/paper/economics", (route) => {
+    const data = paperEconomicsResponse(at);
+    for (const key of ["rewardAllocation", "supplyChange"] as const) {
+      const series = data.daily![key];
+      if (!includeToday)
+        series.points = series.points.filter((point) => point.time < today);
+      else {
+        series.points.at(-1)!.value = 0;
+        series.points.at(-1)!.valueRaw = "0";
+      }
+    }
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/");
+  for (const title of ["Staking rewards / day", "PAPER supply growth / day"]) {
+    const card = page.getByRole("region", {
+      name: `${title} chart card`,
+      exact: true,
+    });
+    await expect(card).toContainText("Today so far");
+    await expect(card.locator(".pc-chart-headline > strong")).toHaveText("—");
+    await expect(
+      card.locator('.pc-chart-plot rect[data-partial="true"]'),
+    ).toHaveCount(0);
+    await expect(
+      card.locator('.pc-chart-plot rect[data-partial="false"]'),
+    ).toHaveCount(5);
+  }
+  includeToday = true;
+  await page.clock.fastForward(5000);
+  for (const title of ["Staking rewards / day", "PAPER supply growth / day"]) {
+    const card = page.getByRole("region", {
+      name: `${title} chart card`,
+      exact: true,
+    });
+    await expect(card.locator(".pc-chart-headline > strong")).toHaveText("0");
+    await expect(card).toContainText("Today so far");
+  }
 });
