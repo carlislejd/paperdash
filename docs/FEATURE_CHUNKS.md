@@ -34,3 +34,13 @@ The sequence is a dependency guide, not a commitment to ship every later feature
 - **Chunk 5, wallet-first release: Margin at risk.** The existing wallet snapshot and shared reference prices power nonoverlapping bust-distance bands, cash/queued-balance margin splits and the five nearest recorded thresholds per asset. The profile and agent `risk ADDRESS` command share one calculation and independent snapshot/reference clocks. This is a hypothetical comparison, not liquidation eligibility or a complete global map. No additional source connection, history scan or migration. [Definitions and limits](MARGIN_AT_RISK.md).
 
 The next independent feature chunk is explicit time ranges, historical moments and recaps. A global margin map still needs a continuously reconciled inventory. Global distributed/claimed rewards, per-token distributions and wallet claimable rewards remain deferred until their sources are verified; exact attributed issuance aggregation still needs its bounded correction-aware projection. Hosted immutable receipt links and replay remain part of the later historical-views work.
+
+## October 12: freshness-first follow-up
+
+The next approved sequence builds on the delivered chunks above, with separate reviewable releases:
+
+1. **Shared panel delivery and measured freshness.** Reuse the existing EventSource to invalidate four saved global panels; deduplicate exact-URL browser reads; retain periodic reconciliation and old-server/disconnection fallback. Preserve independent source clocks and expose active-wallet history check-age buckets in the saved indexing status. This does not claim a shorter upstream collection cadence, complete global history, or proven 10k-viewer capacity.
+2. **Wallet/PAPER experience.** Organize the profile into Overview, Positions, PAPER and History; preserve useful wallet/section links; highlight largest recorded adjusted-P&L win and loss from retained closed/liquidated outcomes. The latter requires a correction-aware indexed projection, not a per-viewer history scan or a ranking of just the loaded page. Missing positive/negative outcomes remain unavailable. Ownership includes staked and unstaked PAPER. Claimed rewards already have a source; claimable rewards remain gated on a verified source and calculation.
+3. **Discovery and sharing.** Preserve supported filters and time ranges, add meaningful comparisons and since-last-check Following summaries, then daily recaps and immutable historical links. Reuse indexed aggregates and export primitives, keeping current values distinct from the inputs captured in a shared moment.
+
+Only the first follow-up is part of this release. The wallet and discovery work remains queued; approval of the sequence does not mean those features have already shipped.

@@ -29,6 +29,7 @@ import { retainHouseSource, refreshHouse } from "./house.js";
 import { refreshLiquidations } from "./liquidations.js";
 import { readLiveTvl } from "../../../packages/shared/src/live-tvl.js";
 import { TradeIntake, type IntakeState } from "./trade-intake.js";
+import { PanelPublisher, type PanelPublication } from "./panel-revisions.js";
 import {
   retainProtocolChartHistory,
   retainProtocolChartSummary,
@@ -211,11 +212,16 @@ export class Collector {
   private metricsSignature = "";
   private historySignature = "";
   private marketFeed: MarketFeed | null = null;
+  private panels: PanelPublisher;
   constructor(
     private store: Store,
     private upstream: Upstream,
     private bus: ChangeBus,
   ) {
+    this.panels = new PanelPublisher(store, () => this.bus.notify(), (error) => {
+      if (error) this.errors.set("panel-revisions", errorMessage(error));
+      else this.errors.delete("panel-revisions");
+    });
     this.intake = new TradeIntake(store, {
       change: (state) => {
         this.intakeState = state;
@@ -248,6 +254,7 @@ export class Collector {
   async start(): Promise<boolean> {
     this.release = await this.store.lease();
     if (!this.release) return false;
+    this.panels.start();
     this.intake.start();
     this.marketFeed = new MarketFeed(
       async (quote) => {
@@ -273,14 +280,18 @@ export class Collector {
       await retainAssetSource(this.store, source);
       await retainHouseSource(this.store, source);
     });
-    this.loop("house", 5000, () => refreshHouse(this.store));
+    this.loop("house", 5000, () =>
+      this.publishPanels("house", refreshHouse(this.store)),
+    );
     this.loop("protocol-charts", 10000, () =>
-      refreshProtocolCharts(this.store),
+      this.publishPanels("protocol-charts", refreshProtocolCharts(this.store)),
     );
     this.loop("liquidations-backfill", 10000, async () => {
       await this.store.liquidations.backfill(1000);
     });
-    this.loop("liquidations", 5000, () => refreshLiquidations(this.store));
+    this.loop("liquidations", 5000, () =>
+      this.publishPanels("liquidations", refreshLiquidations(this.store)),
+    );
     this.loop("asset-activity", 10000, async () => {
       await this.store.analytics.backfill(500);
       await refreshAssetAnalytics(this.store);
@@ -513,6 +524,7 @@ export class Collector {
     );
   }
   private persistStatus(diagnostic?: StreamDiagnostics): Promise<void> {
+    this.panels.health(this.errors, this.stream === "connected");
     const run = this.statusPersistence.then(async () => {
       if (diagnostic)
         await this.store.put("stream-diagnostics", diagnostic, diagnostic.at);
@@ -528,6 +540,12 @@ export class Collector {
   private track(task: Promise<unknown>) {
     this.tasks.add(task);
     void task.finally(() => this.tasks.delete(task)).catch(() => {});
+  }
+  private async publishPanels(name: string, work: Promise<PanelPublication[]>) {
+    const publications = await work;
+    this.errors.delete(name);
+    this.panels.health(this.errors, this.stream === "connected");
+    for (const publication of publications) this.panels.committed(publication);
   }
   private loop(name: string, interval: number, work: () => Promise<void>) {
     let retryAt = 0;
@@ -729,7 +747,7 @@ export class Collector {
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
     this.client?.disconnect();
-    await Promise.all([this.marketFeed?.stop(), this.intake.stop()]);
+    await Promise.all([this.marketFeed?.stop(), this.intake.stop(), this.panels.stop()]);
     await Promise.allSettled([...this.tasks]);
     await this.statusPersistence;
     await this.chain;

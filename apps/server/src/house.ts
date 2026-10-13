@@ -6,6 +6,7 @@ import type { Store } from "./store.js";
 import { houseSchema } from "./assets.js";
 import type { HousePoint, HouseSample, HouseStore } from "./house-store.js";
 import { annualizedStakingRevenue } from "./protocol-charts.js";
+import { snapshotPanelRevision, type PanelPublication } from "./panel-revisions.js";
 export type { HouseResponse } from "../../../packages/shared/src/types.js";
 type HouseContext = Pick<Store, "get" | "put"> & { house: HouseStore };
 interface SavedHouse extends HouseResponse {
@@ -174,7 +175,7 @@ function empty(): HouseResponse {
 export async function refreshHouse(
   store: HouseContext,
   now = Date.now(),
-): Promise<void> {
+): Promise<PanelPublication[]> {
   const [retained, summary] = await Promise.all([
     store.house.read(now),
     store.get<ProtocolSummary>("summary"),
@@ -223,7 +224,20 @@ export async function refreshHouse(
     summary.receivedAt > now + 30000 ||
     now - summary.value.source.at > 30000 ||
     summary.value.source.at > now + 30000;
+  data.panelRevision = snapshotPanelRevision(data);
   await store.put("house", data, now);
+  return [{
+    key: "house",
+    revision: data.panelRevision,
+    receivedAt: now,
+    sourceAt: latest?.sourceAt ?? null,
+    stale: data.houseStale,
+    freshUntil: Math.min(
+      now + 15000,
+      (latest?.sourceAt ?? 0) + 30000,
+      (latest?.receivedAt ?? 0) + 30000,
+    ),
+  }];
 }
 export async function readHouse(
   store: Pick<Store, "get">,

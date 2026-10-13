@@ -4,6 +4,7 @@ import type {
 } from "../../../packages/shared/src/types.js";
 import type { Store } from "./store.js";
 import type { LiquidationsStore } from "./liquidations-store.js";
+import { snapshotPanelRevision, type PanelPublication } from "./panel-revisions.js";
 
 type LiquidationsContext = Store & { liquidations: LiquidationsStore };
 const key = (instrument?: number) => `liquidations:${instrument ?? "all"}`;
@@ -34,7 +35,8 @@ function empty(now: number): LiquidationsResponse {
 export async function refreshLiquidations(
   store: LiquidationsContext,
   now = Date.now(),
-): Promise<void> {
+): Promise<PanelPublication[]> {
+  const publications: PanelPublication[] = [];
   for (const instrument of [undefined, 0, 1]) {
     const [stats, page] = await Promise.all([
       store.liquidations.stats(instrument, now),
@@ -49,8 +51,24 @@ export async function refreshLiquidations(
       stale: false,
       coverage: stats.coverage,
     };
+    if (instrument === undefined) {
+      const { items: _items, nextCursor: _cursor, hourly: _hourly, ...summary } = response;
+      response.panelRevision = snapshotPanelRevision(summary);
+    }
     await store.put(key(instrument), response, now);
+    if (instrument === undefined) {
+      publications.push({
+        key: "liquidation-stats",
+        revision: response.panelRevision!,
+        receivedAt: now,
+        // A last observed trade is not a complete protocol publication clock.
+        sourceAt: null,
+        stale: response.stale,
+        freshUntil: now + 15000,
+      });
+    }
   }
+  return publications;
 }
 export async function readLiquidations(
   store: LiquidationsContext,

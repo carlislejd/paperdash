@@ -316,8 +316,28 @@ export interface WalletResponse {
   /** Additive scenario from this same snapshot and retained reference prices. */
   marginRisk?: WalletMarginRiskResponse;
 }
+export type PanelKey =
+  | "house"
+  | "protocol-charts"
+  | "paper-economics"
+  | "liquidation-stats";
+/** Advisory publication hints; REST remains the snapshot/recovery authority. */
+export interface PanelRevisions {
+  version: 1;
+  publishedAt: number;
+  panels: Partial<
+    Record<PanelKey, {
+      revision: string;
+      receivedAt: number;
+      sourceAt: number | null;
+      /** House health covers its valuation; PAPER has an independent panel. */
+      stale: boolean;
+    }>
+  >;
+}
 export type StreamMessage =
-  | { type: "overview"; data: Overview }
+  | { type: "overview"; data: Overview; panels?: PanelRevisions }
+  | { type: "panel-revisions"; data: PanelRevisions }
   | {
       type: "metrics";
       data: Pick<Overview, "summary" | "accountCount" | "status">;
@@ -331,6 +351,8 @@ export type StreamMessage =
   | { type: "status"; data: DataStatus };
 
 export interface HouseResponse {
+  /** Exact saved publication content revision, when push delivery is available. */
+  panelRevision?: string;
   sourceAt: number | null;
   receivedAt: number | null;
   stale: boolean;
@@ -417,6 +439,7 @@ export interface ProtocolChartSeries {
   coverage: { observedFrom: number | null; partial: true };
 }
 export interface ProtocolChartsResponse {
+  panelRevision?: string;
   receivedAt: number | null;
   sourceAt: number | null;
   stale: boolean;
@@ -426,6 +449,7 @@ export interface ProtocolChartsResponse {
 }
 
 export interface PaperEconomicsResponse {
+  panelRevision?: string;
   sourceAt: number | null;
   receivedAt: number | null;
   stale: boolean;
@@ -471,6 +495,7 @@ export interface LiquidationTotals {
   notionalUsd: number;
 }
 export interface LiquidationsResponse {
+  panelRevision?: string;
   items: TradeEvent[];
   nextCursor: string | null;
   stats: { hour: LiquidationTotals; day: LiquidationTotals };

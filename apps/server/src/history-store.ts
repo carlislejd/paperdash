@@ -90,6 +90,23 @@ export interface HistoryDatabase {
   /** All statements commit together, with optional fenced row-count guards. */
   batch(statements: Statement[]): Promise<void>;
 }
+export interface ActiveHistoryFreshness {
+  asOf: number;
+  /** Successful primary-job checks for currently active wallets, not event age or time waiting after activation. */
+  byKind: {
+    kind: JobKind;
+    jobs: number;
+    never: number;
+    invalidClock: number;
+    futureClock: number;
+    within1m: number;
+    oneTo5m: number;
+    fiveTo15m: number;
+    fifteenTo60m: number;
+    over60m: number;
+    oldestSuccessAt: number | null;
+  }[];
+}
 export interface HistoryStore {
   ensureWallet(address: string, priority?: number): Promise<void>;
   discoverWallets(addresses: string[], priority?: number): Promise<void>;
@@ -148,6 +165,7 @@ export interface HistoryStore {
     correctionsDue: number;
     oldestActiveDueAt: number | null;
     oldestBackfillDueAt: number | null;
+    activeFreshness: ActiveHistoryFreshness;
   }>;
   retainProtocol(
     points: { time: number; value: number }[],
@@ -1052,6 +1070,33 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         `SELECT sum(CASE WHEN active=1 THEN 1 ELSE 0 END) AS active_due,sum(CASE WHEN active=0 AND category='backfill' THEN 1 ELSE 0 END) AS backfill_due,sum(CASE WHEN active=0 AND category='maintenance' THEN 1 ELSE 0 END) AS maintenance_due,sum(CASE WHEN active=0 AND category='correction' THEN 1 ELSE 0 END) AS corrections_due,min(CASE WHEN active=1 THEN next_run ELSE NULL END) AS oldest_active,min(CASE WHEN active=0 AND category='backfill' THEN next_run ELSE NULL END) AS oldest_backfill FROM (SELECT j.next_run,CASE WHEN w.active_until>? AND w.priority>0 THEN 1 ELSE 0 END AS active,CASE WHEN ${continuing} THEN 'backfill' ELSE 'maintenance' END AS category FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? UNION ALL SELECT c.next_run,CASE WHEN w.active_until>? AND w.priority>0 THEN 1 ELSE 0 END AS active,'correction' AS category FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=?) due`,
         [at, at, at, at],
       );
+      // This runs in the collector's saved status sample, never per viewer.
+      // Activation may inherit an old next_run, so measure successful checks
+      // separately instead of interpreting oldestActiveDueAt as a wait SLA.
+      const successExpr = db.prefix
+        ? "CASE WHEN jsonb_typeof(j.state->'lastSuccessAt')='number' THEN (j.state->>'lastSuccessAt')::numeric ELSE NULL END"
+        : "CASE WHEN json_type(j.state,'$.lastSuccessAt') IN ('integer','real') THEN json_extract(j.state,'$.lastSuccessAt') ELSE NULL END";
+      const neverExpr = db.prefix
+        ? "(j.state->'lastSuccessAt' IS NULL OR j.state->'lastSuccessAt'='null'::jsonb)"
+        : "(json_type(j.state,'$.lastSuccessAt') IS NULL OR json_type(j.state,'$.lastSuccessAt')='null')";
+      const freshnessRows = await db.rows<Record<string, string | number | null>>(
+        `SELECT kind,count(*) AS jobs,
+          sum(CASE WHEN never=1 THEN 1 ELSE 0 END) AS never,
+          sum(CASE WHEN never=0 AND (success IS NULL OR success<=0 OR success<>round(success)) THEN 1 ELSE 0 END) AS invalid_clock,
+          sum(CASE WHEN success>? AND success=round(success) THEN 1 ELSE 0 END) AS future_clock,
+          sum(CASE WHEN success>? AND success<=? AND success=round(success) THEN 1 ELSE 0 END) AS within_1m,
+          sum(CASE WHEN success>? AND success<=? AND success=round(success) THEN 1 ELSE 0 END) AS one_to_5m,
+          sum(CASE WHEN success>? AND success<=? AND success=round(success) THEN 1 ELSE 0 END) AS five_to_15m,
+          sum(CASE WHEN success>? AND success<=? AND success=round(success) THEN 1 ELSE 0 END) AS fifteen_to_60m,
+          sum(CASE WHEN success>0 AND success<=? AND success=round(success) THEN 1 ELSE 0 END) AS over_60m,
+          min(CASE WHEN success>0 AND success<=? AND success=round(success) THEN success ELSE NULL END) AS oldest_success
+        FROM (SELECT j.kind,${successExpr} AS success,CASE WHEN ${neverExpr} THEN 1 ELSE 0 END AS never
+          FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address
+          WHERE w.active_until>? AND w.priority>0) checks GROUP BY kind ORDER BY kind`,
+        [at, at - 60000, at, at - 300000, at - 60000,
+          at - 900000, at - 300000, at - 3600000, at - 900000,
+          at - 3600000, at, at],
+      );
       return {
         wallets: Number(wallets.count),
         jobs: Number(jobs.count) + Number(corrections.count),
@@ -1067,6 +1112,22 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         correctionsDue: Number(due.corrections_due ?? 0),
         oldestActiveDueAt: due.oldest_active === null ? null : Number(due.oldest_active),
         oldestBackfillDueAt: due.oldest_backfill === null ? null : Number(due.oldest_backfill),
+        activeFreshness: {
+          asOf: at,
+          byKind: freshnessRows.map((row) => ({
+            kind: row.kind as JobKind,
+            jobs: Number(row.jobs),
+            never: Number(row.never),
+            invalidClock: Number(row.invalid_clock),
+            futureClock: Number(row.future_clock),
+            within1m: Number(row.within_1m),
+            oneTo5m: Number(row.one_to_5m),
+            fiveTo15m: Number(row.five_to_15m),
+            fifteenTo60m: Number(row.fifteen_to_60m),
+            over60m: Number(row.over_60m),
+            oldestSuccessAt: row.oldest_success === null ? null : Number(row.oldest_success),
+          })),
+        },
       };
     },
     async retainProtocol(points, at = Date.now()) {

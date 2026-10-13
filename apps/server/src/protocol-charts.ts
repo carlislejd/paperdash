@@ -11,6 +11,7 @@ import type {
 import type { Store } from "./store.js";
 import type { ProtocolChartObservation } from "./history-store.js";
 import { protocolHistorySchema } from "./schemas.js";
+import { snapshotPanelRevision, type PanelPublication } from "./panel-revisions.js";
 
 const HOUR = 3600000;
 const DAY = 86400000;
@@ -468,7 +469,7 @@ function stakeRatioBps(summary: ProtocolSummary | null): number | null {
 export async function refreshProtocolCharts(
   store: Context,
   now = Date.now(),
-): Promise<void> {
+): Promise<PanelPublication[]> {
   const [histories, summaries, summary] = await Promise.all([
     store.history.protocolChartRows("history"),
     store.history.protocolChartRows("summary"),
@@ -493,6 +494,7 @@ export async function refreshProtocolCharts(
       ]),
     ) as ProtocolChartsResponse["series"],
   };
+  data.panelRevision = snapshotPanelRevision(data);
   await store.put("protocol-charts", data, now);
   // Reuse this invocation's bounded observations and summary. Viewers read the
   // saved response; economics adds no upstream request or history scan.
@@ -537,7 +539,22 @@ export async function refreshProtocolCharts(
       rewardAllocation: dailySeries("stakingRewards", histories, dailySummaries, now),
     },
   };
+  economics.panelRevision = snapshotPanelRevision(economics);
   await store.put("paper-economics", economics, now);
+  const publication = {
+    receivedAt: now,
+    sourceAt,
+    stale: data.stale,
+    freshUntil: Math.min(
+      now + 30000,
+      (sourceAt ?? 0) + 30000,
+      (summary?.receivedAt ?? 0) + 30000,
+    ),
+  };
+  return [
+    { ...publication, key: "protocol-charts", revision: data.panelRevision },
+    { ...publication, key: "paper-economics", revision: economics.panelRevision },
+  ];
 }
 
 type SnapshotHeartbeat = { at: number; errors?: Record<string, string> };

@@ -4,7 +4,7 @@ import type {
   StreamMessage,
 } from "../../../../packages/shared/src/types";
 import { API_BASE, fetchJson, pollDelay } from "./api";
-import { publishLiveEvent } from "./live-events";
+import { publishLiveConnection, publishLiveEvent } from "./live-events";
 import { mergeOverviewUpdate } from "./overview-data";
 
 /** One connection for the visible view. REST is a fallback, not a second live feed. */
@@ -58,6 +58,7 @@ export function useOverview(topics: string) {
       connected = false;
       receivedSnapshot = false;
       setTransport(false);
+      publishLiveConnection(false);
       if (document.hidden || controller.signal.aborted) return;
       const current = new EventSource(
         `${API_BASE}/api/events?topics=${encodeURIComponent(topics)}`,
@@ -67,11 +68,13 @@ export function useOverview(topics: string) {
         if (source !== current) return;
         connected = true;
         setTransport(true);
+        publishLiveConnection(true);
       };
       current.onerror = () => {
         if (source !== current) return;
         connected = false;
         setTransport(false);
+        publishLiveConnection(false);
         current.close();
         source = null;
         // Jitter spreads reconnects after deploys/outages; no synchronized retry storm.
@@ -84,7 +87,13 @@ export function useOverview(topics: string) {
         if (source !== current || controller.signal.aborted) return;
         try {
           const message = JSON.parse(event.data) as StreamMessage;
-          revision++;
+          // Only overview-state updates can supersede an in-flight overview
+          // fallback. Panel hints and price ticks do not contain that snapshot.
+          if (
+            message.type !== "panel-revisions" &&
+            message.type !== "asset-price"
+          )
+            revision++;
           attempts = 0;
           publishLiveEvent(message);
           if (message.type === "overview") {
@@ -121,6 +130,7 @@ export function useOverview(topics: string) {
     return () => {
       controller.abort();
       source?.close();
+      publishLiveConnection(false);
       clearTimeout(reconnect);
       clearTimeout(fallback);
       document.removeEventListener("visibilitychange", connect);

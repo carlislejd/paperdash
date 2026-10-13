@@ -1,9 +1,10 @@
-import type { Overview } from "../../../packages/shared/src/types.js";
+import type { Overview, PanelRevisions } from "../../../packages/shared/src/types.js";
 import type { ServerResponse } from "node:http";
 import { setImmediate as yieldImmediate } from "node:timers/promises";
 import { readOverviewSnapshot } from "./collector.js";
 import type { Store, StreamRecord } from "./store.js";
 import type { ChangeBus } from "./bus.js";
+import { PANEL_MANIFEST_KEY, validPanelRevisions } from "./panel-revisions.js";
 
 export type StreamTopic =
   | "overview"
@@ -28,6 +29,7 @@ interface Client {
 interface Bootstrap {
   at: number;
   overview: Overview;
+  panels?: PanelRevisions;
   frames: Map<string, string>;
   sequence: bigint;
   records: Frame[];
@@ -121,7 +123,10 @@ export class EventHub {
       return this.bootstrap;
     if (this.bootstrapping) return this.bootstrapping;
     this.bootstrapping = (async () => {
-      const { overview, cursor } = await readOverviewSnapshot(this.store);
+      const [{ overview, cursor }, manifest] = await Promise.all([
+        readOverviewSnapshot(this.store),
+        this.store.get<PanelRevisions>(PANEL_MANIFEST_KEY),
+      ]);
       const bounds = await this.store.eventBounds();
       let gap =
         bounds.oldest !== null && BigInt(cursor) < BigInt(bounds.oldest) - 1n;
@@ -162,6 +167,7 @@ export class EventHub {
       const result: Bootstrap = {
         at: Date.now(),
         overview,
+        ...(validPanelRevisions(manifest?.value) ? { panels: manifest.value } : {}),
         frames: new Map(),
         sequence: start,
         records,
@@ -227,7 +233,7 @@ export class EventHub {
                       client.topics!.has("liquidations")),
                 ),
               };
-        initial = `id: ${snapshot.sequence}\ndata: ${JSON.stringify({ type: "overview", data: overview })}\n\n`;
+        initial = `id: ${snapshot.sequence}\ndata: ${JSON.stringify({ type: "overview", data: overview, ...(snapshot.panels && (!client.topics || client.topics.has("overview")) ? { panels: snapshot.panels } : {}) })}\n\n`;
         snapshot.frames.set(key, initial);
       }
       if (!this.write(client, initial)) return;

@@ -46,9 +46,12 @@ afterEach(() => {
 function fixture(bootstrapTtl = 1000) {
   const records: StreamRecord[] = [];
   let eventCursor = "0";
+  let panels: unknown = null;
   const store = {
     kind: "local",
-    get: vi.fn(async () => ({
+    get: vi.fn(async (key: string) => key === "panel-revisions"
+      ? (panels ? { value: panels, receivedAt: Date.now() } : null)
+      : ({
       value: { ...emptyOverview("local"), eventCursor },
       receivedAt: Date.now(),
     })),
@@ -87,6 +90,7 @@ function fixture(bootstrapTtl = 1000) {
     setCursor: (value: string) => {
       eventCursor = value;
     },
+    setPanels: (value: unknown) => { panels = value; },
   };
 }
 function trade(
@@ -244,20 +248,46 @@ describe("shared SSE fanout", () => {
     bus.notify();
     await vi.waitFor(() => expect(response.ids()).toContain("102"));
     expect(response.ids()).toEqual(["100", "101", "102"]);
-    expect(store.get).toHaveBeenCalledTimes(1);
+    expect(store.get).toHaveBeenCalledTimes(2);
   });
-  it("bootstraps 2000 viewers with one snapshot read and one replay read", async () => {
+  it("bootstraps 2000 viewers with one overview/manifest pair and one replay read", async () => {
     const { store, hub, add } = fixture();
     const clients = await Promise.all(
       Array.from({ length: 2000 }, () => add()),
     );
     expect(hub.size).toBe(2000);
-    expect(store.get).toHaveBeenCalledTimes(1);
+    expect(store.get).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(store.get).mock.calls.map(([key]) => key).sort()).toEqual([
+      "overview", "panel-revisions",
+    ]);
     expect(store.eventBounds).toHaveBeenCalledTimes(1);
     expect(store.events).toHaveBeenCalledTimes(1);
     expect(clients.every((c) => c.messages()[0].type === "overview")).toBe(
       true,
     );
+  });
+  it("bootstraps panel capability without a duplicate event ID and filters later hints", async () => {
+    const { records, bus, add, setPanels } = fixture();
+    const manifest = {
+      version: 1 as const,
+      publishedAt: Date.now(),
+      panels: { house: { revision: "one", receivedAt: Date.now(), sourceAt: Date.now(), stale: false } },
+    };
+    setPanels(manifest);
+    const overview = await add(["overview"]);
+    const asset = await add(["asset:0"]);
+    expect(overview.messages()[0].panels).toEqual(manifest);
+    expect(overview.ids()).toEqual(["0"]);
+    expect(asset.messages()[0].panels).toBeUndefined();
+    records.push({ id: "1", message: { type: "panel-revisions", data: manifest } });
+    bus.notify();
+    await vi.waitFor(() => expect(overview.ids()).toEqual(["0", "1"]));
+    expect(asset.ids()).toEqual(["0"]);
+  });
+  it("omits old or malformed manifest capability during rolling upgrades", async () => {
+    const { add, setPanels } = fixture();
+    setPanels({ version: 2, publishedAt: Date.now(), panels: {} });
+    expect((await add()).messages()[0].panels).toBeUndefined();
   });
   it("encodes publications once, filters topics, and closes slow viewers without blocking healthy ones", async () => {
     const { records, bus, add } = fixture();

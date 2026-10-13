@@ -472,7 +472,15 @@ describe("saved house response and independent freshness", () => {
     });
     await retainHouseSource(store, source(), at);
     await store.put("summary", summary(at - 31000), at);
-    await refreshHouse(store, at);
+    const publications = await refreshHouse(store, at);
+    expect(publications).toEqual([expect.objectContaining({
+      key: "house",
+      sourceAt: at,
+      receivedAt: at,
+      freshUntil: at + 15000,
+      stale: false,
+    })]);
+    expect((await readHouse(store, at)).panelRevision).toBe(publications[0].revision);
     expect(await readHouse(store, at)).toMatchObject({
       stale: true,
       houseStale: false,
