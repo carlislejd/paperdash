@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import { DeadlinePgClient } from "./pg-deadline.js";
+import { acquirePgIndexMigrationLock } from "./pg-migration-lock.js";
 
 const name = "paperdash_analytics_wallet_fingerprint_wallet_time";
 const table = "paperdash_analytics_wallet_fingerprints";
@@ -34,7 +35,7 @@ export async function migratePgAnalyticsIndexes(pool: Pool): Promise<void> {
     // Advisory namespace 74481231: 0 = transactional schema migration,
     // 1 = live collector ownership, 2 = concurrent index migration. This
     // owner-only build must never wait for the long-lived collector lease.
-    await client.query("SELECT pg_advisory_lock(74481231, 2)");
+    await acquirePgIndexMigrationLock(client);
     const current = (await client.query(walletAssetIndexStatusSql)).rows[0];
     if (current && !current.expected)
       throw new Error(

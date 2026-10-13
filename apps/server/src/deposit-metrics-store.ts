@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Pool } from "pg";
 import { DeadlinePgClient, rollbackPg } from "./pg-deadline.js";
+import { acquirePgIndexMigrationLock } from "./pg-migration-lock.js";
 
 const DAY = 86400000;
 export interface DepositMetricsRead {
@@ -69,7 +70,7 @@ export async function migratePgDepositMetricsIndexes(
   client.on("error", () => {});
   try {
     await client.connect();
-    await client.query("SELECT pg_advisory_lock(74481231, 2)");
+    await acquirePgIndexMigrationLock(client);
     const current = (await client.query(depositMetricsIndexStatusSql)).rows[0];
     if (current && !current.expected)
       throw new Error(
