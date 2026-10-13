@@ -1,3 +1,5 @@
+import { niceChartAxis } from "./chart-axis";
+
 export interface ChartPoint {
   /** Source observation time, or the start of a UTC bucket. */
   time: number;
@@ -156,45 +158,27 @@ export function chartGeometry(
   width: number,
   height: number,
   bucketMs = HOUR_MS,
+  integerTicks = false,
 ): ChartGeometry {
   const range = chartRange(rangeInput);
   const prepared = chartPoints(input, range);
   const { points } = prepared;
   const values = points.flatMap((p) => (p.value === null ? [] : [p.value]));
-  const magnitude = Math.max(...values.map(Math.abs), 0) || 1;
-  let low = values.length ? Math.min(...values) / magnitude : 0;
-  let high = values.length ? Math.max(...values) / magnitude : 1;
-  if (kind === "bar") {
-    low = Math.min(low, 0);
-    high = Math.max(high, 0);
-  }
-  const pad =
-    high === low ? Math.max(Math.abs(high) * 0.06, 0.06) : (high - low) * 0.08;
+  const low = values.length ? Math.min(...values) : 0;
+  const high = values.length ? Math.max(...values) : 1;
   const nonnegativeBars = kind === "bar" && low >= 0;
-  if (nonnegativeBars) {
-    low = 0;
-    high = high === 0 || !values.length ? 1 : high + pad;
-  } else {
-    low -= pad;
-    high += pad;
-  }
+  const axis = niceChartAxis(low, high, {
+    includeZero: kind === "bar",
+    padding: kind === "bar" ? 0 : 0.08,
+    integer: integerTicks,
+  });
   const x = (time: number) =>
     Math.max(
       0,
       Math.min(width, ((time - range.from) / (range.to - range.from)) * width),
     );
-  const y = (value: number) =>
-    Math.max(
-      0,
-      Math.min(height, ((high - value / magnitude) / (high - low)) * height),
-    );
-  const ticks = [0.1, 0.5, 0.9].map((fraction) => ({
-    y: fraction * height,
-    value: Math.max(
-      -Number.MAX_VALUE,
-      Math.min(Number.MAX_VALUE, (high - (high - low) * fraction) * magnitude),
-    ),
-  }));
+  const y = (value: number) => (1 - axis.position(value)) * height;
+  const ticks = axis.ticks.map((value) => ({ y: y(value), value }));
   const interval =
     Number.isFinite(bucketMs) && bucketMs > 0 ? bucketMs : HOUR_MS;
   let path = "",

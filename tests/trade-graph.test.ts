@@ -3,7 +3,7 @@ import {
   GRAPH_PRICE_LIMIT,
   GRAPH_TRADE_LIMIT,
   graphBubbleRadius,
-  graphPriceExtent,
+  graphPriceAxis,
   graphPricePath,
   graphPrices,
   graphExecutionPrice,
@@ -56,7 +56,7 @@ describe("bounded trade graph data", () => {
     ).toBeNull();
   });
 
-  it("preserves price gaps in the path and gives a flat series a finite extent", () => {
+  it("preserves price gaps in the path and gives a flat series a finite rounded axis", () => {
     const points = [
       { time: 0, priceUsd: 100 },
       { time: 5_000, priceUsd: 100 },
@@ -69,10 +69,49 @@ describe("bounded trade graph data", () => {
         (price) => price,
       ),
     ).toBe("M0.00,100.00 L5.00,100.00 M60.00,100.00");
-    const extent = graphPriceExtent(points)!;
-    expect(extent[0]).toBeLessThan(100);
-    expect(extent[1]).toBeGreaterThan(100);
-    expect(graphPriceExtent([])).toBeNull();
+    const axis = graphPriceAxis(points)!;
+    expect(axis.ticks[0]).toBeLessThan(100);
+    expect(axis.ticks.at(-1)).toBeGreaterThan(100);
+    expect(axis.position(100)).toBeGreaterThan(0);
+    expect(axis.position(100)).toBeLessThan(1);
+    expect(graphPriceAxis([])).toBeNull();
+  });
+
+  it("uses the same rounded price axis for reference samples and execution prices", () => {
+    const axis = graphPriceAxis([
+      { time: 1, priceUsd: 83_456.75 },
+      { time: 2, priceUsd: 83_489.15 },
+      { time: 2, priceUsd: 83_510.4 },
+    ])!;
+    expect(axis.ticks[0]).toBeLessThan(83_456.75);
+    expect(axis.ticks.at(-1)).toBeGreaterThan(83_510.4);
+    expect(axis.ticks.every((tick) => Number.isInteger(tick))).toBe(true);
+    axis.ticks.forEach((tick, index) => {
+      expect(axis.position(tick)).toBeCloseTo(index / (axis.ticks.length - 1));
+    });
+    expect(axis.position(83_510.4)).toBeLessThan(1);
+    expect(axis.position(83_510.4)).toBeGreaterThan(axis.position(83_489.15));
+  });
+
+  it("keeps tiny and extreme prices finite and nonnegative without admitting invalid prices", () => {
+    expect(
+      graphPriceAxis([
+        { time: 0, priceUsd: NaN },
+        { time: 1, priceUsd: Infinity },
+        { time: 2, priceUsd: 0 },
+        { time: 3, priceUsd: -1 },
+      ]),
+    ).toBeNull();
+    for (const priceUsd of [0.000001, Number.MAX_VALUE]) {
+      const axis = graphPriceAxis([{ time: 0, priceUsd }])!;
+      expect(axis.ticks.length).toBeGreaterThan(1);
+      expect(
+        axis.ticks.every((tick) => Number.isFinite(tick) && tick >= 0),
+      ).toBe(true);
+      expect(Number.isFinite(axis.position(priceUsd))).toBe(true);
+      expect(axis.position(priceUsd)).toBeGreaterThanOrEqual(0);
+      expect(axis.position(priceUsd)).toBeLessThanOrEqual(1);
+    }
   });
 
   it("preserves a known short reconnect gap when a current quote repeats its timestamp", () => {

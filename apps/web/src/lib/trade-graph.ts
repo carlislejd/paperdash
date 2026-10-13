@@ -2,6 +2,7 @@ import type {
   AssetPricePoint,
   TradeEvent,
 } from "../../../../packages/shared/src/types";
+import { niceChartAxis } from "./chart-axis";
 
 export type GraphPricePoint = AssetPricePoint & { gapBefore?: boolean };
 
@@ -80,16 +81,22 @@ export function graphBubbleRadius(notional: number, largest: number): number {
   return Math.max(4, 22 * Math.sqrt(Math.min(notional / largest, 1)));
 }
 
-export function graphPriceExtent(points: readonly GraphPricePoint[]) {
-  if (!points.length) return null;
+export function graphPriceAxis(points: readonly GraphPricePoint[]) {
   let low = Infinity;
   let high = -Infinity;
   for (const point of points) {
+    if (!Number.isFinite(point.priceUsd) || point.priceUsd <= 0) continue;
     low = Math.min(low, point.priceUsd);
     high = Math.max(high, point.priceUsd);
   }
-  const pad = Math.max((high - low) * 0.16, high * 0.00015, 0.01);
-  return [Math.max(0, low - pad), high + pad] as const;
+  if (!Number.isFinite(low)) return null;
+  return niceChartAxis(low, high, {
+    tickCount: 5,
+    padding: 0.16,
+    flatPadding: 0.00015,
+    minPadding: 0.01,
+    nonnegative: true,
+  });
 }
 
 export function graphPricePath(

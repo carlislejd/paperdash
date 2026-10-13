@@ -18,6 +18,7 @@ import { fetchJson } from "../lib/api";
 import { useFollowing } from "../lib/use-following";
 import { FOLLOWING_LIMIT } from "../lib/following-storage";
 import { mergeHistory } from "../lib/wallet-history";
+import { formatAxisTick, niceChartAxis } from "../lib/chart-axis";
 import { closedHoldingTimeMs, formatHoldingTime } from "../lib/position-format";
 import { PositionMetrics } from "./PositionMetrics";
 import { WalletMarginRisk } from "./WalletMarginRisk";
@@ -270,15 +271,17 @@ function PortfolioChart({
       min = Math.min(min, point.value);
       max = Math.max(max, point.value);
     }
-    const padding = (max - min) * 0.12 || Math.max(Math.abs(max) * 0.025, 1);
-    const lower = min - padding,
-      upper = max + padding;
+    const axis = niceChartAxis(min, max, {
+      tickCount: 3,
+      padding: 0.12,
+      flatPadding: 0.025,
+      minPadding: 1,
+    });
     const start = points[0].time,
       end = points[points.length - 1].time;
     const x = (time: number) =>
       64 + (end === start ? 0.5 : (time - start) / (end - start)) * 516;
-    const y = (value: number) =>
-      150 - ((value - lower) / (upper - lower)) * 126;
+    const y = (value: number) => 150 - axis.position(value) * 126;
     const gaps = new Set(history.gapIndices);
     const paths: string[] = [];
     let path = "",
@@ -297,8 +300,8 @@ function PortfolioChart({
     const last = points[points.length - 1];
     return {
       paths,
-      min,
-      max,
+      axis,
+      y,
       start,
       end,
       last,
@@ -352,22 +355,23 @@ function PortfolioChart({
             role="img"
             aria-label={`Recorded ${series === "equity" ? "equity" : "P and L"} from ${dateLabel(chart.start, true)} to ${dateLabel(chart.end, true)}. Latest ${formatUsd(chart.last.value)}. ${history?.coverage.complete ? "Complete coverage for the returned period." : "History is incomplete."}`}
           >
-            {[30, 88, 150].map((y) => (
-              <line
-                key={y}
-                x1="64"
-                x2="580"
-                y1={y}
-                y2={y}
-                className="wd-chart-grid"
-              />
+            {chart.axis.ticks.map((value) => (
+              <g key={value}>
+                <line
+                  x1="64"
+                  x2="580"
+                  y1={chart.y(value)}
+                  y2={chart.y(value)}
+                  className="wd-chart-grid"
+                />
+                <text x="0" y={chart.y(value) + 3} className="wd-chart-label">
+                  {formatAxisTick(value, chart.axis.ticks, {
+                    compact: true,
+                    currency: true,
+                  })}
+                </text>
+              </g>
             ))}
-            <text x="0" y="33" className="wd-chart-label">
-              {formatUsd(chart.max, true)}
-            </text>
-            <text x="0" y="153" className="wd-chart-label">
-              {formatUsd(chart.min, true)}
-            </text>
             {chart.paths.map((path, index) => (
               <path key={index} d={path} className="wd-chart-line" />
             ))}

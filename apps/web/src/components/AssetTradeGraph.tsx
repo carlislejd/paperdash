@@ -13,12 +13,13 @@ import type {
 } from "../../../../packages/shared/src/types";
 import { MARKET_WINDOWS, selectMarketSample } from "../lib/market-sample";
 import { formatUsd, relativeTime, shortAddress } from "../lib/format";
+import { formatAxisTick } from "../lib/chart-axis";
 import {
   GRAPH_PRICE_GAP_MS,
   GRAPH_TRADE_LIMIT,
   graphBubbleRadius,
   graphExecutionPrice,
-  graphPriceExtent,
+  graphPriceAxis,
   graphPricePath,
   graphPrices,
   graphTrades,
@@ -173,9 +174,9 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
       ),
     [trades],
   );
-  const extent = useMemo(
+  const axis = useMemo(
     () =>
-      graphPriceExtent([
+      graphPriceAxis([
         ...prices,
         ...plotted.map((trade) => ({
           time: trade.ts,
@@ -209,10 +210,8 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
   const x = (time: number) =>
     padding.left + ((time - from) / range) * (plotRight - padding.left);
   const y = (price: number) =>
-    extent
-      ? plotBottom -
-        ((price - extent[0]) / (extent[1] - extent[0])) *
-          (plotBottom - padding.top)
+    axis
+      ? plotBottom - axis.position(price) * (plotBottom - padding.top)
       : plotBottom;
   const pricePath = graphPricePath(prices, x, y);
   const priceDelayed =
@@ -330,7 +329,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
             <small>Bubble area ≈ notional</small>
           </div>
           <div ref={chartRef} className="trade-graph-canvas">
-            {extent ? (
+            {axis ? (
               <svg
                 viewBox={`0 0 ${width} ${height}`}
                 width="100%"
@@ -376,10 +375,9 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                     />
                   </clipPath>
                 </defs>
-                {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
-                  const value = extent[0] + (extent[1] - extent[0]) * fraction;
+                {axis.ticks.map((value) => {
                   return (
-                    <g key={fraction} className="trade-graph-grid">
+                    <g key={value} className="trade-graph-grid">
                       <line
                         x1={padding.left}
                         x2={plotRight}
@@ -387,7 +385,10 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                         y2={y(value)}
                       />
                       <text x={plotRight + 11} y={y(value) + 3}>
-                        {formatUsd(value)}
+                        {formatAxisTick(value, axis.ticks, {
+                          compact: false,
+                          currency: true,
+                        })}
                       </text>
                     </g>
                   );
@@ -528,7 +529,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
               Arrow keys select trades; Escape clears selection.
             </span>
           </p>
-          {!prices.length && extent && (
+          {!prices.length && axis && (
             <p className="trade-graph-note">
               Reference price history is unavailable. Only priced executions are
               plotted.

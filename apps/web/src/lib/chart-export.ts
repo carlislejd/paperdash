@@ -1,3 +1,4 @@
+import { formatAxisTick } from "./chart-axis";
 import {
   fittedText,
   wrappedText,
@@ -93,6 +94,7 @@ export async function renderChartPng(
     plot.width,
     plot.height,
     snapshot.bucketMs,
+    snapshot.unit === "positions" || snapshot.unit === "liquidations",
   );
   const last = geometry.points.at(-1);
   const stack =
@@ -128,7 +130,15 @@ export async function renderChartPng(
     ctx.stroke();
     ctx.fillStyle = muted;
     ctx.textAlign = "right";
-    ctx.fillText(formatChartNumber(tick.value), -22, tick.y + 7, 132);
+    ctx.fillText(
+      formatAxisTick(
+        tick.value,
+        geometry.ticks.map((item) => item.value),
+      ),
+      -22,
+      tick.y + 7,
+      132,
+    );
   });
   ctx.textAlign = "left";
   ctx.save();

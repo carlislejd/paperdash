@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { niceChartAxis } from "../lib/chart-axis";
 import type {
   AssetActivity,
   AssetOiSample,
@@ -71,10 +72,15 @@ function InterestHistory({
     ...points.flatMap((point) => [point.long, point.short]),
     1,
   );
+  const axis = niceChartAxis(0, maximum, {
+    includeZero: true,
+    padding: 0,
+    tickCount: 2,
+  });
   const x = (time: number) =>
     pad + ((time - first) / (last - first || 1)) * (width - 2 * pad);
   const y = (value: number) =>
-    height - pad - (value / maximum) * (height - 2 * pad);
+    height - pad - axis.position(value) * (height - 2 * pad);
   const path = (side: "long" | "short") =>
     points
       .map(
@@ -103,13 +109,13 @@ function InterestHistory({
         role="img"
         aria-label={`${symbol} open-interest history, ${points.length} recorded snapshots. Latest long ${formatUsd(points.at(-1)!.long)}, short ${formatUsd(points.at(-1)!.short)}.`}
       >
-        {[0, 0.5, 1].map((fraction) => (
+        {axis.ticks.map((value) => (
           <line
-            key={fraction}
+            key={value}
             x1={pad}
             x2={width - pad}
-            y1={y(maximum * fraction)}
-            y2={y(maximum * fraction)}
+            y1={y(value)}
+            y2={y(value)}
             stroke="currentColor"
             strokeOpacity=".12"
             strokeDasharray="2 5"

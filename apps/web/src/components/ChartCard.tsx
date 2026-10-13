@@ -19,6 +19,7 @@ import {
 } from "../lib/chart-data";
 import type { ChartExportSnapshot } from "../lib/chart-export";
 import { useImageActions } from "../lib/use-image-actions";
+import { formatAxisTick } from "../lib/chart-axis";
 import "./chart-card.css";
 
 export interface ChartCardProps {
@@ -94,8 +95,17 @@ function ChartPlot({
     right = compact ? 3 : 8;
   const plotWidth = width - left - right;
   const geometry = useMemo(
-    () => chartGeometry(points, range, kind, plotWidth, height - 12, bucketMs),
-    [points, range.from, range.to, kind, plotWidth, height, bucketMs],
+    () =>
+      chartGeometry(
+        points,
+        range,
+        kind,
+        plotWidth,
+        height - 12,
+        bucketMs,
+        unit === "positions" || unit === "liquidations",
+      ),
+    [points, range.from, range.to, kind, plotWidth, height, bucketMs, unit],
   );
   const stack = useMemo(
     () =>
@@ -134,7 +144,10 @@ function ChartPlot({
               key={index}
               style={{ top: `${((tick.y + 6) / (height + 5)) * 100}%` }}
             >
-              {formatChartNumber(tick.value)}
+              {formatAxisTick(
+                tick.value,
+                geometry.ticks.map((item) => item.value),
+              )}
             </span>
           ))}
         </div>
