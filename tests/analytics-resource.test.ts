@@ -470,6 +470,71 @@ it("ignores legacy liquidation notifications while a request is pending or the t
   expect(resources.diagnostics().notificationRequests).toBe(0);
 });
 
+it("acknowledges a body ahead of its coalesced hint without downloading it again or changing its clocks", async () => {
+  read.mockResolvedValue({ ...response(), panelRevision: "b" });
+  resources.setDelivery(publication("a"));
+  resources.subscribe(paths[0], () => {});
+  await flush();
+  expect(resources.get(paths[0])).toMatchObject({
+    data: { panelRevision: "b", stale: true, receivedAt: AT, sourceAt: AT },
+  });
+  await vi.advanceTimersByTimeAsync(1000);
+  resources.setDelivery(publication("b"));
+  expect(resources.get(paths[0])).toMatchObject({
+    data: {
+      panelRevision: "b",
+      stale: false,
+      houseStale: false,
+      receivedAt: AT,
+      sourceAt: AT,
+    },
+  });
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(resources.diagnostics().revisionRequests).toBe(0);
+  resources.setDelivery(publication("b", true));
+  await flush();
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(resources.get(paths[0])).toMatchObject({ data: { houseStale: true } });
+});
+
+it("confirms an ahead body read during a health recovery but rereads when health changed after that read", async () => {
+  resources.setDelivery(publication("a", true));
+  resources.subscribe(paths[0], () => {});
+  await flush();
+  read.mockResolvedValue({ ...response(), panelRevision: "b" });
+  await vi.advanceTimersByTimeAsync(5000);
+  resources.setDelivery(publication("a", false));
+  await flush();
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(resources.get(paths[0])).toMatchObject({
+    data: { stale: true, panelRevision: "b" },
+  });
+  resources.setDelivery(publication("b", false));
+  expect(resources.get(paths[0])).toMatchObject({
+    data: { stale: false, houseStale: false },
+  });
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(read).toHaveBeenCalledTimes(2);
+  resources.setDelivery(publication("b", true));
+  await flush();
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(resources.get(paths[0])).toMatchObject({
+    data: { stale: true, houseStale: true },
+  });
+});
+
+it("does not acknowledge a stale REST body solely because a healthy bootstrap carries its content token", async () => {
+  read.mockResolvedValueOnce({ ...response(), stale: true });
+  resources.subscribe(paths[2], () => {});
+  await flush();
+  resources.setDelivery(publication("a", false));
+  expect(resources.get(paths[2])).toMatchObject({ data: { stale: true } });
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(resources.get(paths[2])).toMatchObject({ data: { stale: false } });
+});
+
 it("validates capability envelopes and never accepts resource URLs or malformed hints", () => {
   expect(
     decodePanelRevisions({ version: 2, publishedAt: AT, panels: {} }),

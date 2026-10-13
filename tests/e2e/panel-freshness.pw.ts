@@ -138,9 +138,9 @@ test("capable bootstrap shares four panels and avoids unchanged five-second down
     panels: manifest(at),
   });
   await page.clock.fastForward(5000);
-  await expect.poll(() => [...reads.values()]).toEqual([2, 2, 2, 2]);
+  await expect.poll(() => [...reads.values()]).toEqual([1, 1, 1, 1]);
   const settled = new Map(reads);
-  for (let elapsed = 10000; elapsed <= 30000; elapsed += 5000) {
+  for (let elapsed = 10000; elapsed <= 25000; elapsed += 5000) {
     await page.clock.fastForward(5000);
     if (elapsed % 10000 === 0)
       await emit(page, {
@@ -149,29 +149,29 @@ test("capable bootstrap shares four panels and avoids unchanged five-second down
       });
   }
   expect([...reads]).toEqual([...settled]);
-  // Without capability this same window requires seven reads per panel.
-  expect([...reads.values()].every((count) => count <= 2)).toBe(true);
+  // Without capability this same window requires six reads per panel.
+  expect([...reads.values()].every((count) => count === 1)).toBe(true);
   await page.route("**/api/paper/economics", (route) =>
     route.fulfill({
-      json: { ...paperEconomicsResponse(at + 30000), panelRevision: "b" },
+      json: { ...paperEconomicsResponse(at + 25000), panelRevision: "b" },
     }),
   );
   await emit(page, {
     type: "panel-revisions",
     data: {
       version: 1,
-      publishedAt: at + 30000,
+      publishedAt: at + 25000,
       panels: {
         "paper-economics": {
           revision: "b",
-          sourceAt: at + 30000,
-          receivedAt: at + 30000,
+          sourceAt: at + 25000,
+          receivedAt: at + 25000,
           stale: false,
         },
       },
     },
   });
-  await expect.poll(() => reads.get("/api/paper/economics")).toBe(3);
+  await expect.poll(() => reads.get("/api/paper/economics")).toBe(2);
   expect(reads.get("/api/house")).toBe(settled.get("/api/house"));
   expect(
     await page.evaluate(() =>

@@ -46,6 +46,7 @@ type Entry = {
   hintStale: boolean;
   healthVersion: number;
   appliedHealth: number;
+  rawHealth: number;
   unmatched: number;
   unconfirmed: boolean;
   resumeAt: number;
@@ -102,6 +103,7 @@ export class AnalyticsResources {
         hintStale: false,
         healthVersion: 0,
         appliedHealth: 0,
+        rawHealth: 0,
         unmatched: 0,
         unconfirmed: false,
         resumeAt: 0,
@@ -209,6 +211,29 @@ export class AnalyticsResources {
     entry.hintStale = stale;
     entry.wanted = revision;
     entry.unmatched = 0;
+    const savedRevision =
+      entry.raw && typeof entry.raw === "object"
+        ? (entry.raw as { panelRevision?: unknown }).panelRevision
+        : undefined;
+    const saved = entry.raw as { stale?: boolean; houseStale?: boolean } | null;
+    const savedStale =
+      entry.path === "/api/house"
+        ? (saved?.houseStale ?? saved?.stale)
+        : saved?.stale;
+    if (
+      savedRevision === revision &&
+      entry.healthVersion === entry.rawHealth &&
+      !savedStale &&
+      !entry.failures
+    ) {
+      // REST can observe a publication before its coalesced stream hint. The
+      // arriving exact token proves the saved body without another download.
+      entry.applied = revision;
+      entry.appliedHealth = entry.rawHealth;
+      entry.unconfirmed = false;
+      entry.dirtyAt = null;
+      return;
+    }
     // Repeated changes preserve the first deadline instead of debouncing forever.
     entry.dirtyAt ??= this.env.now() + this.env.random() * 750;
   }
@@ -345,6 +370,7 @@ export class AnalyticsResources {
       });
       if (controller.signal.aborted || entry.controller !== controller) return;
       entry.raw = data;
+      entry.rawHealth = health;
       entry.checkedAt = this.env.now();
       entry.jitter = this.env.random();
       entry.failures = 0;
@@ -356,8 +382,7 @@ export class AnalyticsResources {
       // Bootstrap can arrive while the initial polling GET is in flight.
       // Preserve that new hint and acknowledge it only with the same proof.
       const expected = revision ?? (this.capable(entry) ? entry.wanted : null);
-      const expectedHealth =
-        revision === null && this.capable(entry) ? entry.healthVersion : health;
+      const expectedHealth = health;
       if (expected === null || returnedRevision === expected) {
         if (expected === null) {
           // A successful polling response is authoritative after capability
