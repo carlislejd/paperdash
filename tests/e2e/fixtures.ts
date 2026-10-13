@@ -6,6 +6,7 @@ import type {
   AssetsResponse,
   AssetMarketResponse,
   Cashflow,
+  DepositDailyResponse,
   LeaderboardResponse,
   Overview,
   ProtocolChartsResponse,
@@ -344,9 +345,35 @@ export function positionMetricsResponse(
   };
 }
 
-export function protocolChartsResponse(): ProtocolChartsResponse {
-  const at = Date.now(),
-    hour = 3600000,
+export function depositDailyResponse(at = Date.now()): DepositDailyResponse {
+  const day = 86400000,
+    today = Math.floor(at / day) * day;
+  return {
+    intervalMs: 86400000,
+    timeZone: "UTC",
+    days: [0, 1, 3, 4, 5, 6].map((index) => ({
+      time: today - (6 - index) * day,
+      depositVolumeRaw: usd(index === 6 ? 125 : (index + 1) * 1000),
+      depositCount: index + 4,
+      firstDepositors: index === 6 ? 1 : Math.min(index + 1, 3),
+    })),
+    observedFrom: today - 6 * day,
+    updatedAt: at - 1000,
+    stale: false,
+    coverage: {
+      partial: true,
+      identityAmbiguous: true,
+      projectionBackfillComplete: true,
+      pending: false,
+      excludedRecords: 0,
+    },
+  };
+}
+
+export function protocolChartsResponse(
+  at = Date.now(),
+): ProtocolChartsResponse {
+  const hour = 3600000,
     base = Math.floor(at / hour) * hour;
   const keys = [
     "tvl",
@@ -399,6 +426,7 @@ export function protocolChartsResponse(): ProtocolChartsResponse {
     stale: false,
     intervalMs: 3600000,
     series,
+    deposits: depositDailyResponse(at),
   };
 }
 
@@ -408,11 +436,7 @@ export function paperEconomicsResponse(
   const base = Math.floor(at / 3600000) * 3600000;
   const series = (
     kind:
-      | "supply"
-      | "staked"
-      | "supplyChange"
-      | "rewardAllocation"
-      | "allocated",
+      "supply" | "staked" | "supplyChange" | "rewardAllocation" | "allocated",
   ): PaperEconomicsResponse["series"]["supply"] => ({
     unit: kind === "rewardAllocation" || kind === "allocated" ? "USD" : "PAPER",
     aggregation:

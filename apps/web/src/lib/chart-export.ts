@@ -27,6 +27,7 @@ export interface ChartExportSnapshot {
   segments?: readonly ChartSegment[];
   range: ChartRange;
   sourceAt: number | null;
+  timestampLabel?: string;
   coverage: string;
   stale: boolean;
   color: ChartColor;
@@ -41,7 +42,7 @@ export function chartExportMetadata(snapshot: ChartExportSnapshot): string[] {
   return [
     snapshot.range.label,
     `${formatChartTime(snapshot.range.from)} – ${formatChartTime(snapshot.range.to)}`,
-    `Data timestamp: ${formatChartTime(snapshot.sourceAt)}`,
+    `${snapshot.timestampLabel ?? "Data timestamp"}: ${formatChartTime(snapshot.sourceAt)}`,
     `${snapshot.stale ? "Last available · " : ""}${snapshot.coverage}`,
     snapshot.kind === "bar"
       ? chartBucketCaption(snapshot.bucketMs)
@@ -94,7 +95,9 @@ export async function renderChartPng(
     plot.width,
     plot.height,
     snapshot.bucketMs,
-    snapshot.unit === "positions" || snapshot.unit === "liquidations",
+    snapshot.unit === "positions" ||
+      snapshot.unit === "liquidations" ||
+      snapshot.unit === "wallets",
   );
   const last = geometry.points.at(-1);
   const stack =

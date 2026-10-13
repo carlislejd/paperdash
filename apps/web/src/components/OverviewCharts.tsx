@@ -7,6 +7,7 @@ import { useAnalytics } from "../lib/use-analytics";
 import { ChartCard } from "./ChartCard";
 import { HouseStats } from "./HouseStats";
 import { PaperDailyCharts } from "./PaperDailyCharts";
+import { DepositDailyCharts } from "./DepositDailyCharts";
 
 export function OverviewCharts() {
   const readHours = () =>
@@ -55,7 +56,8 @@ export function OverviewCharts() {
       <section className="overview-chart-section" aria-label="Protocol charts">
         <div className="overview-chart-toolbar">
           <p>
-            Daily PAPER & rewards · hourly trading · expand or save any chart
+            Daily PAPER, rewards & deposits · hourly trading · expand or save
+            any chart
           </p>
           <div className="range-control" aria-label="Trading history range">
             {[24, 168].map((value) => (
@@ -71,6 +73,13 @@ export function OverviewCharts() {
         </div>
         <div className="overview-chart-grid">
           <PaperDailyCharts resource={paper} />
+          <DepositDailyCharts
+            data={data?.deposits}
+            error={error}
+            loading={loading}
+            stale={data?.stale}
+            refresh={refresh}
+          />
           <ChartCard
             {...common}
             id="volume"

@@ -67,7 +67,7 @@ test("PAPER uses its own coherent totals and clock, shares daily changes and pre
   ).toHaveCount(0);
   await expect(
     history.locator(".overview-chart-grid > .pc-chart-card"),
-  ).toHaveCount(4);
+  ).toHaveCount(6);
   await expect(
     page.getByRole("region", { name: "PAPER hourly history" }),
   ).toHaveCount(0);

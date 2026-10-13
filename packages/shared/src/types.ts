@@ -329,22 +329,22 @@ export interface WalletResponse {
   marginRisk?: WalletMarginRiskResponse;
 }
 export type PanelKey =
-  | "house"
-  | "protocol-charts"
-  | "paper-economics"
-  | "liquidation-stats";
+  "house" | "protocol-charts" | "paper-economics" | "liquidation-stats";
 /** Advisory publication hints; REST remains the snapshot/recovery authority. */
 export interface PanelRevisions {
   version: 1;
   publishedAt: number;
   panels: Partial<
-    Record<PanelKey, {
-      revision: string;
-      receivedAt: number;
-      sourceAt: number | null;
-      /** House health covers its valuation; PAPER has an independent panel. */
-      stale: boolean;
-    }>
+    Record<
+      PanelKey,
+      {
+        revision: string;
+        receivedAt: number;
+        sourceAt: number | null;
+        /** House health covers its valuation; PAPER has an independent panel. */
+        stale: boolean;
+      }
+    >
   >;
 }
 export type StreamMessage =
@@ -450,6 +450,30 @@ export interface ProtocolChartSeries {
     "protocol-history-and-retained-summary" | "retained-summary-observations";
   coverage: { observedFrom: number | null; partial: true };
 }
+export interface DepositDailyResponse {
+  intervalMs: 86400000;
+  timeZone: "UTC";
+  /** Sparse retained totals. Missing days are unknown until local projection catches up. */
+  days: {
+    time: number;
+    depositVolumeRaw: Raw;
+    depositCount: number;
+    firstDepositors: number;
+  }[];
+  /** Earliest retained positive deposit, not the beginning of complete history. */
+  observedFrom: number | null;
+  /** Last projection change, not a promise of source freshness. */
+  updatedAt: number | null;
+  stale: boolean;
+  coverage: {
+    partial: true;
+    identityAmbiguous: true;
+    projectionBackfillComplete: boolean;
+    pending: boolean;
+    excludedRecords: number;
+  };
+  error?: string;
+}
 export interface ProtocolChartsResponse {
   panelRevision?: string;
   receivedAt: number | null;
@@ -457,6 +481,8 @@ export interface ProtocolChartsResponse {
   stale: boolean;
   intervalMs: 3600000;
   series: Record<ProtocolChartMetric, ProtocolChartSeries>;
+  /** Shares the saved chart response; no per-viewer ledger scan. */
+  deposits?: DepositDailyResponse;
   error?: string;
 }
 

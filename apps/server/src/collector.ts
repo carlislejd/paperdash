@@ -298,7 +298,12 @@ export class Collector {
       await refreshAssetAnalytics(this.store);
     });
     this.loop("position-metrics", 5000, async () => {
-      await this.store.positionMetrics.tick(500);
+      const results = await Promise.allSettled([
+        this.store.positionMetrics.tick(500),
+        this.store.depositMetrics.tick(500),
+      ]);
+      const failed = results.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
     });
     this.loop("summary", config.summaryInterval, async () => {
       const summary = await this.upstream.request(

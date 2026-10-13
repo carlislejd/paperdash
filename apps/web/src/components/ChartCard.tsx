@@ -32,6 +32,8 @@ export interface ChartCardProps {
   segments?: readonly ChartSegment[];
   range: ChartRange;
   sourceAt: number | null;
+  /** Override when this clock represents a retained calculation, not a source observation. */
+  timestampLabel?: string;
   coverage: string;
   stale?: boolean;
   loading?: boolean;
@@ -103,7 +105,7 @@ function ChartPlot({
         plotWidth,
         height - 12,
         bucketMs,
-        unit === "positions" || unit === "liquidations",
+        unit === "positions" || unit === "liquidations" || unit === "wallets",
       ),
     [points, range.from, range.to, kind, plotWidth, height, bucketMs, unit],
   );
@@ -531,6 +533,7 @@ export function ChartCard(props: ChartCardProps) {
       segments: cloneChartSegments(props.segments),
       range: { ...range },
       sourceAt,
+      timestampLabel: props.timestampLabel,
       coverage: exportCoverage,
       stale,
       color: props.color ?? "lavender",
@@ -572,7 +575,7 @@ export function ChartCard(props: ChartCardProps) {
       ? "Loading"
       : stale
         ? "Last available"
-        : formatChartTime(sourceAt);
+        : `${props.timestampLabel ? `${props.timestampLabel}: ` : ""}${formatChartTime(sourceAt)}`;
   return (
     <section
       className={`pc-chart-card${compact ? " pc-chart-card--compact" : ""}`}
@@ -687,7 +690,8 @@ export function ChartCard(props: ChartCardProps) {
               {exportCoverage}
             </p>
             <p className="pc-chart-stamp">
-              Data timestamp: {formatChartTime(sourceAt)}
+              {props.timestampLabel ?? "Data timestamp"}:{" "}
+              {formatChartTime(sourceAt)}
               {stale ? " · Last available" : ""}
             </p>
             {error && onRetry && (

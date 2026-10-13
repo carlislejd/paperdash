@@ -221,12 +221,36 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
         (await api.store.history.readPortfolio(wallet))?.value.columns.equity,
       ).toEqual([2]);
       await worker.store.positionMetrics.tick(10);
+      await worker.store.depositMetrics.tick(10);
+      const depositDay = Math.floor(at / 86400000) * 86400000;
+      expect(
+        await worker.store.depositMetrics.read(
+          depositDay,
+          depositDay + 86400000,
+        ),
+      ).toMatchObject({ projectionBackfillComplete: true, pending: false });
+      // API serves the saved protocol chart snapshot; it does not read or alter
+      // collector-owned deposit facts and rollups.
+      await expect(
+        api.pool.query("UPDATE paperdash_deposit_metrics_state SET complete=0"),
+      ).rejects.toThrow(/permission denied/i);
+      await expect(
+        api.pool.query("SELECT * FROM paperdash_deposit_metrics_facts"),
+      ).rejects.toThrow(/permission denied/i);
       expect((await api.store.positionMetrics.read(wallet)).positionCount).toBe(
         1,
       );
-      expect((await api.store.positionMetrics.readMany([wallet], at + 302002))[wallet])
-        .toMatchObject({ recordedCount: 1, indexedAt: at + 1001,
-          backfillComplete: true, projectionPending: false, excludedCount: 0 });
+      expect(
+        (await api.store.positionMetrics.readMany([wallet], at + 302002))[
+          wallet
+        ],
+      ).toMatchObject({
+        recordedCount: 1,
+        indexedAt: at + 1001,
+        backfillComplete: true,
+        projectionPending: false,
+        excludedCount: 0,
+      });
       await worker.store.history.retainProtocol([{ time: at, value: 5 }]);
       const chartHour = Math.floor(at / 3600000) * 3600000;
       const chartRow = {

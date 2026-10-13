@@ -6,6 +6,7 @@ import type {
 } from "../../../packages/shared/src/types.js";
 import { addressSchema, digest } from "./schemas.js";
 import { enqueuePositionMetrics } from "./position-metrics-store.js";
+import { enqueueDepositMetrics } from "./deposit-metrics-store.js";
 
 export type LedgerKind = "cashflows" | "trades";
 export type JobKind = LedgerKind | "portfolio";
@@ -669,6 +670,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
           statements.push(
             enqueuePositionMetrics(db.prefix, job.address, row.key),
           );
+        else statements.push(enqueueDepositMetrics(db.prefix, job.address, row.key));
       }
       statements.push({
         sql: `INSERT INTO ${t("pages")} VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,

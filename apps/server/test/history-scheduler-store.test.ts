@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Pool } from "pg";
 import { createStore, type Store } from "../src/store.js";
 import { createHistoryStore, historySchemaSql, type HistoryLane, type JobKind } from "../src/history-store.js";
+import { depositMetricsSchemaSql } from "../src/deposit-metrics-store.js";
 
 const hour = 3_600_000;
 const cold = 6 * hour;
@@ -33,6 +34,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL scheduler SQL parity
       await client.query("BEGIN");
       // These isolated fixture tables and all mutations roll back at the end.
       await client.query(historySchemaSql(prefix, true));
+      await client.query(depositMetricsSchemaSql(prefix, true));
       const history = createHistoryStore({
         prefix,
         async rows<T>(sql: string, params: unknown[] = []) {

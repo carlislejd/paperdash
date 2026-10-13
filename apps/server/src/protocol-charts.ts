@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type {
   AnnualizedStakingRevenue,
+  DepositDailyResponse,
   PaperEconomicsResponse,
   ProtocolChartPoint,
   ProtocolChartMetric,
@@ -11,7 +12,10 @@ import type {
 import type { Store } from "./store.js";
 import type { ProtocolChartObservation } from "./history-store.js";
 import { protocolHistorySchema } from "./schemas.js";
-import { snapshotPanelRevision, type PanelPublication } from "./panel-revisions.js";
+import {
+  snapshotPanelRevision,
+  type PanelPublication,
+} from "./panel-revisions.js";
 
 const HOUR = 3600000;
 const DAY = 86400000;
@@ -332,9 +336,14 @@ function dailySeries(
             observed &&
             (!historical || observed.observedToMs! >= historical.observedToMs!)
               ? observed
-              : historical ?? observed;
+              : (historical ?? observed);
           return (
-            selected ?? { time: day, value: null, partial: true, gapBefore: true }
+            selected ?? {
+              time: day,
+              value: null,
+              partial: true,
+              gapBefore: true,
+            }
           );
         })
       : [];
@@ -467,19 +476,21 @@ function stakeRatioBps(summary: ProtocolSummary | null): number | null {
     : null;
 }
 export async function refreshProtocolCharts(
-  store: Context,
+  store: Context & Pick<Store, "depositMetrics">,
   now = Date.now(),
 ): Promise<PanelPublication[]> {
-  const [histories, summaries, summary] = await Promise.all([
+  const [histories, summaries, summary, deposits] = await Promise.all([
     store.history.protocolChartRows("history"),
     store.history.protocolChartRows("summary"),
     store.get<ProtocolSummary>("summary"),
+    retainedDepositCharts(store, now),
   ]);
   const sourceAt = summary?.value.source.at ?? null;
   const data: ProtocolChartsResponse = {
     ...empty(),
     receivedAt: now,
     sourceAt,
+    deposits,
     stale:
       !summary ||
       sourceAt === null ||
@@ -536,7 +547,12 @@ export async function refreshProtocolCharts(
       intervalMs: DAY,
       timeZone: "UTC",
       supplyChange: dailySeries("paperSupply", histories, dailySummaries, now),
-      rewardAllocation: dailySeries("stakingRewards", histories, dailySummaries, now),
+      rewardAllocation: dailySeries(
+        "stakingRewards",
+        histories,
+        dailySummaries,
+        now,
+      ),
     },
   };
   economics.panelRevision = snapshotPanelRevision(economics);
@@ -553,8 +569,56 @@ export async function refreshProtocolCharts(
   };
   return [
     { ...publication, key: "protocol-charts", revision: data.panelRevision },
-    { ...publication, key: "paper-economics", revision: economics.panelRevision },
+    {
+      ...publication,
+      key: "paper-economics",
+      revision: economics.panelRevision,
+    },
   ];
+}
+
+/** Collector-only bounded rollup read. A projection failure must not prevent
+ * the independent protocol/PAPER panels from publishing or erase good totals. */
+async function retainedDepositCharts(
+  store: Pick<Store, "get" | "depositMetrics">,
+  now: number,
+): Promise<DepositDailyResponse> {
+  const today = Math.floor(now / DAY) * DAY;
+  try {
+    const { days, observedFrom, updatedAt, ...coverage } =
+      await store.depositMetrics.read(
+        Math.max(0, today - 6 * DAY),
+        today + DAY,
+      );
+    return {
+      intervalMs: DAY,
+      timeZone: "UTC",
+      days,
+      observedFrom,
+      updatedAt,
+      stale: false,
+      coverage: { ...coverage, partial: true, identityAmbiguous: true },
+    };
+  } catch {
+    const saved = await store.get<ProtocolChartsResponse>("protocol-charts");
+    return {
+      intervalMs: DAY,
+      timeZone: "UTC",
+      days: [],
+      observedFrom: null,
+      updatedAt: null,
+      coverage: {
+        partial: true,
+        identityAmbiguous: true,
+        projectionBackfillComplete: false,
+        pending: true,
+        excludedRecords: 0,
+      },
+      ...saved?.value.deposits,
+      stale: true,
+      error: "Deposit totals are delayed; showing retained observations.",
+    };
+  }
 }
 
 type SnapshotHeartbeat = { at: number; errors?: Record<string, string> };
@@ -623,6 +687,18 @@ export async function readProtocolCharts(
   return {
     ...saved.value,
     stale,
+    ...(saved.value.deposits
+      ? {
+          deposits: {
+            ...saved.value.deposits,
+            stale:
+              saved.value.deposits.stale ||
+              stale ||
+              !!heartbeat?.value.errors?.["position-metrics"] ||
+              !!heartbeat?.value.errors?.["wallet-indexer"],
+          },
+        }
+      : {}),
     ...(stale
       ? {
           error:

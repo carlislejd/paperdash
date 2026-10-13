@@ -7,6 +7,14 @@ import {
 import { DeadlinePgClient, rollbackPg } from "./pg-deadline.js";
 import { monitorPgLease } from "./pg-lease.js";
 import {
+  createPgDepositMetrics,
+  createLocalDepositMetrics,
+  depositMetricsSchemaSql,
+  migratePgDepositMetricsIndexes,
+  depositMetricsIndexStatusSql,
+  type DepositMetricsStore,
+} from "./deposit-metrics-store.js";
+import {
   migratePgAnalyticsIndexes,
   walletAssetIndexStatusSql,
 } from "./analytics-indexes.js";
@@ -83,6 +91,7 @@ export interface Store {
   history: HistoryStore;
   analytics: AnalyticsStore;
   positionMetrics: PositionMetricsStore;
+  depositMetrics: DepositMetricsStore;
   market: MarketStore;
   house: HouseStore;
   liquidations: LiquidationsStore;
@@ -120,6 +129,7 @@ export async function migrate(pool: Pool): Promise<void> {
     await client.query(historySchemaSql("paperdash_", true));
     await client.query(analyticsSchemaSql("paperdash_", true));
     await client.query(positionMetricsSchemaSql("paperdash_", true));
+    await client.query(depositMetricsSchemaSql("paperdash_", true));
     await client.query(marketSchemaSql("paperdash_", true));
     await client.query(houseSchemaSql("paperdash_", true));
     await client.query(liquidationsSchemaSql("paperdash_", true));
@@ -133,6 +143,7 @@ export async function migrate(pool: Pool): Promise<void> {
     client.release();
   }
   await migratePgAnalyticsIndexes(pool);
+  await migratePgDepositMetricsIndexes(pool);
 }
 
 export async function createStore(
@@ -171,6 +182,19 @@ export async function createStore(
               "Database schema is unavailable; run npm run db:migrate with the schema owner.",
             );
           });
+        await pool
+          .query("SELECT 1 FROM paperdash_deposit_metrics_state LIMIT 0")
+          .catch(() => {
+            throw new Error(
+              "Deposit schema is unavailable; run npm run db:migrate with the schema owner.",
+            );
+          });
+        const depositIndex = (await pool.query(depositMetricsIndexStatusSql))
+          .rows[0];
+        if (!depositIndex?.valid || !depositIndex.expected)
+          throw new Error(
+            "Deposit history index is unavailable; run npm run db:migrate with the schema owner.",
+          );
         const inboxSchema = await pool.query(
           "SELECT to_regclass('paperdash_trade_inbox') IS NOT NULL AND to_regclass('paperdash_trade_inbox_totals') IS NOT NULL AND to_regclass('paperdash_trade_ingestion_gaps') IS NOT NULL AS available",
         );
@@ -254,6 +278,7 @@ export async function createStore(
         );
       },
       positionMetrics: createPgPositionMetrics(pool),
+      depositMetrics: createPgDepositMetrics(pool),
       market: createPgMarket(pool),
       house: createPgHouse(pool),
       liquidations: createPgLiquidations(pool),
@@ -439,6 +464,7 @@ export async function createStore(
   db.exec(historySchemaSql("", false));
   db.exec(analyticsSchemaSql("", false));
   db.exec(positionMetricsSchemaSql("", false));
+  db.exec(depositMetricsSchemaSql("", false));
   migrateLocalMarket(db);
   db.exec(houseSchemaSql("", false));
   migrateLocalLiquidations(db);
@@ -486,6 +512,7 @@ export async function createStore(
       );
     },
     positionMetrics: createLocalPositionMetrics(db, writable),
+    depositMetrics: createLocalDepositMetrics(db, writable),
     market: createLocalMarket(db, writable),
     house: createLocalHouse(db, writable),
     liquidations: createLocalLiquidations(db, writable),

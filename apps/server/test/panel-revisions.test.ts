@@ -144,11 +144,15 @@ describe("shared panel publication hints", () => {
     expect(report).toHaveBeenLastCalledWith(null);
   });
 
-  it("waits for both chart snapshots before returning descriptors, with no new reads", async () => {
+  it("waits for both chart snapshots and reads deposit totals once before returning descriptors", async () => {
     let release!: () => void;
     const store = {
       get: vi.fn(async () => null),
       history: { protocolChartRows: vi.fn(async () => []) },
+      depositMetrics: { read: vi.fn(async () => ({
+        days: [], observedFrom: null, updatedAt: null,
+        projectionBackfillComplete: true, pending: false, excludedRecords: 0,
+      })) },
       put: vi.fn(async (key: string, _value: unknown, _at?: number) => {
         if (key === "paper-economics") await new Promise<void>((resolve) => { release = resolve; });
       }),
@@ -168,6 +172,7 @@ describe("shared panel publication hints", () => {
     }
     expect(store.get).toHaveBeenCalledTimes(1);
     expect(store.history.protocolChartRows).toHaveBeenCalledTimes(2);
+    expect(store.depositMetrics.read).toHaveBeenCalledTimes(1);
   });
 
   it("rejects old/unknown capability and invalid timestamps, and ignores regressing publications", async () => {
