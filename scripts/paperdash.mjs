@@ -34,7 +34,7 @@ const COMMAND_FLAGS = {
   positions: [],
   risk: [],
   assets: [],
-  leaderboard: ["metric", "page", "q"],
+  leaderboard: ["metric", "window", "page", "q"],
   house: [],
   paper: [],
   liquidations: ["asset", "cursor"],
@@ -61,6 +61,7 @@ Commands:
   assets [BTC|ETH|0|1]         Asset summaries; with asset, recent price/trade view
   leaderboard                 Rolling 24h activity or current PAPER ownership, one page
     --metric pnl|volume|trades|paper --page N --q SEARCH
+    PAPER only: --window all|24h (default all); ownership remains current
   house                       House Funds, component history and observed changes
   paper                       PAPER supply, participation and allocated-reward history
   liquidations                Observed liquidations with rolling 1h/24h totals
@@ -84,6 +85,8 @@ Pages are zero-based. Requests never crawl later pages automatically.
 Raw money/token strings retain source precision (18 decimals where documented).
 USD numbers from public observations remain approximate. Coverage is preserved.
 Global positions is a count, not a complete list of every wallet's open positions.
+PAPER all: lifetime realized PnL, lifetime volumeRaw (18 decimals), recorded closes.
+Recorded closes include retained liquidations; they are not all executions.
 Stdout: one JSON result. Stderr: JSON errors. Exit: 0 success, 1 request failure,
 2 invalid arguments, 3 --require-fresh failed (result still on stdout).
 `;
@@ -235,6 +238,14 @@ export function parseArgs(argv, env = process.env) {
       if (["volume", "trades"].includes(metric) && !/^(?:0x)?[a-f0-9]{0,40}$/i.test(q))
         invalid("Volume/trade rankings accept an address prefix for --q.");
       query.set("metric", metric);
+      if (metric === "paper") {
+        const window = options.window ?? "all";
+        if (!["all", "24h"].includes(window))
+          invalid("--window must be all or 24h.");
+        query.set("window", window);
+      } else if (options.window !== undefined) {
+        invalid("--window is supported only with leaderboard --metric paper.");
+      }
     }
     if (q) query.set("q", q);
   }
@@ -509,6 +520,25 @@ export function isFresh(config, body) {
     return Boolean(body.snapshot) && body.stale === false;
   if (config.command === "health")
     return body.ready === true && body.degraded === false;
+  if (config.command === "leaderboard") {
+    const query = new URL(config.url).searchParams;
+    const requestedWindow = query.get("window") ?? "24h";
+    if (query.get("metric") === "paper" && requestedWindow === "all")
+      return body.stale === false && body.statsWindow === "all" &&
+        body.accountStale === false && Array.isArray(body.rows) &&
+        body.rows.every((row) => {
+          const coverage = row.historyCoverage;
+          return Number.isSafeInteger(row.tradeCount) && row.tradeCount >= 0 &&
+            Number.isSafeInteger(coverage?.indexedAt) && coverage.indexedAt >= 0 &&
+            coverage.backfillComplete === true &&
+            coverage.projectionPending === false && coverage.stale === false;
+        });
+    if (body.statsWindow !== undefined && body.statsWindow !== requestedWindow)
+      return false;
+    if (body.accountStale === true) return false;
+    if (body.activityCoverage && body.activityCoverage.stale !== false)
+      return false;
+  }
   if (config.command === "watchlist")
     return (
       body.stale === false &&

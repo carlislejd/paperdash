@@ -12,8 +12,19 @@ export interface PositionMetrics {
   projectionBackfillComplete: boolean;
   pending: boolean;
 }
+export interface RetainedPositionCount {
+  /** Recorded close/liquidation rows, including rows excluded from duration averages. */
+  recordedCount: number | null;
+  indexedAt: number | null;
+  backfillComplete: boolean;
+  projectionPending: boolean;
+  excludedCount: number;
+  stale: boolean;
+}
 export interface PositionMetricsStore {
   read(address?: string): Promise<PositionMetrics>;
+  /** One bounded saved-rollup read for a displayed leaderboard page. */
+  readMany(addresses: string[], now?: number): Promise<Record<string, RetainedPositionCount>>;
   /** At most limit legacy keys queued and limit facts projected per tick. */
   tick(limit?: number): Promise<{
     backfilled: number;
@@ -204,6 +215,50 @@ function reader(db: ReadDb): PositionMetricsStore["read"] {
     };
   };
 }
+function batchReader(db: ReadDb): PositionMetricsStore["readMany"] {
+  return async (input, now = Date.now()) => {
+    if (input.length > 25 || !Number.isSafeInteger(now) || now < 0)
+      throw new Error("Invalid retained position-count batch");
+    const addresses = [...new Set(input.map((address) => addressSchema.parse(address)))];
+    if (!addresses.length) return {};
+    // All fields share one database snapshot. Each requested address makes
+    // indexed lookups only: no history rows are downloaded or counted here.
+    const rows = await db.rows<{
+      address: string;
+      position_count: string | null;
+      excluded_count: string | null;
+      state: unknown;
+      complete: number | null;
+      queued: boolean | number;
+    }>(`WITH requested(address) AS (VALUES ${addresses.map(() => "(?)").join(",")})
+      SELECT requested.address,r.position_count,r.excluded_count,j.state,s.complete,
+        EXISTS(SELECT 1 FROM ${table(db.prefix, "queue")} q WHERE q.address=requested.address) AS queued
+      FROM requested
+      LEFT JOIN ${table(db.prefix, "rollups")} r ON r.scope='wallet:'||requested.address
+      LEFT JOIN ${db.prefix}history_jobs j ON j.address=requested.address AND j.kind='trades'
+      LEFT JOIN ${table(db.prefix, "state")} s ON s.id=1`, addresses);
+    return Object.fromEntries(rows.map((row) => {
+      const state = parsed(row.state) as {
+        lastSuccessAt?: number | null; complete?: boolean; cursor?: string | null; error?: string;
+      } | null;
+      const indexedAt = typeof state?.lastSuccessAt === "number" &&
+        Number.isSafeInteger(state.lastSuccessAt) && state.lastSuccessAt >= 0
+        ? state.lastSuccessAt : null;
+      const projectionPending = Number(row.complete) !== 1 || Boolean(row.queued);
+      const total = BigInt(row.position_count ?? "0") + BigInt(row.excluded_count ?? "0");
+      const available = total > 0n || (indexedAt !== null && !projectionPending);
+      return [row.address, {
+        recordedCount: available && total >= 0n && total <= BigInt(Number.MAX_SAFE_INTEGER)
+          ? Number(total) : null,
+        indexedAt,
+        backfillComplete: state?.complete === true && state.cursor == null,
+        projectionPending,
+        excludedCount: Number(row.excluded_count ?? 0),
+        stale: indexedAt === null || indexedAt > now || now - indexedAt > 300000 || Boolean(state?.error),
+      } satisfies RetainedPositionCount];
+    }));
+  };
+}
 const nextLegacy = (prefix: string) =>
   `SELECT address,record_key FROM ${prefix}history_records WHERE kind='trades' AND (address,record_key)>(?,?) ORDER BY address,record_key LIMIT 1`;
 const loadSource = (prefix: string) =>
@@ -267,14 +322,16 @@ async function projectPg(client: PoolClient, key: Key) {
 }
 export function createPgPositionMetrics(pool: Pool): PositionMetricsStore {
   const prefix = "paperdash_";
-  const read = reader({
+  const db: ReadDb = {
     prefix,
     async rows<T>(sql: string, params = []) {
       return (await pool.query(pgSql(sql), params)).rows as T[];
     },
-  });
+  };
+  const read = reader(db);
   return {
     read,
+    readMany: batchReader(db),
     async tick(input = 500) {
       const limit = limitFor(input),
         client = await pool.connect();
@@ -386,14 +443,16 @@ export function createLocalPositionMetrics(
   db: DatabaseSync,
   writable: () => Promise<void>,
 ): PositionMetricsStore {
-  const read = reader({
+  const source: ReadDb = {
     prefix: "",
     async rows<T>(sql: string, params = []) {
       return db.prepare(sql).all(...params) as T[];
     },
-  });
+  };
+  const read = reader(source);
   return {
     read,
+    readMany: batchReader(source),
     async tick(input = 500) {
       const limit = limitFor(input);
       await writable();

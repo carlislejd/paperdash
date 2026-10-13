@@ -5,7 +5,7 @@
 - [Agent guide](https://papertrade.club/agents.md): API paths, CLI quick start, field meanings, supported time windows, freshness and coverage rules.
 - [Standalone CLI](https://papertrade.club/paperclub.mjs): Dependency-free Node.js 24 client; JSON output and bounded retries.
 - [PAPER economics](https://paperdash-api.onrender.com/api/paper/economics): Supply, staking participation, allocated rewards, hourly changes and seven UTC calendar-day changes; today is partial, and allocations are not claimed payouts.
-- [PAPER ownership ranking](https://paperdash-api.onrender.com/api/leaderboard?metric=paper&page=0): Current staked plus unstaked PAPER by account, alongside rolling 24-hour PnL; counts are accounts, not positive holders.
+- [PAPER ownership ranking](https://paperdash-api.onrender.com/api/leaderboard?metric=paper&window=all&page=0): Current staked plus unstaked PAPER; explicit window=all returns lifetime source realized PnL and volume plus retained recorded closes. The CLI sends all by default; omitted API window stays 24h for compatibility. Account counts are not positive-holder counts; recorded closes are not all executions.
 - [House health](https://paperdash-api.onrender.com/api/house): House Funds, LP, open house PnL, queue debt and comparable observed changes; approximate values with explicit source times and coverage.
 - [Dashboard](https://papertrade.club/): Human-readable analytics and wallet profiles.
 

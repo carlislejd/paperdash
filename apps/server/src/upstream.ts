@@ -467,34 +467,75 @@ export class Upstream {
     metric: LeaderboardResponse["metric"] = "pnl",
     page = 0,
     q = "",
+    window: "24h" | "all" = metric === "paper" ? "all" : "24h",
   ): Promise<LeaderboardResponse> {
+    if (window === "all" && metric !== "paper")
+      throw new UpstreamError(
+        "Lifetime statistics are supported for PAPER holders only.",
+        400,
+      );
     if (metric === "pnl" || metric === "paper") {
       const path = canonicalPath("/state/leaderboard/accounts", {
-        // Ownership is current in either source window; 24h keeps the
-        // accompanying totalWindowedPnl field consistent with the PnL ranking.
-        window: "24h",
+        // Ownership is current in either source window. The selected window
+        // controls only companion statistics, never the PAPER ranking.
+        window,
         sortKey: metric === "paper" ? "paperTotal" : "totalWindowedPnl",
         sortDir: "desc",
         page,
         pageSize: 25,
         q,
       });
-      const result = await this.cached(path, 20000, () =>
-        this.request(path, accountsSchema),
-      );
+      const result = await this.cached(path, 20000, async () => {
+        const value = await this.request(path, accountsSchema);
+        if (metric === "paper" && value.accounts.length) {
+          // Reuse this already-requested page. Only the shared cache loader
+          // retains/promotes it; additional viewers and cache hits do no work.
+          const holders = [
+            ...new Map(
+              value.accounts
+                .slice(0, 25)
+                .map((account) => [account.address, account]),
+            ).values(),
+          ];
+          await this.store.following.retainAccounts(holders, Date.now());
+          await this.store.history.discoverWallets(
+            holders.map((account) => account.address),
+            10,
+          );
+        }
+        return value;
+      });
       const activityAt = Date.now();
-      const addresses = result.value.accounts.map((a) => a.address);
-      const activity = await this.cached(
-        `leaderboard-activity:${path}`,
-        20000,
-        () => this.store.analytics.walletMetrics(addresses, activityAt),
-        {
-          wait: true,
-          isCurrent: (value) =>
-            Object.keys(value.counts).length === addresses.length &&
-            addresses.every((address) => address in value.counts),
-        },
-      ).catch(() => null);
+      const pageAccounts = result.value.accounts.slice(0, 25);
+      const addresses = [...new Set(pageAccounts.map((a) => a.address))];
+      const history =
+        window === "all"
+          ? await this.cached(
+              `leaderboard-history:${path}`,
+              20000,
+              () => this.store.positionMetrics.readMany(addresses, activityAt),
+              {
+                wait: true,
+                isCurrent: (value) =>
+                  Object.keys(value).length === addresses.length &&
+                  addresses.every((address) => address in value),
+              },
+            ).catch(() => null)
+          : null;
+      const activity =
+        window === "24h"
+          ? await this.cached(
+              `leaderboard-activity:${path}`,
+              20000,
+              () => this.store.analytics.walletMetrics(addresses, activityAt),
+              {
+                wait: true,
+                isCurrent: (value) =>
+                  Object.keys(value.counts).length === addresses.length &&
+                  addresses.every((address) => address in value.counts),
+              },
+            ).catch(() => null)
+          : null;
       const activityStale =
         !activity ||
         activity.stale ||
@@ -504,21 +545,45 @@ export class Upstream {
         !activity.value.projectionBackfillComplete ||
         activity.value.observedFrom === null;
       const trackedPaper = BigInt(result.value.summary.trackedPaper);
-      const pagePaper = result.value.accounts.reduce(
+      const pagePaper = pageAccounts.reduce(
         (total, account) => total + BigInt(account.paperTotal),
         0n,
       );
       return {
         window: metric === "paper" ? "current" : "24h",
+        statsWindow: window,
         metric,
-        rows: result.value.accounts.map((account, index) => ({
+        rows: pageAccounts.map((account, index) => ({
           address: account.address,
           leaderboardName: account.leaderboardName,
           rank: page * 25 + index + 1,
-          pnlRaw: account.totalWindowedPnl,
+          pnlRaw:
+            window === "all" ? account.realizedPnl : account.totalWindowedPnl,
           paperTotalRaw: account.paperTotal,
           volumeUsd: activity?.value.volumesUsd[account.address] ?? null,
-          tradeCount: activity?.value.counts[account.address] ?? null,
+          ...(window === "all"
+            ? {
+                volumeRaw: account.totalVolume,
+                historyCoverage: {
+                  indexedAt: history?.value[account.address]?.indexedAt ?? null,
+                  backfillComplete:
+                    history?.value[account.address]?.backfillComplete ?? false,
+                  projectionPending:
+                    history?.value[account.address]?.projectionPending ?? true,
+                  excludedCount:
+                    history?.value[account.address]?.excludedCount ?? 0,
+                  stale:
+                    !history ||
+                    history.stale ||
+                    Boolean(history.error) ||
+                    (history.value[account.address]?.stale ?? true),
+                },
+              }
+            : {}),
+          tradeCount:
+            window === "all"
+              ? (history?.value[account.address]?.recordedCount ?? null)
+              : (activity?.value.counts[account.address] ?? null),
           currentUnrealizedPnlRaw: account.currentUnrealizedPnl,
           assetsTraded: activity?.value.assetsTraded[account.address] ?? null,
         })),
@@ -536,18 +601,23 @@ export class Upstream {
               ? Number((pagePaper * 10000n) / trackedPaper)
               : null,
         },
-        activityCoverage: {
-          source: "retained-public-observations",
-          partial: true,
-          observedFrom: activity?.value.observedFrom ?? null,
-          projectionBackfillComplete:
-            activity?.value.projectionBackfillComplete ?? false,
-          receivedAt: activity?.receivedAt ?? activityAt,
-          windowFrom:
-            activity?.value.windowFrom ?? Math.max(0, activityAt - 86400000),
-          windowTo: activity?.value.windowTo ?? activityAt,
-          stale: activityStale,
-        },
+        ...(window === "24h"
+          ? {
+              activityCoverage: {
+                source: "retained-public-observations",
+                partial: true,
+                observedFrom: activity?.value.observedFrom ?? null,
+                projectionBackfillComplete:
+                  activity?.value.projectionBackfillComplete ?? false,
+                receivedAt: activity?.receivedAt ?? activityAt,
+                windowFrom:
+                  activity?.value.windowFrom ??
+                  Math.max(0, activityAt - 86400000),
+                windowTo: activity?.value.windowTo ?? activityAt,
+                stale: activityStale,
+              },
+            }
+          : {}),
         ...(result.error ? { error: result.error } : {}),
         coverage: {
           source: "papertrade-leaderboard",

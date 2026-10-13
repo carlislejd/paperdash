@@ -361,6 +361,25 @@
 .leaderboard-table {
   min-width: 1130px;
 }
+.leaderboard-window-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.leaderboard-history-state {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+.leaderboard-lifetime-table {
+  min-width: 1040px;
+}
 .leaderboard-paper-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

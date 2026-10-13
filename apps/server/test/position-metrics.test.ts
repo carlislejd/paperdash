@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createStore, type Store } from "../src/store.js";
 import { digest } from "../src/schemas.js";
 import {
+  createPgPositionMetrics,
   enqueuePositionMetrics,
   positionMetricsSchemaSql,
 } from "../src/position-metrics-store.js";
@@ -93,6 +94,58 @@ afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
 });
 describe("incremental retained position metrics", () => {
+  it("reads lifetime close counts from saved rollups with independent history coverage", async () => {
+    const { store, db, dir } = await local();
+    const unknown = `0x${"3".repeat(40)}`;
+    expect((await store.positionMetrics.readMany([a], now))[a]).toMatchObject({
+      recordedCount: null, indexedAt: null, backfillComplete: false, projectionPending: true,
+    });
+    retain(db, "one", closed());
+    retain(db, "excluded", closed({ openedAtMs: now }));
+    await store.history.ensureWallet(a);
+    await store.history.ensureWallet(b);
+    const state = JSON.stringify({ complete: true, cursor: null, lastSuccessAt: now - 1000 });
+    db.prepare("UPDATE history_jobs SET state=? WHERE kind='trades'").run(state);
+    await store.positionMetrics.tick();
+    let values = await store.positionMetrics.readMany([a, b, unknown, a], now);
+    expect(Object.keys(values)).toHaveLength(3);
+    expect(values[a]).toEqual({ recordedCount: 2, indexedAt: now - 1000,
+      backfillComplete: true, projectionPending: false, excludedCount: 1, stale: false });
+    expect(values[b].recordedCount).toBe(0); // checked and genuinely empty
+    expect(values[unknown].recordedCount).toBeNull(); // not checked is not zero
+
+    retain(db, "new", closed({ positionId: "2" }), { at: now + 1 });
+    values = await store.positionMetrics.readMany([a], now + 1);
+    expect(values[a]).toMatchObject({ recordedCount: 2, projectionPending: true });
+    await store.positionMetrics.tick();
+    expect((await store.positionMetrics.readMany([a], now + 1))[a].recordedCount).toBe(3);
+    // Removing a retained record subtracts its projected contribution too.
+    db.prepare("DELETE FROM history_records WHERE address=? AND record_key='one'").run(a);
+    db.prepare("INSERT INTO position_metrics_queue VALUES(?,'one',?)").run(a, now + 2);
+    await store.positionMetrics.tick();
+    expect((await store.positionMetrics.readMany([a], now + 2))[a].recordedCount).toBe(2);
+    db.prepare("UPDATE history_jobs SET state=? WHERE address=? AND kind='trades'")
+      .run(JSON.stringify({ complete: true, cursor: "older", lastSuccessAt: now - 400000, error: "timeout" }), a);
+    expect((await store.positionMetrics.readMany([a], now))[a]).toMatchObject({
+      recordedCount: 2, backfillComplete: false, stale: true,
+    });
+    const reopened = await createStore({ dataDir: dir });
+    stores.push(reopened);
+    expect((await reopened.positionMetrics.readMany([a], now))[a].recordedCount).toBe(2);
+    await expect(store.positionMetrics.readMany(Array(26).fill(a))).rejects.toThrow("Invalid retained");
+    expect(await store.positionMetrics.readMany([])).toEqual({});
+  });
+
+  it("uses one bounded SQL read for 25 leaderboard wallets without reading raw history", async () => {
+    const query = vi.fn(async () => ({ rows: [] }));
+    const metrics = createPgPositionMetrics({ query } as never);
+    const addresses = Array.from({ length: 25 }, (_, i) => `0x${i.toString(16).padStart(40, "0")}`);
+    await metrics.readMany(addresses, now);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0][1]).toEqual(addresses);
+    expect(query.mock.calls[0][0]).not.toContain("history_records");
+    expect(query.mock.calls[0][0]).not.toMatch(/count\(\*\)/i);
+  });
   it("uses equal position weights globally and the same valid cohort for both means", async () => {
     const { store, db } = await local();
     expect(await store.positionMetrics.read()).toMatchObject({

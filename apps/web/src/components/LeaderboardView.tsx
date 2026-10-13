@@ -77,10 +77,15 @@ export function LeaderboardView({
   onWallet: (address: string) => void;
 }) {
   const [metric, setMetric] = useState<LeaderboardResponse["metric"]>("pnl");
+  const [paperWindow, setPaperWindow] = useState<"all" | "24h">("all");
   const [page, setPage] = useState(0);
   const { data, error, loading, refresh } = useAnalytics<LeaderboardResponse>(
-    `/api/leaderboard?metric=${metric}&page=${page}`,
+    `/api/leaderboard?metric=${metric}&page=${page}${metric === "paper" ? `&window=${paperWindow}` : ""}`,
   );
+  // Older servers return 24h activity even for PAPER. Never relabel that data.
+  const lifetime = metric === "paper" && data?.statsWindow === "all";
+  const lifetimeUnavailable =
+    metric === "paper" && paperWindow === "all" && data && !lifetime;
   const message = error || data?.error;
   const columns = [
     metric,
@@ -89,10 +94,10 @@ export function LeaderboardView({
     ),
   ];
   const columnLabels = {
-    pnl: "24H PNL",
+    pnl: lifetime ? "Realized P&L · lifetime" : "24H PNL",
     paper: "PAPER OWNED",
-    volume: "OBS. VOLUME",
-    trades: "OBS. TRADES",
+    volume: lifetime ? "Volume · lifetime" : "OBS. VOLUME",
+    trades: lifetime ? "Recorded closes" : "OBS. TRADES",
   };
   return (
     <section
@@ -145,6 +150,35 @@ export function LeaderboardView({
           </button>
         </div>
       </div>
+      {metric === "paper" && (
+        <div
+          className="leaderboard-window-controls"
+          role="group"
+          aria-label="PAPER leaderboard activity period"
+        >
+          <span>Activity period</span>
+          <div className="analytics-segments">
+            <button
+              aria-pressed={paperWindow === "all"}
+              onClick={() => {
+                setPaperWindow("all");
+                setPage(0);
+              }}
+            >
+              Lifetime
+            </button>
+            <button
+              aria-pressed={paperWindow === "24h"}
+              onClick={() => {
+                setPaperWindow("24h");
+                setPage(0);
+              }}
+            >
+              24 hours
+            </button>
+          </div>
+        </div>
+      )}
       <div className="analytics-meta-row">
         <p className="analytics-description">
           {metric === "pnl"
@@ -196,10 +230,16 @@ export function LeaderboardView({
         </dl>
       )}
       <p className="analytics-coverage-note">
-        Partial activity coverage · trade counts, volume and assets cover
-        observed opens, closes and liquidations in the past 24 hours. PAPER
-        ownership and current uPnL are separate account snapshots.
-        {data?.activityCoverage?.stale ? " Activity data is delayed." : ""}
+        {lifetime
+          ? "Realized P&L and traded volume are lifetime account totals. Recorded closes include closed and liquidated positions in retained history; they are not a count of all executions. Counts may be incomplete while history updates."
+          : "Partial activity coverage · trade counts, volume and assets cover observed opens, closes and liquidations in the past 24 hours."}{" "}
+        PAPER ownership and current uPnL are separate account snapshots.
+        {lifetimeUnavailable
+          ? " Lifetime details are unavailable in this snapshot; showing 24-hour activity."
+          : ""}
+        {!lifetime && data?.activityCoverage?.stale
+          ? " Activity data is delayed."
+          : ""}
         {data?.accountStale && data.accountReceivedAt != null
           ? " Account valuations are delayed."
           : ""}
@@ -209,10 +249,12 @@ export function LeaderboardView({
         className={`table-scroll ${loading ? "table-loading" : ""}`}
         aria-busy={loading}
       >
-        <table className="wallet-table leaderboard-table">
+        <table
+          className={`wallet-table leaderboard-table ${lifetime ? "leaderboard-lifetime-table" : ""}`}
+        >
           <caption className="sr-only">
             {metric === "paper"
-              ? "Current PAPER ownership with 24-hour wallet activity"
+              ? `Current PAPER ownership with ${lifetime ? "lifetime account totals and recorded closed positions" : "24-hour wallet activity"}`
               : "Rolling 24-hour public wallet leaderboard with current PAPER ownership"}
           </caption>
           <thead>
@@ -239,7 +281,7 @@ export function LeaderboardView({
               >
                 CURRENT UPNL
               </th>
-              <th>ASSETS · 24H</th>
+              {!lifetime && <th>ASSETS · 24H</th>}
             </tr>
           </thead>
           <tbody>
@@ -249,7 +291,7 @@ export function LeaderboardView({
                     <td colSpan={2}>
                       <span className="skeleton-line" />
                     </td>
-                    <td colSpan={6}>
+                    <td colSpan={lifetime ? 5 : 6}>
                       <span className="skeleton-line short" />
                     </td>
                   </tr>
@@ -257,6 +299,18 @@ export function LeaderboardView({
               : data?.rows.map((row) => {
                   const pnl = rawToNumber(row.pnlRaw);
                   const upnl = rawToNumber(row.currentUnrealizedPnlRaw);
+                  const history = row.historyCoverage;
+                  const historyState = lifetime
+                    ? !history ||
+                      history.indexedAt == null ||
+                      history.projectionPending
+                      ? "Updating"
+                      : !history.backfillComplete
+                        ? `Partial history${history.stale ? " · delayed" : ""}`
+                        : history.stale
+                          ? "Last available"
+                          : null
+                    : null;
                   return (
                     <tr key={row.address}>
                       <td className="rank-cell">
@@ -278,7 +332,13 @@ export function LeaderboardView({
                               ? row.paperTotalRaw == null
                                 ? "Current PAPER ownership unavailable for this ranking"
                                 : `${formatRawToken(row.paperTotalRaw)} PAPER · staked + unstaked${data.accountStale ? " · last available" : ""}`
-                              : undefined
+                              : lifetime &&
+                                  column === "volume" &&
+                                  row.volumeRaw != null
+                                ? `${formatRawToken(row.volumeRaw)} USDC · lifetime traded volume`
+                                : lifetime && column === "trades"
+                                  ? `Retained closed and liquidated positions${history?.indexedAt && Number.isFinite(new Date(history.indexedAt).getTime()) ? ` · indexed ${new Date(history.indexedAt).toLocaleString()}` : ""}${history?.excludedCount ? ` · ${history.excludedCount.toLocaleString()} excluded from hold/leverage averages` : ""}`
+                                  : undefined
                           }
                         >
                           {column === "pnl" ? (
@@ -289,9 +349,20 @@ export function LeaderboardView({
                           ) : column === "paper" ? (
                             formatRawToken(row.paperTotalRaw, true)
                           ) : column === "volume" ? (
-                            formatUsd(row.volumeUsd)
+                            lifetime ? (
+                              formatRawUsd(row.volumeRaw)
+                            ) : (
+                              formatUsd(row.volumeUsd)
+                            )
                           ) : (
-                            (row.tradeCount?.toLocaleString() ?? "—")
+                            <>
+                              {row.tradeCount?.toLocaleString() ?? "—"}
+                              {historyState && (
+                                <small className="leaderboard-history-state">
+                                  {historyState}
+                                </small>
+                              )}
+                            </>
                           )}
                         </td>
                       ))}
@@ -306,9 +377,11 @@ export function LeaderboardView({
                         {upnl !== null && upnl > 0 ? "+" : ""}
                         {formatRawUsd(row.currentUnrealizedPnlRaw)}
                       </td>
-                      <td>
-                        <TradedAssets instruments={row.assetsTraded} />
-                      </td>
+                      {!lifetime && (
+                        <td>
+                          <TradedAssets instruments={row.assetsTraded} />
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

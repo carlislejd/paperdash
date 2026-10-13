@@ -309,12 +309,17 @@ export async function buildApi(
     const query = z
       .object({
         metric: z.enum(["pnl", "volume", "trades", "paper"]).default("pnl"),
+        window: z.enum(["24h", "all"]).optional(),
         page: z.coerce.number().int().min(0).max(1000000).default(0),
         q: z
           .string()
           .max(42)
           .default("")
           .transform((value) => value.trim().toLowerCase()),
+      })
+      .refine((value) => value.window !== "all" || value.metric === "paper", {
+        path: ["window"],
+        message: "Lifetime statistics are supported for PAPER holders only",
       })
       .refine(
         (value) =>
@@ -326,13 +331,20 @@ export async function buildApi(
           message: "Observed activity search requires a wallet address prefix",
         },
       )
+      .transform((value) => ({
+        ...value,
+        // Older clients label PAPER companion values as 24h. Updated clients
+        // explicitly request all for the default lifetime PAPER view.
+        window: value.window ?? "24h",
+      }))
       .parse(req.query);
     return analyticsResponse(
       req,
       reply,
       await profileReads.read(
-        `leaderboard:${query.metric}:${query.page}:${query.q}`,
-        () => upstream.leaderboard(query.metric, query.page, query.q),
+        `leaderboard:${query.metric}:${query.window}:${query.page}:${query.q}`,
+        () =>
+          upstream.leaderboard(query.metric, query.page, query.q, query.window),
       ),
     );
   });

@@ -77,12 +77,130 @@ async function fixture(value = accounts()) {
 }
 
 describe("source-ranked PAPER ownership", () => {
-  it("uses the canonical PAPER sort with 24h accompanying PnL, source order and page-offset ranks", async () => {
+  it("retains and promotes one bounded PAPER page once across viewers and API instances", async () => {
+    const value = accounts(
+      Array.from({ length: 30 }, (_, i) => String(1000 - i)),
+    );
+    const { store, source, fetcher } = await fixture(value);
+    const peer = new Upstream(
+      store,
+      fetcher as typeof fetch,
+      "https://papertrade.test",
+      new RequestGate(3, 0),
+    );
+    sources.push(peer);
+    const retain = vi.spyOn(store.following, "retainAccounts");
+    const discover = vi.spyOn(store.history, "discoverWallets");
+    const history = vi.spyOn(store.positionMetrics, "readMany");
+    const activity = vi.spyOn(store.analytics, "walletMetrics");
+    const pages = await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        (i % 2 ? source : peer).leaderboard("paper"),
+      ),
+    );
+    expect(pages.every((page) => page.rows.length === 25)).toBe(true);
+    expect(pages[0].paperOwnership?.pageTotalRaw).toBe(
+      value.accounts
+        .slice(0, 25)
+        .reduce((sum, row) => sum + BigInt(row.paperTotal), 0n)
+        .toString(),
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(retain).toHaveBeenCalledExactlyOnceWith(
+      value.accounts.slice(0, 25),
+      now,
+    );
+    expect(discover).toHaveBeenCalledExactlyOnceWith(
+      value.accounts.slice(0, 25).map((account) => account.address),
+      10,
+    );
+    expect(history).toHaveBeenCalledExactlyOnceWith(
+      value.accounts.slice(0, 25).map((account) => account.address),
+      now,
+    );
+    expect(activity).not.toHaveBeenCalled();
+    expect((await store.history.stats()).jobs).toBe(75);
+    expect(await store.get(`account-summary:${wallet(1)}`)).toMatchObject({
+      receivedAt: now,
+      value: { paperTotal: "1000", leaderboardName: "Paper 1" },
+    });
+    expect(await store.get(`account-summary:${wallet(26)}`)).toBeNull();
+    now += 5000;
+    await source.leaderboard("paper");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(retain).toHaveBeenCalledTimes(1);
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(history).toHaveBeenCalledTimes(1);
+    expect((await store.get(`account-summary:${wallet(1)}`))!.receivedAt).toBe(
+      now - 5000,
+    );
+  });
+
+  it("promotes existing holders without resetting retained history, cursors or retry deadlines", async () => {
+    const { store, source, fetcher } = await fixture();
+    await store.history.ensureWallet(wallet(1));
+    const first = await store.history.claimJob(now);
+    expect(first?.kind).toBe("cashflows");
+    await store.history.commitPage(
+      first!,
+      {
+        items: [
+          {
+            kind: "Deposit",
+            timestampMs: now - 1000,
+            amountRaw: "1000000000000000000",
+            txHash: `0x${"a".repeat(64)}`,
+            withdrawalStatus: null,
+            recipientAmountRaw: null,
+            route: null,
+          },
+        ],
+        nextCursor: "retained-older-cursor",
+      },
+      now,
+      6 * 3600000,
+    );
+    now += 1000;
+    const continuing = await store.history.claimJob(now, 120000, "fair", [
+      { address: wallet(1), kind: "trades" },
+      { address: wallet(1), kind: "portfolio" },
+    ]);
+    expect(continuing?.state.cursor).toBe("retained-older-cursor");
+    await store.history.failJob(continuing!, "HTTP 502", now, now + 120000);
+    const before = (await store.history.getStatus(wallet(1))).find(
+      (job) => job.kind === "cashflows",
+    )!;
+    await source.leaderboard("paper");
+    const after = (await store.history.getStatus(wallet(1))).find(
+      (job) => job.kind === "cashflows",
+    )!;
+    expect(after).toEqual(before);
+    expect(
+      (await store.history.readPage(wallet(1), "cashflows")).items,
+    ).toHaveLength(1);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not schedule holders on empty pages or failed source reads, or expand PnL scope", async () => {
+    const { store, source, fetcher } = await fixture(accounts([]));
+    const retain = vi.spyOn(store.following, "retainAccounts");
+    const discover = vi.spyOn(store.history, "discoverWallets");
+    await source.leaderboard("paper");
+    fetcher.mockResolvedValueOnce(Response.json(accounts()));
+    await source.leaderboard("pnl");
+    fetcher.mockResolvedValueOnce(new Response(null, { status: 503 }));
+    await expect(source.leaderboard("paper", 1)).rejects.toThrow("HTTP 503");
+    expect(retain).not.toHaveBeenCalled();
+    expect(discover).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("uses the canonical PAPER sort with explicit 24h statistics, source order and page-offset ranks", async () => {
     const { store, source, app, fetcher } = await fixture();
     const walletRequest = vi.spyOn(source, "wallet");
     const activity = vi.spyOn(store.analytics, "walletMetrics");
     const response = await app.inject(
-      "/api/leaderboard?metric=paper&page=2&q=Paper%20%26%20Co",
+      "/api/leaderboard?metric=paper&window=24h&page=2&q=Paper%20%26%20Co",
     );
     expect(response.statusCode).toBe(200);
     expect(String(fetcher.mock.calls[0][0])).toBe(
@@ -92,6 +210,7 @@ describe("source-ranked PAPER ownership", () => {
     expect(data).toMatchObject({
       metric: "paper",
       window: "current",
+      statsWindow: "24h",
       count: 76,
       pageInfo: { page: 2, totalPages: 4 },
       accountReceivedAt: now,
@@ -113,7 +232,9 @@ describe("source-ranked PAPER ownership", () => {
       },
     });
     expect(response.headers["cdn-cache-control"]).toBe("no-store");
-    await app.inject("/api/leaderboard?metric=paper&page=2&q=Paper%20%26%20Co");
+    await app.inject(
+      "/api/leaderboard?metric=paper&window=24h&page=2&q=Paper%20%26%20Co",
+    );
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(activity).toHaveBeenCalledExactlyOnceWith(
       [wallet(1), wallet(2)],
@@ -121,6 +242,158 @@ describe("source-ranked PAPER ownership", () => {
     );
     expect(walletRequest).not.toHaveBeenCalled();
   });
+
+  it("serves explicit lifetime PAPER statistics with exact source values and one shared retained-count batch", async () => {
+    const value = accounts();
+    value.accounts[0].realizedPnl = String(-large);
+    value.accounts[0].totalVolume = String(large * 100n);
+    const { store, source, app, fetcher } = await fixture(value);
+    const history = vi
+      .spyOn(store.positionMetrics, "readMany")
+      .mockResolvedValue({
+        [wallet(1)]: {
+          recordedCount: 42,
+          indexedAt: now - 50000,
+          backfillComplete: true,
+          projectionPending: false,
+          excludedCount: 2,
+          stale: false,
+        },
+        [wallet(2)]: {
+          recordedCount: 0,
+          indexedAt: now - 40000,
+          backfillComplete: true,
+          projectionPending: false,
+          excludedCount: 0,
+          stale: false,
+        },
+      });
+    const activity = vi.spyOn(store.analytics, "walletMetrics");
+    const walletRequest = vi.spyOn(source, "wallet");
+    const response = await app.inject(
+      "/api/leaderboard?metric=paper&window=all&page=2",
+    );
+    const data = response.json<LeaderboardResponse>();
+    expect(response.statusCode).toBe(200);
+    expect(
+      new URL(String(fetcher.mock.calls[0][0])).searchParams.get("window"),
+    ).toBe("all");
+    expect(data).toMatchObject({
+      metric: "paper",
+      window: "current",
+      statsWindow: "all",
+    });
+    expect(data.rows[0]).toMatchObject({
+      rank: 51,
+      pnlRaw: String(-large),
+      volumeRaw: String(large * 100n),
+      volumeUsd: null,
+      tradeCount: 42,
+      assetsTraded: null,
+      paperTotalRaw: String(large),
+      currentUnrealizedPnlRaw: "-12345",
+      historyCoverage: {
+        indexedAt: now - 50000,
+        backfillComplete: true,
+        projectionPending: false,
+        excludedCount: 2,
+        stale: false,
+      },
+    });
+    expect(data.rows[1].tradeCount).toBe(0);
+    expect(data).not.toHaveProperty("activityCoverage");
+    await app.inject("/api/leaderboard?metric=paper&window=all&page=2");
+    expect(history).toHaveBeenCalledExactlyOnceWith(
+      [wallet(1), wallet(2)],
+      now,
+    );
+    expect(activity).not.toHaveBeenCalled();
+    expect(walletRequest).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("separates the lifetime and 24h cached statistics without changing ownership or rank", async () => {
+    const { store, app, fetcher } = await fixture();
+    const history = vi.spyOn(store.positionMetrics, "readMany");
+    const activity = vi.spyOn(store.analytics, "walletMetrics");
+    const lifetime = (
+      await app.inject("/api/leaderboard?metric=paper&window=all")
+    ).json<LeaderboardResponse>();
+    const daily = (
+      await app.inject("/api/leaderboard?metric=paper&window=24h")
+    ).json<LeaderboardResponse>();
+    const lifetimeAgain = (
+      await app.inject("/api/leaderboard?metric=paper&window=all")
+    ).json<LeaderboardResponse>();
+    expect(lifetime.statsWindow).toBe("all");
+    expect(lifetime.rows[0].pnlRaw).toBe("99999999");
+    expect(lifetime.rows[0].volumeRaw).toBe("88888888");
+    expect(lifetimeAgain).toEqual(lifetime);
+    expect(daily.statsWindow).toBe("24h");
+    expect(daily.rows[0].pnlRaw).toBe("-42");
+    expect(daily.rows[0]).not.toHaveProperty("volumeRaw");
+    expect(daily.rows[0]).not.toHaveProperty("historyCoverage");
+    expect(
+      daily.rows.map((row) => [row.address, row.rank, row.paperTotalRaw]),
+    ).toEqual(
+      lifetime.rows.map((row) => [row.address, row.rank, row.paperTotalRaw]),
+    );
+    expect(history).toHaveBeenCalledTimes(1);
+    expect(activity).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps omitted API windows at 24h for older PAPER clients", async () => {
+    const { store, app, fetcher } = await fixture();
+    const history = vi.spyOn(store.positionMetrics, "readMany");
+    const data = (
+      await app.inject("/api/leaderboard?metric=paper")
+    ).json<LeaderboardResponse>();
+    expect(data.statsWindow).toBe("24h");
+    expect(data.rows[0].pnlRaw).toBe("-42");
+    expect(data.rows[0]).not.toHaveProperty("volumeRaw");
+    expect(history).not.toHaveBeenCalled();
+    expect(
+      new URL(String(fetcher.mock.calls[0][0])).searchParams.get("window"),
+    ).toBe("24h");
+  });
+
+  it("preserves lifetime account values when the retained-count batch is unavailable", async () => {
+    const { store, source } = await fixture();
+    vi.spyOn(store.positionMetrics, "readMany").mockRejectedValue(
+      new Error("count unavailable"),
+    );
+    const data = await source.leaderboard("paper");
+    expect(data.rows[0]).toMatchObject({
+      pnlRaw: "99999999",
+      volumeRaw: "88888888",
+      paperTotalRaw: String(large),
+      tradeCount: null,
+      historyCoverage: {
+        indexedAt: null,
+        backfillComplete: false,
+        projectionPending: true,
+        stale: true,
+      },
+    });
+    expect(data.accountStale).toBe(false);
+  });
+
+  it.each([
+    "pnl&window=all",
+    "volume&window=all",
+    "trades&window=all",
+    "paper&window=7d",
+  ])(
+    "rejects unsupported statistics windows without source work: %s",
+    async (query) => {
+      const { app, fetcher } = await fixture();
+      expect(
+        (await app.inject(`/api/leaderboard?metric=${query}`)).statusCode,
+      ).toBe(400);
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
 
   it("adds current PAPER holdings to the PnL rank without changing its 24h contract", async () => {
     const { app, fetcher } = await fixture();
@@ -181,7 +454,7 @@ describe("source-ranked PAPER ownership", () => {
     vi.spyOn(store.analytics, "walletMetrics").mockRejectedValue(
       new Error("activity unavailable"),
     );
-    const first = await source.leaderboard("paper");
+    const first = await source.leaderboard("paper", 0, "", "24h");
     expect(first).toMatchObject({
       accountStale: false,
       activityCoverage: { stale: true },
@@ -198,7 +471,7 @@ describe("source-ranked PAPER ownership", () => {
       until: now + 60000,
       message: "source unavailable",
     });
-    const saved = await source.leaderboard("paper");
+    const saved = await source.leaderboard("paper", 0, "", "24h");
     expect(saved.accountStale).toBe(true);
     expect(saved.stale).toBe(true);
     expect(saved.receivedAt).toBe(first.receivedAt);

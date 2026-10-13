@@ -224,6 +224,9 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       expect((await api.store.positionMetrics.read(wallet)).positionCount).toBe(
         1,
       );
+      expect((await api.store.positionMetrics.readMany([wallet], at + 302002))[wallet])
+        .toMatchObject({ recordedCount: 1, indexedAt: at + 1001,
+          backfillComplete: true, projectionPending: false, excludedCount: 0 });
       await worker.store.history.retainProtocol([{ time: at, value: 5 }]);
       const chartHour = Math.floor(at / 3600000) * 3600000;
       const chartRow = {

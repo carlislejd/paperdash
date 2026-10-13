@@ -58,6 +58,28 @@ let prefetch: {
 
 function cacheWallet(wallet: WalletResponse) {
   const key = wallet.address.toLowerCase();
+  const previous = walletCache.get(key);
+  if (previous) {
+    const cashflowFailure = sourceError(wallet, "cashflows");
+    const tradeFailure = sourceError(wallet, "trades");
+    const portfolioFailure = sourceError(wallet, "portfolio");
+    wallet = {
+      ...wallet,
+      cashflows: retainFailedHistory(
+        previous.cashflows,
+        wallet.cashflows,
+        cashflowFailure,
+      ),
+      trades: retainFailedHistory(previous.trades, wallet.trades, tradeFailure),
+      portfolio:
+        portfolioFailure && !wallet.portfolio
+          ? previous.portfolio
+          : wallet.portfolio,
+      stale:
+        wallet.stale ||
+        Boolean(cashflowFailure || tradeFailure || portfolioFailure),
+    };
+  }
   rememberTradePage(wallet.trades);
   walletCache.delete(key);
   walletCache.set(key, wallet);
@@ -140,6 +162,38 @@ function tradeKey(item: ClosedTrade) {
     : `${String(item.positionId)}:${String(item.txHash)}:${String(item.timestampMs)}`;
 }
 
+type WalletSource = "snapshot" | "cashflows" | "trades" | "portfolio";
+function sourceError(wallet: WalletResponse, source: WalletSource) {
+  const prefixes: Record<WalletSource, RegExp> = {
+    snapshot: /^(?:Live account:|Wallet snapshot\b)/i,
+    cashflows: /^Cashflows:/i,
+    trades: /^Closed trades:/i,
+    portfolio: /^Portfolio:/i,
+  };
+  return (
+    (source === "cashflows" || source === "trades"
+      ? wallet[source].coverage?.error
+      : undefined) ||
+    wallet.errors.find((error) => prefixes[source].test(error))
+  );
+}
+function isCollecting(message: string | undefined) {
+  return Boolean(message && /\bbeing (?:collected|indexed)\b/i.test(message));
+}
+function retainFailedHistory<T>(
+  previous: HistoryPage<T>,
+  incoming: HistoryPage<T>,
+  error: string | undefined,
+): HistoryPage<T> {
+  if (!error || incoming.items.length || !previous.items.length)
+    return incoming;
+  return {
+    ...previous,
+    stale: true,
+    ...(previous.coverage ? { coverage: { ...previous.coverage, error } } : {}),
+  };
+}
+
 /** A display-only decimal expansion. Financial totals always remain raw integer strings. */
 function exactAmount(raw: string | null | undefined, decimals = 18): string {
   if (!raw || !/^-?\d+$/.test(raw)) return "Unavailable";
@@ -189,7 +243,13 @@ function TransactionLink({ hash }: { hash: unknown }) {
   );
 }
 
-function PortfolioChart({ history }: { history: PortfolioHistory | null }) {
+function PortfolioChart({
+  history,
+  error,
+}: {
+  history: PortfolioHistory | null;
+  error?: string;
+}) {
   const [series, setSeries] = useState<"equity" | "pnl">("equity");
   const chart = useMemo(() => {
     if (!history) return null;
@@ -275,6 +335,12 @@ function PortfolioChart({ history }: { history: PortfolioHistory | null }) {
           </button>
         </div>
       </div>
+      {error && chart && (
+        <p className="wd-coverage wd-coverage-partial" role="status">
+          Portfolio history could not be refreshed. Last available history
+          shown.
+        </p>
+      )}
       {chart ? (
         <figure className="wd-chart">
           <div className="wd-chart-value">
@@ -337,7 +403,13 @@ function PortfolioChart({ history }: { history: PortfolioHistory | null }) {
       ) : (
         <div className="wd-chart-empty">
           <span aria-hidden="true">⌁</span>
-          <p>No portfolio history available.</p>
+          <p>
+            {isCollecting(error)
+              ? "Portfolio history is being indexed."
+              : error
+                ? "Portfolio history is unavailable."
+                : "No portfolio history available."}
+          </p>
         </div>
       )}
     </section>
@@ -606,20 +678,50 @@ export function WalletDrawer({
           );
         const current = dataRef.current;
         let next = response;
+        const cashflowFailure = sourceError(response, "cashflows");
+        const tradeFailure = sourceError(response, "trades");
+        const portfolioFailure = sourceError(response, "portfolio");
         if (
           current &&
           current.address.toLowerCase() === response.address.toLowerCase()
         ) {
-          const cashflows = loadedPages.current.cashflows
-            ? mergeHistory(current.cashflows, response.cashflows, cashflowKey)
-            : { page: response.cashflows, newActivity: false };
-          const trades = loadedPages.current.trades
-            ? mergeHistory(current.trades, response.trades, tradeKey)
-            : { page: response.trades, newActivity: false };
+          const savedCashflows = retainFailedHistory(
+            current.cashflows,
+            response.cashflows,
+            cashflowFailure,
+          );
+          const savedTrades = retainFailedHistory(
+            current.trades,
+            response.trades,
+            tradeFailure,
+          );
+          const cashflows =
+            savedCashflows !== response.cashflows
+              ? { page: savedCashflows, newActivity: false }
+              : loadedPages.current.cashflows && response.cashflows.items.length
+                ? mergeHistory(
+                    current.cashflows,
+                    response.cashflows,
+                    cashflowKey,
+                  )
+                : { page: response.cashflows, newActivity: false };
+          const trades =
+            savedTrades !== response.trades
+              ? { page: savedTrades, newActivity: false }
+              : loadedPages.current.trades && response.trades.items.length
+                ? mergeHistory(current.trades, response.trades, tradeKey)
+                : { page: response.trades, newActivity: false };
           next = {
             ...response,
             cashflows: cashflows.page,
             trades: trades.page,
+            portfolio:
+              portfolioFailure && !response.portfolio
+                ? current.portfolio
+                : response.portfolio,
+            stale:
+              response.stale ||
+              Boolean(cashflowFailure || tradeFailure || portfolioFailure),
           };
           if (cashflows.newActivity || trades.newActivity) setNewActivity(true);
           if (
@@ -633,6 +735,7 @@ export function WalletDrawer({
                 response.snapshot.indexedThroughTimestamp)
           ) {
             next.snapshot = current.snapshot;
+            next.stale = true;
             // Derived bands must remain attached to the snapshot they describe.
             next.marginRisk = riskMatchesSnapshot(
               current.marginRisk,
@@ -651,6 +754,9 @@ export function WalletDrawer({
           ...response,
           snapshot: next.snapshot,
           marginRisk: next.marginRisk,
+          stale: next.stale,
+          // cacheWallet preserves failed bounded heads, never appended pages.
+          portfolio: next.portfolio,
         });
         dataRef.current = next;
         setData(next);
@@ -796,6 +902,8 @@ export function WalletDrawer({
   );
   const followLimit = !followed && following.length >= FOLLOWING_LIMIT;
   const selectedHistory = wallet?.[tab];
+  const historyFailure = wallet ? sourceError(wallet, tab) : undefined;
+  const snapshotFailure = wallet ? sourceError(wallet, "snapshot") : undefined;
   const partial = wallet && (wallet.stale || wallet.errors.length > 0);
   const selectPosition = (position: PositionDetails, sourceStale = false) => {
     const clock =
@@ -946,9 +1054,13 @@ export function WalletDrawer({
               <>
                 {partial && (
                   <div className="wd-notice" role="status">
-                    {wallet.stale
-                      ? "Showing the latest saved snapshot. Some data may be delayed."
-                      : "Some sources are unavailable. Available records are shown below."}
+                    {!snapshot
+                      ? isCollecting(snapshotFailure)
+                        ? "Account snapshot is being collected. Retained history is shown below."
+                        : "Some sources are unavailable. Account snapshot unavailable; retained history is shown below."
+                      : wallet.stale
+                        ? "Showing the latest saved snapshot. Some data may be delayed."
+                        : "Some sources are unavailable. Available records are shown below."}
                   </div>
                 )}
                 <section
@@ -1064,7 +1176,10 @@ export function WalletDrawer({
                   onPosition={selectPosition}
                   refreshError={Boolean(error)}
                 />
-                <PortfolioChart history={wallet.portfolio} />
+                <PortfolioChart
+                  history={wallet.portfolio}
+                  error={sourceError(wallet, "portfolio")}
+                />
                 <section className="wd-activity" aria-label="Wallet activity">
                   <div className="wd-section-heading">
                     <div>
@@ -1130,6 +1245,16 @@ export function WalletDrawer({
                     aria-labelledby={`${contentId}-${tab}-tab`}
                     tabIndex={0}
                   >
+                    {historyFailure &&
+                      Boolean(selectedHistory?.items.length) && (
+                        <p
+                          className="wd-coverage wd-coverage-partial"
+                          role="status"
+                        >
+                          {tab === "cashflows" ? "Cashflows" : "Closed trades"}{" "}
+                          could not be refreshed. Last available records shown.
+                        </p>
+                      )}
                     {selectedHistory?.items.length ? (
                       <ol className="wd-history">
                         {tab === "cashflows"
@@ -1164,7 +1289,7 @@ export function WalletDrawer({
                                             tradeReceiptSource(
                                               item,
                                               wallet.trades,
-                                            ).stale,
+                                            ).stale || Boolean(historyFailure),
                                           );
                                       }
                                     : undefined
@@ -1178,18 +1303,11 @@ export function WalletDrawer({
                           {tab === "cashflows" ? "↙" : "〰"}
                         </span>
                         <h4>
-                          {selectedHistory?.coverage?.indexing
-                            ? "Indexing account history…"
-                            : wallet.errors.some((message) =>
-                                  message
-                                    .toLowerCase()
-                                    .includes(
-                                      tab === "cashflows"
-                                        ? "cashflow"
-                                        : "trade",
-                                    ),
-                                )
-                              ? "This history is unavailable."
+                          {historyFailure && !isCollecting(historyFailure)
+                            ? "This history is unavailable."
+                            : selectedHistory?.coverage?.indexing ||
+                                isCollecting(historyFailure)
+                              ? "Indexing account history…"
                               : tab === "cashflows"
                                 ? "No cashflows to show yet."
                                 : "No closed trades to show yet."}
@@ -1197,7 +1315,8 @@ export function WalletDrawer({
                       </div>
                     )}
                     {selectedHistory?.items.length &&
-                    selectedHistory.coverage?.indexing ? (
+                    selectedHistory.coverage?.indexing &&
+                    !historyFailure ? (
                       <p className="wd-coverage wd-coverage-partial">
                         Older history is being indexed.
                       </p>
@@ -1229,8 +1348,14 @@ export function WalletDrawer({
                       aria-hidden="true"
                     />
                     <span>
-                      {wallet.stale ? "Saved snapshot" : "Snapshot"} ·{" "}
-                      {relativeTime(wallet.receivedAt)}
+                      {!snapshot
+                        ? "Account snapshot unavailable"
+                        : wallet.stale
+                          ? "Saved snapshot"
+                          : "Snapshot"}
+                      {snapshot
+                        ? ` · ${relativeTime(snapshot.indexedThroughTimestamp * 1000)}`
+                        : ""}
                     </span>
                     <button
                       type="button"

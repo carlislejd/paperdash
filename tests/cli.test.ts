@@ -68,6 +68,14 @@ describe("public CLI arguments and command contracts", () => {
     ["watchlist", wallet, "--page", "1"],
     ["leaderboard", "--metric", "volume", "--q", "Alice"],
     ["leaderboard", "--metric", "holders"],
+    ["leaderboard", "--metric", "paper", "--window", "7d"],
+    ["leaderboard", "--metric", "paper", "--window"],
+    ["leaderboard", "--metric", "paper", "--window=all", "--window=24h"],
+    ["leaderboard", "--window", "all"],
+    ["leaderboard", "--metric", "pnl", "--window", "24h"],
+    ["leaderboard", "--metric", "trades", "--window", "all"],
+    ["leaderboard", "--metric", "volume", "--window", "24h"],
+    ["paper", "--window", "all"],
     ["risk"],
     ["risk", "not-a-wallet"],
     ["risk", wallet, "--history", "trades"],
@@ -119,7 +127,7 @@ describe("public CLI arguments and command contracts", () => {
     ).toBe(`${DEFAULT_BASE_URL}/api/leaderboard?page=0&metric=trades&q=0xab`);
     expect(
       parseArgs(["leaderboard", "--metric", "paper", "--page", "1", "--q", "Alice"], {}).url,
-    ).toBe(`${DEFAULT_BASE_URL}/api/leaderboard?page=1&metric=paper&q=Alice`);
+    ).toBe(`${DEFAULT_BASE_URL}/api/leaderboard?page=1&metric=paper&window=all&q=Alice`);
     expect(parseArgs(["assets", "eth"], {}).url).toBe(
       `${DEFAULT_BASE_URL}/api/assets/1/market`,
     );
@@ -134,6 +142,11 @@ describe("public CLI arguments and command contracts", () => {
       `${DEFAULT_BASE_URL}/api/liquidations?instrument=1&cursor=opaque%2B%2Fcursor`,
     );
   });
+  it.each(["all", "24h"])("selects the PAPER companion statistics window %s explicitly", (window) => {
+    const plan = parseArgs(["leaderboard", "--metric", "paper", `--window=${window}`, "--page", "2"], {});
+    expect(plan.url).toBe(`${DEFAULT_BASE_URL}/api/leaderboard?page=2&metric=paper&window=${window}`);
+    expect(parseArgs(["leaderboard"], {}).url).toBe(`${DEFAULT_BASE_URL}/api/leaderboard?page=0&metric=pnl`);
+  });
   it("prints help without consulting network or invalid API environment", async () => {
     const io = output(),
       fetch = vi.fn();
@@ -146,6 +159,8 @@ describe("public CLI arguments and command contracts", () => {
     ).toBe(0);
     expect(io.text()).toContain("Paperclub public, read-only CLI");
     expect(io.text()).toContain("Raw money/token strings");
+    expect(io.text()).toContain("--window all|24h (default all)");
+    expect(io.text()).toContain("lifetime volumeRaw (18 decimals), recorded closes");
     expect(fetch).not.toHaveBeenCalled();
   });
   it("canonicalizes a bounded watchlist into one batch request", () => {
@@ -196,7 +211,7 @@ describe("CLI data fidelity and freshness", () => {
     })).toBe(0);
     expect(JSON.parse(io.text()).data).toEqual(risk);
   });
-  it("preserves current PAPER ownership precision and separate PnL/activity windows in one request", async () => {
+  it("preserves the existing 24h PAPER response and independent activity freshness in one request", async () => {
     const io = output();
     const data = {
       metric: "paper", window: "current",
@@ -208,9 +223,78 @@ describe("CLI data fidelity and freshness", () => {
       receivedAt: 123, stale: false,
     };
     const fetch = vi.fn(async () => response(data));
-    expect(await runCli(["leaderboard", "--metric", "paper", "--page", "1"], { ...io, fetch })).toBe(0);
+    expect(await runCli(["leaderboard", "--metric", "paper", "--window", "24h", "--page", "1"], { ...io, fetch })).toBe(0);
     expect(JSON.parse(io.text()).data).toEqual(data);
     expect(fetch).toHaveBeenCalledOnce();
+  });
+  it("preserves exact lifetime PAPER statistics, nulls and retained-close coverage without extra requests", async () => {
+    const io = output();
+    const data = {
+      metric: "paper", window: "current", statsWindow: "all",
+      rows: [{ address: wallet, rank: 1, paperTotalRaw: "9007199254740993000000001",
+        pnlRaw: "-10000000000000000000001", volumeRaw: "123456789012345678901234567891",
+        volumeUsd: null, tradeCount: 153,
+        historyCoverage: { indexedAt: 123, backfillComplete: false, projectionPending: true, excludedCount: 2, stale: true } },
+      { address: `0x${"a".repeat(40)}`, rank: 2, paperTotalRaw: "0", pnlRaw: "0", volumeRaw: "0", volumeUsd: null, tradeCount: null,
+        historyCoverage: { indexedAt: null, backfillComplete: false, projectionPending: true, excludedCount: 0, stale: true } }],
+      receivedAt: 456, stale: false, accountStale: false,
+    };
+    const fetch = vi.fn(async () => response(data));
+    expect(await runCli(["leaderboard", "--metric", "paper"], { ...io, fetch })).toBe(0);
+    expect(JSON.parse(io.text()).data).toEqual(data);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][0]).toBe(`${DEFAULT_BASE_URL}/api/leaderboard?page=0&metric=paper&window=all`);
+  });
+  const freshPaperHistory = {
+    metric: "paper", window: "current", statsWindow: "all", stale: false, accountStale: false,
+    rows: [{ address: wallet, tradeCount: 0, historyCoverage: {
+      indexedAt: 123, backfillComplete: true, projectionPending: false, excludedCount: 0, stale: false,
+    } }],
+  };
+  it("accepts a fresh indexed empty recorded-close cohort without claiming lifetime completeness", async () => {
+    const io = output();
+    expect(await runCli(["leaderboard", "--metric", "paper", "--require-fresh"], {
+      ...io, fetch: async () => response(freshPaperHistory),
+    })).toBe(0);
+    expect(JSON.parse(io.text()).data).toEqual(freshPaperHistory);
+  });
+  it.each([
+    ["old server", { statsWindow: undefined }],
+    ["wrong window", { statsWindow: "24h" }],
+    ["stale account", { accountStale: true }],
+    ["unknown account freshness", { accountStale: undefined }],
+    ["unknown rows", { rows: undefined }],
+    ...([
+      ["unknown count", { tradeCount: null }],
+      ["missing coverage", { historyCoverage: undefined }],
+      ["unindexed", { historyCoverage: { indexedAt: null } }],
+      ["incomplete backfill", { historyCoverage: { backfillComplete: false } }],
+      ["pending projection", { historyCoverage: { projectionPending: true } }],
+      ["stale history", { historyCoverage: { stale: true } }],
+    ] as Array<[string, Record<string, unknown>]>).map(([label, patch]) => [label, { rows: [{ ...freshPaperHistory.rows[0], ...patch,
+      ...(patch.historyCoverage && typeof patch.historyCoverage === "object" ? { historyCoverage: { ...freshPaperHistory.rows[0].historyCoverage, ...patch.historyCoverage } } : {}),
+    }] }]),
+  ])("keeps PAPER lifetime JSON visible but fails --require-fresh for %s", async (_label, patch) => {
+    const io = output();
+    const data = { ...freshPaperHistory, ...patch };
+    expect(await runCli(["leaderboard", "--metric", "paper", "--require-fresh"], {
+      ...io, fetch: async () => response(data),
+    })).toBe(3);
+    expect(JSON.parse(io.text()).data).toEqual(JSON.parse(JSON.stringify(data)));
+    expect(io.error().error.code).toBe("data_not_fresh");
+  });
+  it.each(["paper", "pnl", "volume", "trades"])("rejects delayed independent 24h activity for %s", async (metric) => {
+    const args = ["leaderboard", "--metric", metric, ...(metric === "paper" ? ["--window", "24h"] : []), "--require-fresh"];
+    const data = { stale: false, accountStale: false, activityCoverage: { stale: true }, rows: [] };
+    const io = output();
+    expect(await runCli(args, { ...io, fetch: async () => response(data) })).toBe(3);
+    expect(JSON.parse(io.text()).data).toEqual(data);
+  });
+  it("accepts the compatible legacy PAPER 24h response when activity is fresh", async () => {
+    const io = output();
+    expect(await runCli(["leaderboard", "--metric", "paper", "--window", "24h", "--require-fresh"], {
+      ...io, fetch: async () => response({ stale: false, accountStale: false, activityCoverage: { stale: false }, rows: [] }),
+    })).toBe(0);
   });
   it("preserves watchlist row ages and partial activity while failing freshness for missing wallets", async () => {
     const io = output();

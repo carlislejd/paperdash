@@ -249,24 +249,41 @@ export function leaderboardResponse(
   metric: LeaderboardResponse["metric"] = "pnl",
   page = 0,
   stale = false,
+  statsWindow: "all" | "24h" = metric === "paper" ? "all" : "24h",
 ): LeaderboardResponse {
   const sourceRanked = metric === "pnl" || metric === "paper";
+  const lifetime = metric === "paper" && statsWindow === "all";
   return {
     window: metric === "paper" ? "current" : "24h",
+    statsWindow: lifetime ? "all" : "24h",
     metric,
     rows: [
       {
         address: page === 0 ? WALLET : SECOND_WALLET,
         leaderboardName: page === 0 ? "Aoi" : "Yuki",
         rank: page * 25 + 1,
-        pnlRaw: sourceRanked ? usd(page === 0 ? 5001 : -50) : null,
+        pnlRaw: sourceRanked
+          ? usd(page === 0 ? (lifetime ? 50010 : 5001) : -50)
+          : null,
         paperTotalRaw: sourceRanked ? "3003199186757525433019603" : null,
-        volumeUsd: 3000000,
-        tradeCount: 23,
+        volumeUsd: lifetime ? null : 3000000,
+        ...(lifetime
+          ? {
+              volumeRaw: "30000000000123456789012345678",
+              historyCoverage: {
+                indexedAt: Date.now(),
+                backfillComplete: true,
+                projectionPending: false,
+                excludedCount: 0,
+                stale,
+              },
+            }
+          : {}),
+        tradeCount: lifetime ? 1247 : 23,
         currentUnrealizedPnlRaw: sourceRanked
           ? usd(page === 0 ? 1250000 : -125)
           : null,
-        assetsTraded: [0, 1],
+        assetsTraded: lifetime ? null : [0, 1],
       },
     ],
     count: 26,
@@ -282,16 +299,18 @@ export function leaderboardResponse(
           pageShareBps: 2500,
         }
       : undefined,
-    activityCoverage: {
-      source: "retained-public-observations",
-      partial: true,
-      observedFrom: Date.now() - 7200000,
-      projectionBackfillComplete: true,
-      receivedAt: Date.now(),
-      windowFrom: Date.now() - 86400000,
-      windowTo: Date.now(),
-      stale,
-    },
+    activityCoverage: lifetime
+      ? undefined
+      : {
+          source: "retained-public-observations",
+          partial: true,
+          observedFrom: Date.now() - 7200000,
+          projectionBackfillComplete: true,
+          receivedAt: Date.now(),
+          windowFrom: Date.now() - 86400000,
+          windowTo: Date.now(),
+          stale,
+        },
     coverage: {
       source: sourceRanked
         ? "papertrade-leaderboard"
@@ -560,6 +579,7 @@ export async function mockSources(
             "pnl") as LeaderboardResponse["metric"],
           Number(url.searchParams.get("page") || 0),
           options.stale,
+          url.searchParams.get("window") === "24h" ? "24h" : "all",
         ),
       });
       return;

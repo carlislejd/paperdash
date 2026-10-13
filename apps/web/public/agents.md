@@ -21,6 +21,7 @@ node paperclub.mjs overview --pretty
 node paperclub.mjs wallets --sort currentUnrealizedPnl --page 0 --pretty
 node paperclub.mjs leaderboard --metric pnl --page 0 --pretty
 node paperclub.mjs leaderboard --metric paper --page 0 --pretty
+node paperclub.mjs leaderboard --metric paper --window 24h --page 0 --pretty
 node paperclub.mjs assets --pretty
 node paperclub.mjs paper --pretty
 node paperclub.mjs risk 0x1234567890123456789012345678901234567890 --pretty
@@ -37,7 +38,8 @@ The CLI prints one JSON object: `{command,url,fetchedAt,data}`. Direct API respo
 | Top current unrealized PnL | `/api/accounts?sort=currentUnrealizedPnl&page=0&pageSize=10` | `accounts[].currentUnrealizedPnl`, `address`, `leaderboardName`, `currentOpenPositionCount` |
 | Top protocol-reported lifetime realized PnL | `/api/accounts?sort=realizedPnl&page=0&pageSize=10` | `accounts[].realizedPnl` |
 | Rolling 24-hour PnL leaderboard | `/api/leaderboard?metric=pnl&page=0` | `rows[].pnlRaw`, `rank`, `address`, `leaderboardName` |
-| Largest current PAPER owners, including staked tokens | `/api/leaderboard?metric=paper&page=0` | `rows[].paperTotalRaw`, `rank`, `paperOwnership`; accompanying `pnlRaw` remains rolling 24-hour PnL |
+| Largest current PAPER owners, including staked tokens | `/api/leaderboard?metric=paper&window=all&page=0` | `rows[].paperTotalRaw`, `rank`, `paperOwnership`; lifetime realized `pnlRaw`, lifetime `volumeRaw`, retained-close `tradeCount` |
+| Current PAPER owners with 24-hour companion statistics | `/api/leaderboard?metric=paper&window=24h&page=0` | `rows[].pnlRaw`, `volumeUsd`, `tradeCount`, `activityCoverage`; ownership ranking remains current |
 | Most trades in the last 24 hours, by wallet | `/api/leaderboard?metric=trades&page=0` | `rows[].tradeCount` |
 | Most observed volume in the last 24 hours, by wallet | `/api/leaderboard?metric=volume&page=0` | `rows[].volumeUsd` |
 | Observed trade counts and volume over the last 24 hours | `/api/assets` | `assets[].activity.counts`, `.notionalUsd`, `.windowFrom`, `.windowTo` |
@@ -73,9 +75,13 @@ For the dashboard's positive open-PnL leaders, filter current-uPnL rows to `curr
 
 ### PAPER ownership
 
-`node paperclub.mjs leaderboard --metric paper` ranks current **staked + unstaked PAPER**, not lifetime issuance or rewards. `window: "current"` describes the ownership ranking; the accompanying `pnlRaw` remains protocol-reported rolling 24-hour PnL and observed activity remains bounded by `activityCoverage.windowFrom/windowTo`. PnL-ranked rows also expose `paperTotalRaw`; volume/trade rankings may leave it null. Keep all raw amounts as exact 18-decimal strings.
+`node paperclub.mjs leaderboard --metric paper` ranks current **staked + unstaked PAPER**, not lifetime issuance or rewards. `window: "current"` describes ownership; `statsWindow` describes the companion columns. The CLI explicitly sends `window=all` by default: `pnlRaw` is source-reported lifetime realized PnL, and `volumeRaw` is exact source-reported lifetime notional in 18-decimal USD units. Direct API requests that omit `window` retain the legacy **24h** companion statistics; send `window=all` explicitly for lifetime statistics. Use `volumeRaw`, not the deliberately null `volumeUsd`. `tradeCount` means **recorded closes**, including retained closed and liquidated positions; it is not a lifetime all-execution count or guaranteed complete lifetime history.
 
-`paperOwnership.trackedTotalRaw` is the source account directory's tracked PAPER total. It is not independently verified full protocol supply. `pageTotalRaw` sums this page; `pageShareBps / 100` is its percentage of tracked PAPER, or null when unavailable. The first page's share describes its returned leading accounts, not an arbitrary top-10 cohort. `count` counts accounts, including zero balances, not nonzero holders. Use `q=ADDRESS` or a name to find an account without crawling; ranks in filtered results apply to that filtered set, not the unfiltered global list. Ownership and account PnL share `accountReceivedAt` / `accountStale`; observed activity has separate freshness.
+Use `--window 24h` for protocol-reported rolling 24-hour `pnlRaw` and observed executions/volume (`tradeCount`, numeric `volumeUsd`) bounded by `activityCoverage.windowFrom/windowTo`. The PAPER ownership order stays current in either mode. The CLI accepts `--window` only with `leaderboard --metric paper`; other ranking commands retain their existing rolling 24-hour behavior. Inspect returned `statsWindow` before labeling columns; older responses can omit it and represent the previous 24-hour companion contract. PnL-ranked rows also expose `paperTotalRaw`; volume/trade rankings may leave it null. Keep all raw amounts as exact 18-decimal strings.
+
+Lifetime recorded-close coverage is per row: `historyCoverage.indexedAt`, `backfillComplete`, `projectionPending`, `excludedCount` and `stale`. A null count is unavailable; zero is an available empty retained count, not proof the wallet never traded. An old check, unfinished backfill, pending projection or excluded rows must remain visible in the interpretation. Completed available backfill does not establish canonical lifetime completeness. Do not substitute a 24-hour count for this lifetime retained cohort.
+
+`paperOwnership.trackedTotalRaw` is the source account directory's tracked PAPER total. It is not independently verified full protocol supply. `pageTotalRaw` sums this page; `pageShareBps / 100` is its percentage of tracked PAPER, or null when unavailable. The first page's share describes its returned leading accounts, not an arbitrary top-10 cohort. `count` counts accounts, including zero balances, not nonzero holders. Use `q=ADDRESS` or a name to find an account without crawling; ranks in filtered results apply to that filtered set, not the unfiltered global list. Ownership and source-account statistics share `accountReceivedAt` / `accountStale`; retained history and observed 24-hour activity have separate freshness.
 
 ### Trade counts and supported time ranges
 
@@ -92,6 +98,7 @@ These counts mean **observed executions**, including opens, closes and liquidati
 Supported windows today:
 
 - All-execution counts and volume rankings: rolling 24 hours only.
+- PAPER-ranked companion statistics: lifetime source PnL/volume and recorded closes by default, or rolling 24 hours with `--window 24h`; current ownership in both modes.
 - Liquidations: rolling 1 hour and 24 hours; hourly buckets also available.
 - Current open-position count: a snapshot, not trades over a time range.
 - Protocol charts: hourly observations/volume changes, not hourly all-execution counts.
@@ -174,7 +181,7 @@ Use `q` for an address/name search where supported; observed volume/trade rankin
 
 ## Request behavior
 
-The CLI has bounded retries and timeouts. `--require-fresh` exits 3 on stale/degraded/unavailable responses while retaining the JSON result on stdout; `risk` uses its independent snapshot/reference freshness instead of unrelated wallet history. Still inspect nested freshness and coverage yourself. Other exit codes: 0 success, 1 request failure, 2 invalid arguments. Errors are JSON on stderr.
+The CLI has bounded retries and timeouts. `--require-fresh` exits 3 on stale/degraded/unavailable responses while retaining the JSON result on stdout; `risk` uses its independent snapshot/reference freshness instead of unrelated wallet history. For PAPER lifetime statistics it also requires a matching `statsWindow: "all"`, fresh source-account data and available recorded-close counts with indexed, completed, nonpending, fresh per-row history coverage. For 24-hour rankings it rejects delayed activity coverage when present. These checks do not prove canonical lifetime completeness; inspect excluded rows and coverage when explaining results. Other exit codes: 0 success, 1 request failure, 2 invalid arguments. Errors are JSON on stderr.
 
 For direct HTTP, use a timeout, honor `Retry-After` on 429, and back off on transient errors. Do not repeatedly retry 400/401/403. Reuse responses within a task; a refresh every 30–60 seconds is sufficient for ordinary agent conversations. Do not poll every wallet or fetch the dashboard HTML to extract numbers. No trading or account-write action is available through this interface.
 

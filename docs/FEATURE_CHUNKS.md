@@ -10,6 +10,18 @@ The first addition is a per-address retained account summary with bounded batch 
 
 Later features should reuse this read boundary, retained wallet outcomes, minute aggregates and existing export components. Introduce additional history or indexes only with the chunk that needs them. In particular, neither the current live ticker nor selectively fetched wallet snapshots establish a complete global open-position inventory.
 
+## Efficiency checks in every development chunk
+
+The user confirmed on October 12 that efficiency review belongs in each development chunk. A separate scheduled background review is not requested. Freshness remains the first priority, with the existing upstream request limits preserved.
+
+For the paths a change touches, inspect duplicate requests, unchanged full-snapshot downloads, repeated database work, oversized responses, unnecessary rendering, and work that grows with every viewer. Reuse shared requests, retained projections, caches and incremental updates where they preserve recovery and data coverage. Keep refreshes, retries and queues bounded; retain source timestamps and respect Retry-After.
+
+For a material optimization, record a representative before/after comparison under the same conditions: requests and response bytes, relevant database work, and source-to-display age. Check navigation, duplicate consumers, reconnects and failures where applicable. Lower request counts must not hide older data or lose corrections. Label synthetic results as synthetic and reserve broad production load tests for a justified release gate.
+
+The first freshness release provides a useful baseline: four unchanged panels made 8 rather than 28 requests over 30 seconds in controlled tests, and duplicate consumers shared one request. Continue looking for this kind of measurable reduction while implementing the next feature; call out remaining bottlenecks separately from verified improvements.
+
+For the next active-history chunk, measure unchanged trade pages re-enqueuing position projections and identical portfolio windows being deleted/reinserted. Both repeat database work in the current implementation; their production cost is unmeasured. Any suppression must retain check timestamps, evidence, correction/removal handling, and the eligibility transition when a previously future-dated close becomes valid on a later observation. Separately measure successful head-check age before changing active-lane ordering: old successful page timestamps alone do not establish time waiting since activation. Preserve saved cursors and the existing source budget.
+
 ## Release sequence
 
 1. **Live Following and wallet read foundation.** Migrate saved browser entries to identities, show current retained summaries and recent activity, and refresh known watched wallets through a globally bounded collector queue. Keep ten wallets per page and one visible-page request; no alerts or sign-in in this release.
@@ -44,3 +56,11 @@ The next approved sequence builds on the delivered chunks above, with separate r
 3. **Discovery and sharing.** Preserve supported filters and time ranges, add meaningful comparisons and since-last-check Following summaries, then daily recaps and immutable historical links. Reuse indexed aggregates and export primitives, keeping current values distinct from the inputs captured in a shared moment.
 
 Only the first follow-up is part of this release. The wallet and discovery work remains queued; approval of the sequence does not mean those features have already shipped.
+
+### PAPER holder history follow-up
+
+The apparent gaps in PAPER leaderboard columns were largely a period mismatch: current token ownership was paired with rolling 24-hour activity, while older wallet history was already retained. The PAPER table and agent CLI now default to lifetime companion statistics, with an explicit 24-hour switch. Lifetime realized PnL and volume reuse the source account response; recorded closes reuse the existing correction-aware position rollups. Counts include closed/liquidated records, not all execution events. Row coverage preserves incomplete, pending and delayed history rather than turning unknown data into zero. The public API retains its omitted-window 24-hour behavior for older clients; new clients request `window=all` explicitly.
+
+Successful shared PAPER page loads now retain account summaries and promote at most 25 displayed holders into the existing history queue, preserving their records, cursors and failure deadlines. A lifetime page makes one indexed database query for all displayed close counts, cached for 20 seconds; it does not scan raw history or fetch individual wallets. Controlled tests with 12 concurrent consumers across two API instances made one account request, one history-count batch and one promotion. Subsequent cache hits added none. Source limits and collector scheduling are unchanged; this is not a capacity benchmark or a claim that all wallet history is complete.
+
+A related profile fix preserves previously loaded sections across explicit partial-source failures, including the bounded prefetch cache, while still accepting genuinely empty successful responses and isolating wallets. Full wallet tabs, biggest-win/loss highlights, scheduler foreground priority and the unchanged-projection write optimizations remain separate work.

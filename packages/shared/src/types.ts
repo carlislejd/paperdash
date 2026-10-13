@@ -190,6 +190,8 @@ export interface AssetsResponse {
 }
 export interface LeaderboardResponse {
   window: "24h" | "current";
+  /** Statistics period; PAPER ownership itself is always current. */
+  statsWindow?: "24h" | "all";
   metric: "pnl" | "volume" | "trades" | "paper";
   rows: {
     address: string;
@@ -199,7 +201,17 @@ export interface LeaderboardResponse {
     /** Current unstaked plus staked PAPER from the source account snapshot. */
     paperTotalRaw?: Raw | null;
     volumeUsd: number | null;
+    /** Exact lifetime source-account volume; absent for observed 24h activity. */
+    volumeRaw?: Raw | null;
     tradeCount: number | null;
+    /** Lifetime counts are retained closed/liquidated records, not executions. */
+    historyCoverage?: {
+      indexedAt: number | null;
+      backfillComplete: boolean;
+      projectionPending: boolean;
+      excludedCount: number;
+      stale: boolean;
+    };
     /** Current account snapshot, distinct from the ranking's 24h P&L. */
     currentUnrealizedPnlRaw?: Raw | null;
     /** Instrument IDs seen in retained 24h executions, not open positions. */

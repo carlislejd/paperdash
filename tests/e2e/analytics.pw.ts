@@ -136,10 +136,27 @@ test("leaderboard separates 24h PnL from partial observed rankings and pages wal
   await expect(
     panel.getByRole("columnheader", { name: "PAPER OWNED" }),
   ).toHaveAttribute("aria-sort", "descending");
-  await expect(panel.getByRole("columnheader").nth(3)).toHaveText("24H PNL");
-  await expect(pnlRow.locator(".leaderboard-value-pnl")).toHaveText(
-    "+$5,001.00",
+  await expect(panel.getByRole("columnheader").nth(3)).toHaveText(
+    "Realized P&L · lifetime",
   );
+  await expect(
+    panel.getByRole("button", { name: "Lifetime", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    panel.getByRole("columnheader", { name: "ASSETS · 24H" }),
+  ).toHaveCount(0);
+  await expect(pnlRow.locator(".leaderboard-value-pnl")).toHaveText(
+    "+$50,010.00",
+  );
+  await expect(pnlRow.locator(".leaderboard-value-volume")).toHaveText(
+    "$30,000,000,000.12",
+  );
+  await expect(pnlRow.locator(".leaderboard-value-volume")).toHaveAttribute(
+    "title",
+    "30,000,000,000.123456789012345678 USDC · lifetime traded volume",
+  );
+  await expect(pnlRow.locator(".leaderboard-value-trades")).toHaveText("1,247");
+  await expect(panel).toContainText("not a count of all executions");
   const ownership = panel.getByRole("definition");
   await expect(ownership).toHaveText(["12.01M", "3M", "25.00%"]);
   await expect(ownership.nth(1)).toHaveAttribute(
@@ -153,6 +170,13 @@ test("leaderboard separates 24h PnL from partial observed rankings and pages wal
     path: `/tmp/paperclub-paper-leaderboard-${test.info().project.name}.png`,
     fullPage: true,
   });
+  await panel.getByRole("button", { name: "24 hours", exact: true }).click();
+  await expect(panel.getByRole("columnheader").nth(3)).toHaveText("24H PNL");
+  await expect(pnlRow.locator(".leaderboard-value-trades")).toHaveText("23");
+  await expect(pnlRow.locator(".leaderboard-value-volume")).toHaveText(
+    "$3,000,000.00",
+  );
+  await expect(pnlRow.locator(".leaderboard-asset")).toHaveCount(2);
   await panel.getByRole("button", { name: "24h PnL", exact: true }).click();
   await expect(panel.getByRole("columnheader").nth(2)).toHaveText("24H PNL");
   await expect(panel.getByRole("columnheader").nth(3)).toHaveText(
@@ -212,6 +236,136 @@ test("leaderboard distinguishes unavailable asset data from no observed trades",
   await expect(page.locator(".analytics-coverage-note")).toContainText(
     "Account valuations are delayed",
   );
+});
+
+test("PAPER lifetime history distinguishes pending counts, retained partial counts and confirmed zero", async ({
+  page,
+}) => {
+  await mockSources(page);
+  const requests: URL[] = [];
+  await page.route("**/api/leaderboard?**", (route) => {
+    const url = new URL(route.request().url());
+    requests.push(url);
+    if (url.searchParams.get("metric") !== "paper") return route.fallback();
+    const data = leaderboardResponse("paper");
+    const original = data.rows[0];
+    data.count = 4;
+    data.pageInfo = { page: 0, totalPages: 1 };
+    data.rows = [
+      {
+        ...original,
+        leaderboardName: "Pending",
+        tradeCount: null,
+        historyCoverage: {
+          indexedAt: null,
+          backfillComplete: false,
+          projectionPending: true,
+          excludedCount: 0,
+          stale: true,
+        },
+      },
+      {
+        ...original,
+        address: SECOND_WALLET,
+        leaderboardName: "Partial",
+        rank: 2,
+        tradeCount: 235,
+        historyCoverage: {
+          indexedAt: Date.now(),
+          backfillComplete: false,
+          projectionPending: false,
+          excludedCount: 3,
+          stale: false,
+        },
+      },
+      {
+        ...original,
+        address: `0x${"33".repeat(20)}`,
+        leaderboardName: "Confirmed zero",
+        rank: 3,
+        tradeCount: 0,
+        pnlRaw: "0",
+        volumeRaw: "0",
+      },
+      {
+        ...original,
+        address: `0x${"44".repeat(20)}`,
+        leaderboardName: "Projection pending",
+        rank: 4,
+        tradeCount: 153,
+        historyCoverage: {
+          indexedAt: Date.now(),
+          backfillComplete: true,
+          projectionPending: true,
+          excludedCount: 0,
+          stale: true,
+        },
+      },
+    ];
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/?view=leaderboard");
+  const panel = page.getByRole("region", { name: "Leaderboard", exact: true });
+  await panel.getByRole("button", { name: "PAPER", exact: true }).click();
+  const rows = panel.locator("tbody tr");
+  await expect(rows.nth(0).locator(".leaderboard-value-trades")).toHaveText(
+    "—Updating",
+  );
+  await expect(rows.nth(1).locator(".leaderboard-value-trades")).toHaveText(
+    "235Partial history",
+  );
+  await expect(
+    rows.nth(1).locator(".leaderboard-value-trades"),
+  ).toHaveAttribute("title", /3 excluded from hold\/leverage averages/);
+  await expect(rows.nth(2).locator(".leaderboard-value-trades")).toHaveText(
+    "0",
+  );
+  await expect(rows.nth(2).locator(".leaderboard-value-volume")).toHaveText(
+    "$0.00",
+  );
+  await expect(rows.nth(3).locator(".leaderboard-value-trades")).toHaveText(
+    "153Updating",
+  );
+  expect(
+    requests
+      .find((url) => url.searchParams.get("metric") === "paper")
+      ?.searchParams.get("window"),
+  ).toBe("all");
+  await expect(
+    panel.getByRole("columnheader", { name: "ASSETS · 24H" }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await panel.screenshot({
+    path: `/tmp/paperclub-paper-lifetime-${test.info().project.name}.png`,
+  });
+});
+
+test("an older PAPER response never relabels 24h activity as lifetime", async ({
+  page,
+}) => {
+  await mockSources(page);
+  await page.route("**/api/leaderboard?**", (route) => {
+    if (new URL(route.request().url()).searchParams.get("metric") !== "paper")
+      return route.fallback();
+    const data = leaderboardResponse("paper", 0, false, "24h");
+    delete data.statsWindow;
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/?view=leaderboard");
+  const panel = page.getByRole("region", { name: "Leaderboard", exact: true });
+  await panel.getByRole("button", { name: "PAPER", exact: true }).click();
+  await expect(panel).toContainText(
+    "Lifetime details are unavailable in this snapshot; showing 24-hour activity.",
+  );
+  await expect(
+    panel.getByRole("columnheader", { name: "24H PNL" }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("columnheader", { name: "Recorded closes" }),
+  ).toHaveCount(0);
+  await expect(panel.locator(".leaderboard-value-trades")).toHaveText("23");
 });
 
 test("analytics polling stops on navigation and cached values survive refresh errors", async ({
