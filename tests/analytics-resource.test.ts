@@ -394,6 +394,82 @@ it("preserves a bootstrap revision arriving during the initial polling request",
   });
 });
 
+it("coalesces legacy liquidation bursts at the five-second floor despite poll jitter without bypassing failure cooldown", async () => {
+  resources.dispose();
+  resources = new AnalyticsResources({
+    read,
+    now: () => Date.now(),
+    random: () => 1,
+    hidden: () => hidden,
+  });
+  const path = "/api/liquidations?instrument=0";
+  resources.subscribe(path, () => {}, {
+    liveLiquidations: true,
+    instrument: 0,
+  });
+  resources.subscribe(path, () => {}, {
+    liveLiquidations: true,
+    instrument: 0,
+  });
+  await flush();
+  expect(read).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(1000);
+  resources.trade(1, "liq");
+  resources.trade(0, "close");
+  expect(resources.diagnostics().notificationRequests).toBe(0);
+  for (let i = 0; i < 100; i++) resources.trade(0, "liq");
+  await vi.advanceTimersByTimeAsync(3999);
+  expect(read).toHaveBeenCalledTimes(1);
+  read.mockRejectedValueOnce(new ApiError("Source delayed", 503, 30000));
+  await vi.advanceTimersByTimeAsync(1);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(resources.diagnostics().notificationRequests).toBe(1);
+  for (let i = 0; i < 100; i++) resources.trade(0, "liq");
+  await vi.advanceTimersByTimeAsync(31999);
+  expect(read).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(resources.get(path).error).toBe("");
+});
+
+it("ignores legacy liquidation notifications while a request is pending or the tab is hidden", async () => {
+  resources.dispose();
+  resources = new AnalyticsResources({
+    read,
+    now: () => Date.now(),
+    random: () => 1,
+    hidden: () => hidden,
+  });
+  let resolve!: (value: unknown) => void;
+  read.mockImplementationOnce(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  resources.subscribe("/api/liquidations", () => {}, {
+    liveLiquidations: true,
+    instrument: 0,
+  });
+  await flush();
+  for (let i = 0; i < 100; i++) resources.trade(0, "liq");
+  await vi.advanceTimersByTimeAsync(1000);
+  resolve(response());
+  await flush();
+  resources.trade(1, "liq");
+  resources.trade(0, "open");
+  await vi.advanceTimersByTimeAsync(4000);
+  expect(read).toHaveBeenCalledTimes(1);
+  hidden = true;
+  resources.trade(0, "liq");
+  hidden = false;
+  await vi.advanceTimersByTimeAsync(1999);
+  expect(read).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(resources.diagnostics().notificationRequests).toBe(0);
+});
+
 it("validates capability envelopes and never accepts resource URLs or malformed hints", () => {
   expect(
     decodePanelRevisions({ version: 2, publishedAt: AT, panels: {} }),

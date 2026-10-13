@@ -22,7 +22,14 @@ export type AnalyticsSnapshot = {
   error: string;
   loading: boolean;
 };
-type Reason = "initial" | "manual" | "revision" | "retry" | "poll" | "recovery";
+type Reason =
+  | "initial"
+  | "manual"
+  | "revision"
+  | "notification"
+  | "retry"
+  | "poll"
+  | "recovery";
 type Entry = {
   path: string;
   raw: unknown;
@@ -43,6 +50,7 @@ type Entry = {
   unconfirmed: boolean;
   resumeAt: number;
   dirtyAt: number | null;
+  notificationAt: number | null;
   force: boolean;
   controller?: AbortController;
   timer?: ReturnType<typeof setTimeout>;
@@ -66,6 +74,7 @@ export class AnalyticsResources {
   private counters = {
     requests: 0,
     revisionRequests: 0,
+    notificationRequests: 0,
     pollingRequests: 0,
     recoveryRequests: 0,
     coalesced: 0,
@@ -97,6 +106,7 @@ export class AnalyticsResources {
         unconfirmed: false,
         resumeAt: 0,
         dirtyAt: null,
+        notificationAt: null,
         force: false,
       };
       this.entries.set(path, entry);
@@ -149,10 +159,11 @@ export class AnalyticsResources {
     }
   }
   trade(instrument: number, kind: string) {
-    if (kind !== "liq") return;
+    if (kind !== "liq" || this.env.hidden()) return;
     for (const entry of this.entries.values()) {
       if (
         entry.failures ||
+        entry.controller ||
         this.capable(entry) ||
         ![...entry.listeners.values()].some(
           (option) =>
@@ -162,7 +173,12 @@ export class AnalyticsResources {
         )
       )
         continue;
-      // Legacy notifications share the existing polling floor and error deadline.
+      // Preserve the legacy notification deadline, rather than the later
+      // jittered poll. Bursts share one deadline and never bypass error backoff.
+      entry.notificationAt ??= Math.max(
+        this.env.now(),
+        (entry.startedAt ?? 0) + NORMAL,
+      );
       this.plan(entry);
     }
   }
@@ -270,6 +286,9 @@ export class AnalyticsResources {
     } else if (entry.checkedAt === null) {
       reason = "initial";
       at = now;
+    } else if (!capable && entry.notificationAt !== null) {
+      reason = "notification";
+      at = entry.notificationAt;
     } else if (
       capable &&
       (entry.wanted !== entry.applied ||
@@ -311,10 +330,12 @@ export class AnalyticsResources {
     entry.controller = controller;
     entry.startedAt = this.env.now();
     entry.force = false;
+    entry.notificationAt = null;
     const revision = this.capable(entry) ? entry.wanted : null;
     const health = entry.healthVersion;
     this.counters.requests++;
     if (reason === "revision") this.counters.revisionRequests++;
+    if (reason === "notification") this.counters.notificationRequests++;
     if (reason === "poll") this.counters.pollingRequests++;
     if (reason === "recovery") this.counters.recoveryRequests++;
     this.emit(entry, entry.snapshot.error, !entry.raw || reason === "manual");
