@@ -47,12 +47,15 @@ export class HistoryIndexer {
       2,
       Math.max(1, (options.sourceConcurrency ?? 3) - 1),
     );
+    // Reserve two turns for recent ledger heads and two for all active work.
+    // Empty backfill/retry turns borrow general active work before maintenance;
+    // the explicit fair turn still serves older inactive jobs.
     const lanes: readonly HistoryLane[] = [
-      "active",
+      "active-head",
       "backfill",
       "active",
       "retry",
-      "active",
+      "active-head",
       "backfill",
       "active",
       "fair",

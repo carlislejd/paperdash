@@ -7,6 +7,7 @@ import type {
   StreamMessage,
 } from "../../../packages/shared/src/types.js";
 import { refreshWatchedWallet } from "./following.js";
+import { refreshDirectoryHead } from "./directory-refresh.js";
 import { config, errorMessage } from "./config.js";
 import {
   accountsSchema,
@@ -309,26 +310,9 @@ export class Collector {
     this.loop("wallet-summaries", 5000, () =>
       refreshWatchedWallet(this.store, this.upstream),
     );
-    this.loop("directory", config.directoryInterval, async () => {
-      const path = canonicalPath("/state/leaderboard/accounts", {
-        window: "all",
-        sortKey: "currentBalance",
-        sortDir: "desc",
-        page: 0,
-        pageSize: 25,
-      });
-      const accounts = await this.upstream.request(path, accountsSchema);
-      await this.store.following.retainAccounts(
-        accounts.accounts,
-        Date.now(),
-        true,
-      );
-      await this.store.put("account-count", accounts.summary.uniqueAccounts);
-      await this.store.put(`cache:${path}`, accounts);
-      await this.store.history.discoverWallets(
-        accounts.accounts.map((account) => account.address),
-      );
-    });
+    this.loop("directory", config.directoryInterval, () =>
+      refreshDirectoryHead(this.store, this.upstream),
+    );
     this.loop("directory-sweep", config.directoryInterval, async () => {
       const savedPage = await this.store.get<number>("directory-scan-page");
       const page =

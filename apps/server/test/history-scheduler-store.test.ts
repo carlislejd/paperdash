@@ -75,7 +75,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL scheduler SQL parity
       await history.commitPage(job!, { items: [{ ...deposit(100), kind: "Withdrawal", withdrawalStatus: "in_transit" }], nextCursor: "older" }, now, cold, adaptive);
       now += 300001;
       const exclude = [address, other].flatMap((a) => kinds.map((kind) => ({ address: a, kind })));
-      for (const lane of ["active", "backfill", "retry", "fair"] as const)
+      for (const lane of ["active-head", "active", "backfill", "retry", "fair"] as const)
         expect(await history.claimJob(now, 120000, lane, exclude)).toBeNull();
       const stats = await history.stats();
       expect(stats.pending).toBe(stats.activeDue + stats.backfillDue + stats.maintenanceDue + stats.correctionsDue);
@@ -99,6 +99,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL scheduler SQL parity
       expect(await history.claimJob(now, 120000, "retry", exclude)).toBeNull();
       job = await history.claimJob(now, 120000, "retry", exceptCashflow());
       expect(job?.state.failures).toBe(1);
+
       expect(await history.claimJob(now, 120000, "retry", exceptCashflow())).toBeNull();
       await history.commitPage(job!, { items: [deposit(100)], nextCursor: null }, now, cold, adaptive);
       expect((await history.getStatus(address)).find((s) => s.kind === "cashflows")?.state.failures).toBe(0);
@@ -114,6 +115,18 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL scheduler SQL parity
       job = await history.claimJob(now, 120000, "retry", exceptCashflow(other));
       expect(job?.correctionId).toBe(correction!.correctionId);
       expect(job?.state.failures).toBe(1);
+
+      // The new head lane uses the same PostgreSQL cursor/purpose semantics.
+      const activeAddress = `0x${"3".repeat(40)}`;
+      await history.ensureWallet(activeAddress, 10);
+      const headOnly = [...exclude, ...["trades", "portfolio"].map((kind) => ({ address: activeAddress, kind: kind as JobKind }))];
+      job = await history.claimJob(now, 120000, "active-head", headOnly);
+      expect(job?.address).toBe(activeAddress);
+      await history.commitPage(job!, { items: [], nextCursor: "older-active" }, now, 60000, adaptive);
+      now += 60000;
+      job = await history.claimJob(now, 120000, "active-head", headOnly);
+      expect(job?.correctionId).toBe(`head:${activeAddress}:cashflows`);
+      expect(job?.state.cursor).toBeNull();
     } finally {
       await client.query("ROLLBACK");
       client.release();
@@ -155,8 +168,94 @@ async function complete(store: Store, items = [deposit(300), deposit(200), depos
   await store.history.commitPage(job, { items, nextCursor: null }, now, cold, adaptive);
   return status(store);
 }
+const emptyPortfolio = () => ({
+  baseTimeMs: now, timeOffsetsMs: [], columns: { equity: [], pnl: [] }, gapIndices: [],
+  coverage: { availableFromMs: null, availableToMs: null, complete: true },
+});
+async function completeWallet(store: Store, target: string, refreshMs: number) {
+  for (const kind of kinds) {
+    const exclude = [address, other].flatMap((a) => kinds
+      .filter((k) => a !== target || k !== kind).map((k) => ({ address: a, kind: k })));
+    const job = await store.history.claimJob(now, 120000, "fair", exclude);
+    expect(job?.kind).toBe(kind);
+    if (kind === "portfolio") await store.history.commitPortfolio(job!, emptyPortfolio(), "all", now, refreshMs);
+    else await store.history.commitPage(job!, { items: [], nextCursor: null }, now, refreshMs);
+  }
+}
 
 describe("history scheduler retention and cadence", () => {
+  it("reserves ledger heads while general active turns still serve older portfolios and continuations", async () => {
+    const store = await memory();
+    await store.history.ensureWallet(address, 10);
+    const pending = { ...deposit(100), kind: "Withdrawal", withdrawalStatus: "in_transit" };
+    await store.history.commitPage(await claim(store), { items: [pending], nextCursor: "deep-page" }, now, 60000, adaptive);
+    now += 300001;
+    const exclude = [{ address, kind: "trades" as const }];
+    const head = await store.history.claimJob(now, 120000, "active-head", exclude);
+    expect(head?.correctionId).toBe(`head:${address}:cashflows`);
+    expect(head?.state.cursor).toBeNull();
+    expect((await status(store)).state.cursor).toBe("deep-page");
+    const general = await store.history.claimJob(now, 120000, "active", [
+      ...exclude, { address, kind: "cashflows" },
+    ]);
+    expect(general?.kind).toBe("portfolio");
+    await store.history.commitPortfolio(general!, emptyPortfolio(), "all", now, 300000);
+    await store.history.commitPage(head!, { items: [], nextCursor: "head-continuation" }, now, 60000, adaptive);
+    now += 1000;
+    await store.history.ensureWallet(other, 20);
+    // A head continuation and primary deep cursor stay out of the reserved lane.
+    const next = await store.history.claimJob(now, 120000, "active-head", exclude);
+    expect(next?.address).toBe(other);
+    expect(next?.state.cursor).toBeNull();
+    const continuing = await store.history.claimJob(now, 120000, "backfill", exceptCashflow());
+    expect(continuing?.state.cursor).toBe("deep-page");
+  });
+
+  it.each(["backfill", "retry"] as const)("borrows an empty %s turn for active work before older cold maintenance", async (lane) => {
+    const store = await memory();
+    await store.history.ensureWallet(address);
+    await completeWallet(store, address, cold);
+    now += cold + 1;
+    await store.history.ensureWallet(other, 10);
+    await completeWallet(store, other, 60000);
+    now += 60000;
+    expect((await store.history.claimJob(now, 120000, lane))?.address).toBe(other);
+    expect((await store.history.claimJob(now, 120000, "fair"))?.address).toBe(address);
+  });
+
+  it("keeps priority 10 holders and priority 20 traders in oldest-due head order", async () => {
+    const store = await memory();
+    await store.history.ensureWallet(address, 10);
+    now++;
+    await store.history.ensureWallet(other, 20);
+    expect((await store.history.claimJob(now, 120000, "active-head"))?.address).toBe(address);
+  });
+
+  it("preserves deep cursors and retry deadlines across restart while a due head progresses", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "paperclub-head-resume-"));
+    dirs.push(dir);
+    let store = await createStore({ dataDir: dir, databaseUrl: "" });
+    stores.push(store);
+    await store.history.ensureWallet(address, 10);
+    await store.history.commitPage(await claim(store), { items: [deposit(100)], nextCursor: "saved-deep" }, now, 60000, adaptive);
+    now += 1000;
+    const continuing = await claim(store);
+    await store.history.failJob(continuing, "HTTP 429", now, now + hour);
+    const saved = await status(store);
+    await store.close();
+    stores.splice(stores.indexOf(store), 1);
+    store = await createStore({ dataDir: dir, databaseUrl: "" });
+    stores.push(store);
+    now += 60000;
+    const head = await claim(store, address, "active-head");
+    expect(head.correctionId).toBe(`head:${address}:cashflows`);
+    await store.history.commitPage(head, { items: [], nextCursor: null }, now, 60000, adaptive);
+    expect(await status(store)).toEqual(saved);
+    expect((await store.history.readPage(address, "cashflows")).items).toHaveLength(1);
+    const exclude = [...exceptCashflow(), { address, kind: "cashflows" as const }];
+    for (const lane of ["active-head", "backfill", "retry"] as const)
+      expect(await store.history.claimJob(now, 120000, lane, exclude)).toBeNull();
+  });
   it("only slows verified quiet completed head cycles and persists that policy across restart", async () => {
     const dir = await mkdtemp(join(tmpdir(), "paperclub-schedule-"));
     dirs.push(dir);
@@ -322,7 +421,7 @@ describe("history scheduler retention and cadence", () => {
     }, now, 60000, adaptive);
     now += 300001;
     const exclude = kinds.map((kind) => ({ address, kind }));
-    for (const lane of ["active", "backfill", "retry", "fair"] as const)
+    for (const lane of ["active-head", "active", "backfill", "retry", "fair"] as const)
       expect(await store.history.claimJob(now, 120000, lane, exclude)).toBeNull();
     const correction = await store.history.claimJob(now, 120000, "fair", exceptCashflow());
     expect(correction).not.toBeNull();
