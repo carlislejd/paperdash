@@ -168,6 +168,10 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
               kind: "PositionClosed",
               positionId: "1",
               leverage: 2,
+              instrumentId: 0,
+              isLong: true,
+              symbol: "BTC",
+              adjustedPnlRaw: "19",
             },
           ],
           nextCursor: null,
@@ -243,6 +247,18 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       expect((await api.store.positionMetrics.read(wallet)).positionCount).toBe(
         1,
       );
+      expect(
+        (await api.store.positionMetrics.read(wallet)).highlights,
+      ).toMatchObject({
+        bestTrade: { positionId: "1", pnlRaw: "19" },
+        tradeCount: 1,
+        complete: true,
+      });
+      await expect(
+        api.pool.query(
+          "UPDATE paperdash_position_metrics_highlights SET pnl_raw='0'",
+        ),
+      ).rejects.toThrow(/permission denied/i);
       expect(
         (await api.store.positionMetrics.readMany([wallet], at + 302002))[
           wallet

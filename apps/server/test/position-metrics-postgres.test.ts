@@ -14,6 +14,10 @@ const value = (leverage = 2) => ({
   timestampMs: at - 1000,
   openedAtMs: at - 1100,
   leverage,
+  instrumentId: 0,
+  isLong: true,
+  symbol: "BTC",
+  adjustedPnlRaw: String(leverage),
 });
 const cleanups: (() => Promise<void>)[] = [];
 const placeholders = (sql: string) => {
@@ -130,6 +134,13 @@ describe.skipIf(!databaseUrl)("PostgreSQL position metrics", () => {
       avgLeverage: 4,
       pending: true,
     });
+    expect(
+      (await second.positionMetrics.read(wallet)).highlights,
+    ).toMatchObject({
+      tradeCount: 1,
+      complete: false,
+      bestTrade: { pnlRaw: "4" },
+    });
     await Promise.all([
       first.positionMetrics.tick(1),
       second.positionMetrics.tick(1),
@@ -140,6 +151,9 @@ describe.skipIf(!databaseUrl)("PostgreSQL position metrics", () => {
       avgLeverage: 2,
       pending: false,
     });
+    expect((await first.positionMetrics.read(wallet)).highlights).toMatchObject(
+      { tradeCount: 1, complete: true, bestTrade: { pnlRaw: "2" } },
+    );
     expect(
       (
         await scoped.query(
@@ -148,17 +162,112 @@ describe.skipIf(!databaseUrl)("PostgreSQL position metrics", () => {
       ).rows[0].n,
     ).toBe("1");
   }, 20000);
+  it("orders exact signed PnL with its wallet index and rolls back both projections on failure", async () => {
+    const { first, second, scoped, retain } = await isolated();
+    const max = ((1n << 255n) - 1n).toString(),
+      min = (-(1n << 255n)).toString();
+    await retain("high", { ...value(), adjustedPnlRaw: max, positionId: "2" });
+    await retain("low", { ...value(0), adjustedPnlRaw: min, positionId: "3" });
+    await retain("zero", { ...value(), adjustedPnlRaw: "0", positionId: "4" });
+    await Promise.all([
+      first.positionMetrics.tick(10),
+      second.positionMetrics.tick(10),
+    ]);
+    expect((await first.positionMetrics.read(wallet)).highlights).toEqual({
+      bestTrade: { pnlRaw: max, symbol: "BTC", positionId: "2" },
+      worstTrade: { pnlRaw: min, symbol: "BTC", positionId: "3" },
+      tradeCount: 3,
+      excludedCount: 0,
+      complete: true,
+    });
+    const client = await scoped.connect();
+    try {
+      // Tiny fixture cardinality normally favors a sequential scan. This proves
+      // the exact indexed read is available without relying on planner heuristics.
+      await client.query("BEGIN");
+      await client.query("SET LOCAL enable_seqscan=off");
+      const plan = await client.query(
+        "EXPLAIN SELECT pnl_raw FROM paperdash_position_metrics_highlights WHERE address=$1 AND pnl_sort IS NOT NULL ORDER BY pnl_sort DESC,record_key DESC LIMIT 1",
+        [wallet],
+      );
+      expect(JSON.stringify(plan.rows)).toContain(
+        "paperdash_position_metrics_highlight_order",
+      );
+      expect(JSON.stringify(plan.rows)).not.toContain(
+        '"QUERY PLAN":"  ->  Sort',
+      );
+      await client.query("ROLLBACK");
+    } finally {
+      client.release();
+    }
+    const prior = await first.positionMetrics.read(wallet);
+    await scoped.query(
+      "ALTER TABLE paperdash_position_metrics_highlights ADD CONSTRAINT fail_highlight CHECK (pnl_raw<>'7')",
+    );
+    await retain(
+      "high",
+      { ...value(8), adjustedPnlRaw: "7", positionId: "2" },
+      at + 1,
+    );
+    await expect(first.positionMetrics.tick()).rejects.toThrow();
+    expect(await second.positionMetrics.read(wallet)).toMatchObject({
+      avgLeverage: prior.avgLeverage,
+      highlights: {
+        bestTrade: { pnlRaw: max },
+        tradeCount: 3,
+        complete: false,
+      },
+      pending: true,
+    });
+    await scoped.query(
+      "ALTER TABLE paperdash_position_metrics_highlights DROP CONSTRAINT fail_highlight",
+    );
+    await second.positionMetrics.tick();
+    expect((await first.positionMetrics.read(wallet)).highlights).toMatchObject(
+      { bestTrade: { pnlRaw: "7" }, tradeCount: 3, complete: true },
+    );
+    await scoped.query(
+      "UPDATE paperdash_history_records SET ambiguous=1 WHERE record_key='high'",
+    );
+    const mark = enqueuePositionMetrics("paperdash_", wallet, "high");
+    await scoped.query(placeholders(mark.sql), mark.params);
+    await first.positionMetrics.tick();
+    expect(
+      (await second.positionMetrics.read(wallet)).highlights,
+    ).toMatchObject({
+      bestTrade: { pnlRaw: "0" },
+      tradeCount: 2,
+      excludedCount: 1,
+      complete: false,
+    });
+  }, 20000);
   it("skips 75 unchanged facts and preserves future-clock rechecks", async () => {
     const { first, scoped, retain } = await isolated();
-    for (let i = 0; i < 75; i++) await retain(String(i), { ...value(), positionId: String(i) });
+    for (let i = 0; i < 75; i++)
+      await retain(String(i), { ...value(), positionId: String(i) });
     expect((await first.positionMetrics.tick()).processed).toBe(75);
     const before = await first.positionMetrics.read();
-    for (let i = 0; i < 75; i++) await retain(String(i), { ...value(), positionId: String(i) }, at + 1000);
-    expect((await scoped.query("SELECT count(*) n FROM paperdash_position_metrics_queue")).rows[0].n).toBe("0");
-    expect(await first.positionMetrics.tick()).toMatchObject({ processed: 0, pending: false });
+    for (let i = 0; i < 75; i++)
+      await retain(String(i), { ...value(), positionId: String(i) }, at + 1000);
+    expect(
+      (
+        await scoped.query(
+          "SELECT count(*) n FROM paperdash_position_metrics_queue",
+        )
+      ).rows[0].n,
+    ).toBe("0");
+    expect(await first.positionMetrics.tick()).toMatchObject({
+      processed: 0,
+      pending: false,
+    });
     expect(await first.positionMetrics.read()).toEqual(before);
-    expect((await scoped.query("SELECT min(received_at) oldest,max(received_at) newest FROM paperdash_position_metrics_facts")).rows[0])
-      .toEqual({ oldest: String(at), newest: String(at) });
+    expect(
+      (
+        await scoped.query(
+          "SELECT min(received_at) oldest,max(received_at) newest FROM paperdash_position_metrics_facts",
+        )
+      ).rows[0],
+    ).toEqual({ oldest: String(at), newest: String(at) });
     const future = { ...value(), timestampMs: at + 60000 };
     await retain("future", future);
     await first.positionMetrics.tick();
@@ -166,7 +275,11 @@ describe.skipIf(!databaseUrl)("PostgreSQL position metrics", () => {
     expect((await first.positionMetrics.tick()).processed).toBe(0);
     await retain("future", future, at + 30000);
     expect((await first.positionMetrics.tick()).processed).toBe(1);
-    expect(await first.positionMetrics.read()).toMatchObject({ positionCount: 76, excludedCount: 0, pending: false });
+    expect(await first.positionMetrics.read()).toMatchObject({
+      positionCount: 76,
+      excludedCount: 0,
+      pending: false,
+    });
   }, 20000);
   it("resumes bounded legacy work and rolls back failed fact/rollup/queue changes together", async () => {
     const { first, second, scoped, retain } = await isolated();

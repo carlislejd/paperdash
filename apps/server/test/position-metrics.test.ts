@@ -22,6 +22,14 @@ const closed = (fields: Record<string, unknown> = {}) => ({
   leverage: 2,
   ...fields,
 });
+const outcome = (fields: Record<string, unknown> = {}) =>
+  closed({
+    instrumentId: 0,
+    isLong: true,
+    symbol: "BTC",
+    adjustedPnlRaw: "0",
+    ...fields,
+  });
 const stores: Store[] = [],
   databases: DatabaseSync[] = [],
   dirs: string[] = [];
@@ -94,52 +102,316 @@ afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
 });
 describe("incremental retained position metrics", () => {
+  it("reads exact wallet extrema across every retained outcome using the saved order index", async () => {
+    const { store, db } = await local();
+    const max = ((1n << 255n) - 1n).toString(),
+      min = (-(1n << 255n)).toString();
+    retain(
+      db,
+      "old-best",
+      outcome({
+        positionId: "900",
+        adjustedPnlRaw: max,
+        timestampMs: now - 90000,
+      }),
+    );
+    retain(
+      db,
+      "old-worst",
+      outcome({
+        positionId: "901",
+        adjustedPnlRaw: min,
+        timestampMs: now - 80000,
+      }),
+    );
+    for (let i = 0; i < 125; i++)
+      retain(
+        db,
+        `recent-${i}`,
+        outcome({ positionId: String(i), adjustedPnlRaw: String(i) }),
+      );
+    // A different wallet cannot displace this wallet's extrema.
+    retain(db, "other", outcome({ adjustedPnlRaw: max }), { address: b });
+    await store.positionMetrics.tick();
+    expect((await store.positionMetrics.read(a)).highlights).toEqual({
+      bestTrade: { pnlRaw: max, positionId: "900", symbol: "BTC" },
+      worstTrade: { pnlRaw: min, positionId: "901", symbol: "BTC" },
+      tradeCount: 127,
+      excludedCount: 0,
+      complete: true,
+    });
+    expect((await store.positionMetrics.read()).highlights).toBeUndefined();
+    const plan = db
+      .prepare(
+        "EXPLAIN QUERY PLAN SELECT pnl_raw FROM position_metrics_highlights WHERE address=? AND pnl_sort IS NOT NULL ORDER BY pnl_sort DESC,record_key DESC LIMIT 1",
+      )
+      .all(a);
+    expect(JSON.stringify(plan)).toContain(
+      "USING INDEX position_metrics_highlight_order",
+    );
+    expect(JSON.stringify(plan)).not.toContain("TEMP B-TREE");
+  });
+
+  it("updates highlights on corrections, ambiguity and deletion independently of invalid durations", async () => {
+    const { store, db } = await local();
+    retain(
+      db,
+      "one",
+      outcome({
+        adjustedPnlRaw: "9007199254740993",
+        openedAtMs: now,
+        leverage: 0,
+      }),
+    );
+    retain(
+      db,
+      "two",
+      outcome({
+        positionId: "2",
+        adjustedPnlRaw: "9007199254740992",
+        symbol: "ETH",
+      }),
+    );
+    await store.positionMetrics.tick();
+    expect(await store.positionMetrics.read(a)).toMatchObject({
+      positionCount: 1,
+      excludedCount: 1,
+      highlights: {
+        tradeCount: 2,
+        complete: true,
+        bestTrade: { positionId: "1" },
+        worstTrade: { positionId: "2" },
+      },
+    });
+    retain(db, "one", outcome({ adjustedPnlRaw: "-9007199254740993" }), {
+      at: now + 1,
+    });
+    await store.positionMetrics.tick();
+    expect((await store.positionMetrics.read(a)).highlights).toMatchObject({
+      bestTrade: { positionId: "2" },
+      worstTrade: { positionId: "1", pnlRaw: "-9007199254740993" },
+      tradeCount: 2,
+    });
+    retain(db, "one", outcome({ adjustedPnlRaw: "-9007199254740993" }), {
+      at: now + 2,
+      ambiguous: 1,
+    });
+    await store.positionMetrics.tick();
+    expect((await store.positionMetrics.read(a)).highlights).toMatchObject({
+      tradeCount: 1,
+      excludedCount: 1,
+      complete: false,
+      worstTrade: { positionId: "2" },
+    });
+    retain(db, "one", outcome({ adjustedPnlRaw: "0" }), { at: now + 3 });
+    await store.positionMetrics.tick();
+    db.prepare(
+      "DELETE FROM history_records WHERE address=? AND record_key='two'",
+    ).run(a);
+    db.prepare("INSERT INTO position_metrics_queue VALUES(?,'two',?)").run(
+      a,
+      now + 4,
+    );
+    await store.positionMetrics.tick();
+    expect((await store.positionMetrics.read(a)).highlights).toEqual({
+      bestTrade: { pnlRaw: "0", positionId: "1", symbol: "BTC" },
+      worstTrade: { pnlRaw: "0", positionId: "1", symbol: "BTC" },
+      tradeCount: 1,
+      excludedCount: 0,
+      complete: true,
+    });
+  });
+
+  it("rejects invalid PnL and future outcomes without treating a receipt-only replay as work", async () => {
+    const { store, db } = await local();
+    const future = outcome({ timestampMs: now + 60000, adjustedPnlRaw: "1" });
+    retain(db, "future", future);
+    retain(db, "bad", outcome({ adjustedPnlRaw: (1n << 255n).toString() }));
+    retain(db, "bad-id", outcome({ positionId: "-1" }));
+    await store.positionMetrics.tick();
+    expect((await store.positionMetrics.read(a)).highlights).toEqual({
+      bestTrade: null,
+      worstTrade: null,
+      tradeCount: 0,
+      excludedCount: 3,
+      complete: false,
+    });
+    retain(db, "future", future, { at: now + 29999 });
+    expect((await store.positionMetrics.tick()).processed).toBe(0);
+    retain(db, "future", future, { at: now + 30000 });
+    expect((await store.positionMetrics.tick()).processed).toBe(1);
+    const before = await store.positionMetrics.read(a);
+    expect(before.highlights).toMatchObject({
+      tradeCount: 1,
+      excludedCount: 2,
+      bestTrade: { pnlRaw: "1" },
+    });
+    retain(db, "future", future, { at: now + 31000 });
+    expect((await store.positionMetrics.tick()).processed).toBe(0);
+    expect(await store.positionMetrics.read(a)).toEqual(before);
+  });
+
+  it("adds bounded restartable highlights to existing means without resetting history or prior progress", async () => {
+    const { store, db, dir } = await local();
+    for (const key of ["b", "c", "d"])
+      retain(db, key, outcome({ positionId: String(key.charCodeAt(0)) }));
+    await store.positionMetrics.tick();
+    const original = await store.positionMetrics.read();
+    const priorFacts = db
+      .prepare("SELECT * FROM position_metrics_facts ORDER BY record_key")
+      .all();
+    // Simulate the existing pre-feature schema: saved means and legacy cursor remain.
+    db.exec(
+      "DROP TABLE position_metrics_highlights; DROP TABLE position_metrics_highlight_wallets; DELETE FROM position_metrics_state WHERE id=2",
+    );
+    await store.close();
+    stores.splice(stores.indexOf(store), 1);
+    const upgraded = await createStore({ dataDir: dir });
+    stores.push(upgraded);
+    expect((await upgraded.positionMetrics.read(a)).highlights).toMatchObject({
+      tradeCount: null,
+      complete: false,
+    });
+    expect(await upgraded.positionMetrics.tick(1)).toMatchObject({
+      backfilled: 1,
+      processed: 1,
+    });
+    expect(
+      db
+        .prepare(
+          "SELECT complete,cursor_key FROM position_metrics_state WHERE id=1",
+        )
+        .get(),
+    ).toMatchObject({ complete: 1, cursor_key: "d" });
+    expect(
+      db
+        .prepare("SELECT cursor_key FROM position_metrics_state WHERE id=2")
+        .get(),
+    ).toMatchObject({ cursor_key: "b" });
+    const restarted = await createStore({ dataDir: dir });
+    stores.push(restarted);
+    retain(db, "a", outcome({ positionId: "1", adjustedPnlRaw: "8" }), {
+      at: now + 1,
+    });
+    await restarted.positionMetrics.tick(10);
+    expect((await restarted.positionMetrics.read(a)).highlights).toMatchObject({
+      tradeCount: 4,
+      complete: true,
+      bestTrade: { positionId: "1" },
+    });
+    expect(
+      db
+        .prepare(
+          "SELECT * FROM position_metrics_facts WHERE record_key<>'a' ORDER BY record_key",
+        )
+        .all(),
+    ).toEqual(priorFacts);
+    expect((await restarted.positionMetrics.read()).positionCount).toBe(
+      original.positionCount + 1,
+    );
+  });
+
+  it("serves highlights with bounded saved-projection lookups and no raw history query", async () => {
+    const query = vi.fn(async () => ({ rows: [] }));
+    await createPgPositionMetrics({ query } as never).read(a);
+    expect(query).toHaveBeenCalledTimes(4);
+    const sql = query.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(sql).not.toContain("history_records");
+    expect(sql).not.toMatch(/count\(\*\)/i);
+    expect(sql).toContain("ORDER BY pnl_sort DESC,record_key DESC LIMIT 1");
+    expect(sql).toContain("ORDER BY pnl_sort,record_key LIMIT 1");
+  });
   it("reads lifetime close counts from saved rollups with independent history coverage", async () => {
     const { store, db, dir } = await local();
     const unknown = `0x${"3".repeat(40)}`;
     expect((await store.positionMetrics.readMany([a], now))[a]).toMatchObject({
-      recordedCount: null, indexedAt: null, backfillComplete: false, projectionPending: true,
+      recordedCount: null,
+      indexedAt: null,
+      backfillComplete: false,
+      projectionPending: true,
     });
     retain(db, "one", closed());
     retain(db, "excluded", closed({ openedAtMs: now }));
     await store.history.ensureWallet(a);
     await store.history.ensureWallet(b);
-    const state = JSON.stringify({ complete: true, cursor: null, lastSuccessAt: now - 1000 });
-    db.prepare("UPDATE history_jobs SET state=? WHERE kind='trades'").run(state);
+    const state = JSON.stringify({
+      complete: true,
+      cursor: null,
+      lastSuccessAt: now - 1000,
+    });
+    db.prepare("UPDATE history_jobs SET state=? WHERE kind='trades'").run(
+      state,
+    );
     await store.positionMetrics.tick();
     let values = await store.positionMetrics.readMany([a, b, unknown, a], now);
     expect(Object.keys(values)).toHaveLength(3);
-    expect(values[a]).toEqual({ recordedCount: 2, indexedAt: now - 1000,
-      backfillComplete: true, projectionPending: false, excludedCount: 1, stale: false });
+    expect(values[a]).toEqual({
+      recordedCount: 2,
+      indexedAt: now - 1000,
+      backfillComplete: true,
+      projectionPending: false,
+      excludedCount: 1,
+      stale: false,
+    });
     expect(values[b].recordedCount).toBe(0); // checked and genuinely empty
     expect(values[unknown].recordedCount).toBeNull(); // not checked is not zero
 
     retain(db, "new", closed({ positionId: "2" }), { at: now + 1 });
     values = await store.positionMetrics.readMany([a], now + 1);
-    expect(values[a]).toMatchObject({ recordedCount: 2, projectionPending: true });
+    expect(values[a]).toMatchObject({
+      recordedCount: 2,
+      projectionPending: true,
+    });
     await store.positionMetrics.tick();
-    expect((await store.positionMetrics.readMany([a], now + 1))[a].recordedCount).toBe(3);
+    expect(
+      (await store.positionMetrics.readMany([a], now + 1))[a].recordedCount,
+    ).toBe(3);
     // Removing a retained record subtracts its projected contribution too.
-    db.prepare("DELETE FROM history_records WHERE address=? AND record_key='one'").run(a);
-    db.prepare("INSERT INTO position_metrics_queue VALUES(?,'one',?)").run(a, now + 2);
+    db.prepare(
+      "DELETE FROM history_records WHERE address=? AND record_key='one'",
+    ).run(a);
+    db.prepare("INSERT INTO position_metrics_queue VALUES(?,'one',?)").run(
+      a,
+      now + 2,
+    );
     await store.positionMetrics.tick();
-    expect((await store.positionMetrics.readMany([a], now + 2))[a].recordedCount).toBe(2);
-    db.prepare("UPDATE history_jobs SET state=? WHERE address=? AND kind='trades'")
-      .run(JSON.stringify({ complete: true, cursor: "older", lastSuccessAt: now - 400000, error: "timeout" }), a);
+    expect(
+      (await store.positionMetrics.readMany([a], now + 2))[a].recordedCount,
+    ).toBe(2);
+    db.prepare(
+      "UPDATE history_jobs SET state=? WHERE address=? AND kind='trades'",
+    ).run(
+      JSON.stringify({
+        complete: true,
+        cursor: "older",
+        lastSuccessAt: now - 400000,
+        error: "timeout",
+      }),
+      a,
+    );
     expect((await store.positionMetrics.readMany([a], now))[a]).toMatchObject({
-      recordedCount: 2, backfillComplete: false, stale: true,
+      recordedCount: 2,
+      backfillComplete: false,
+      stale: true,
     });
     const reopened = await createStore({ dataDir: dir });
     stores.push(reopened);
-    expect((await reopened.positionMetrics.readMany([a], now))[a].recordedCount).toBe(2);
-    await expect(store.positionMetrics.readMany(Array(26).fill(a))).rejects.toThrow("Invalid retained");
+    expect(
+      (await reopened.positionMetrics.readMany([a], now))[a].recordedCount,
+    ).toBe(2);
+    await expect(
+      store.positionMetrics.readMany(Array(26).fill(a)),
+    ).rejects.toThrow("Invalid retained");
     expect(await store.positionMetrics.readMany([])).toEqual({});
   });
 
   it("uses one bounded SQL read for 25 leaderboard wallets without reading raw history", async () => {
     const query = vi.fn(async () => ({ rows: [] }));
     const metrics = createPgPositionMetrics({ query } as never);
-    const addresses = Array.from({ length: 25 }, (_, i) => `0x${i.toString(16).padStart(40, "0")}`);
+    const addresses = Array.from(
+      { length: 25 },
+      (_, i) => `0x${i.toString(16).padStart(40, "0")}`,
+    );
     await metrics.readMany(addresses, now);
     expect(query).toHaveBeenCalledTimes(1);
     expect(query.mock.calls[0][1]).toEqual(addresses);
@@ -225,26 +497,61 @@ describe("incremental retained position metrics", () => {
   });
   it("skips all projection work for an unchanged 75-trade overlap while advancing history freshness", async () => {
     const { store, db } = await local();
-    const items = Array.from({ length: 75 }, (_, i) => closed({
-      positionId: String(i + 1), timestampMs: now - 1000 - i,
-      openedAtMs: now - 1100 - i,
-    }));
-    await store.history.commitPage(await tradeJob(store, now), { items, nextCursor: null }, now, 60000);
+    const items = Array.from({ length: 75 }, (_, i) =>
+      closed({
+        positionId: String(i + 1),
+        timestampMs: now - 1000 - i,
+        openedAtMs: now - 1100 - i,
+      }),
+    );
+    await store.history.commitPage(
+      await tradeJob(store, now),
+      { items, nextCursor: null },
+      now,
+      60000,
+    );
     expect((await store.positionMetrics.tick()).processed).toBe(75);
     const before = await store.positionMetrics.read();
     const replayAt = now + 60000;
     const job = await store.history.claimJob(replayAt);
     expect(job?.kind).toBe("trades");
-    await store.history.commitPage(job!, { items, nextCursor: null }, replayAt, 60000);
-    expect(db.prepare("SELECT count(*) n FROM position_metrics_queue").get()).toMatchObject({ n: 0 });
-    expect(await store.positionMetrics.tick()).toMatchObject({ backfilled: 0, processed: 0, pending: false });
+    await store.history.commitPage(
+      job!,
+      { items, nextCursor: null },
+      replayAt,
+      60000,
+    );
+    expect(
+      db.prepare("SELECT count(*) n FROM position_metrics_queue").get(),
+    ).toMatchObject({ n: 0 });
+    expect(await store.positionMetrics.tick()).toMatchObject({
+      backfilled: 0,
+      processed: 0,
+      pending: false,
+    });
     expect(await store.positionMetrics.read()).toEqual(before);
-    expect(db.prepare("SELECT min(received_at) oldest, max(received_at) newest FROM position_metrics_facts").get())
-      .toMatchObject({ oldest: now, newest: now });
-    expect(db.prepare("SELECT min(received_at) oldest FROM history_records WHERE kind='trades'").get())
-      .toMatchObject({ oldest: replayAt });
-    expect((await store.positionMetrics.readMany([a], replayAt))[a])
-      .toMatchObject({ recordedCount: 75, indexedAt: replayAt, stale: false, projectionPending: false });
+    expect(
+      db
+        .prepare(
+          "SELECT min(received_at) oldest, max(received_at) newest FROM position_metrics_facts",
+        )
+        .get(),
+    ).toMatchObject({ oldest: now, newest: now });
+    expect(
+      db
+        .prepare(
+          "SELECT min(received_at) oldest FROM history_records WHERE kind='trades'",
+        )
+        .get(),
+    ).toMatchObject({ oldest: replayAt });
+    expect(
+      (await store.positionMetrics.readMany([a], replayAt))[a],
+    ).toMatchObject({
+      recordedCount: 75,
+      indexedAt: replayAt,
+      stale: false,
+      projectionPending: false,
+    });
   });
   it("skips unchanged excluded observations but projects the exact future-clock eligibility transition", async () => {
     const { store, db } = await local();
@@ -259,11 +566,17 @@ describe("incremental retained position metrics", () => {
     expect((await store.positionMetrics.tick()).processed).toBe(0);
     retain(db, "future", future, { at: now + 30000 });
     expect((await store.positionMetrics.tick()).processed).toBe(1);
-    expect(await store.positionMetrics.read()).toMatchObject({ positionCount: 1, excludedCount: 2 });
+    expect(await store.positionMetrics.read()).toMatchObject({
+      positionCount: 1,
+      excludedCount: 2,
+    });
     // An ambiguity correction still retracts the exclusion even with the same hash.
     retain(db, "ambiguous", closed(), { at: now + 30001, ambiguous: 0 });
     expect((await store.positionMetrics.tick()).processed).toBe(1);
-    expect(await store.positionMetrics.read()).toMatchObject({ positionCount: 2, excludedCount: 1 });
+    expect(await store.positionMetrics.read()).toMatchObject({
+      positionCount: 2,
+      excludedCount: 1,
+    });
   });
   it("excludes invalid and ambiguous rows and rechecks clock-skew exclusions when observed later", async () => {
     const { store, db } = await local();

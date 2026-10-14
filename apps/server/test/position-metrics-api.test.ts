@@ -74,6 +74,12 @@ describe("position metric responses", () => {
         avgHoldMs: null,
         avgLeverage: null,
         coverage: { historyBackfillComplete: false },
+        highlights: {
+          tradeCount: null,
+          bestTrade: null,
+          worstTrade: null,
+          complete: false,
+        },
       });
       expect(await store.history.getStatus(address)).toHaveLength(0);
       expect(enroll).not.toHaveBeenCalled();
@@ -83,6 +89,59 @@ describe("position metric responses", () => {
     } finally {
       await app.close();
     }
+  });
+
+  it("keeps unknown counts distinct from checked-empty history and discloses partial retained highlights", async () => {
+    await store.positionMetrics.tick();
+    expect(
+      (await readPositionMetrics(store, address)).highlights,
+    ).toMatchObject({ tradeCount: null, complete: false });
+    vi.spyOn(store.history, "getStatus").mockResolvedValue([
+      {
+        kind: "trades",
+        nextRun: Date.now(),
+        lockedUntil: 0,
+        state: {
+          phase: "head",
+          cursor: null,
+          cycle: "test",
+          complete: true,
+          pages: 1,
+          failures: 0,
+          lastSuccessAt: Date.now(),
+        },
+      },
+    ]);
+    expect((await readPositionMetrics(store, address)).highlights).toEqual({
+      bestTrade: null,
+      worstTrade: null,
+      tradeCount: 0,
+      excludedCount: 0,
+      complete: true,
+    });
+    vi.spyOn(store.positionMetrics, "read").mockResolvedValue({
+      positionCount: 1,
+      avgHoldMs: 100,
+      avgLeverage: 2,
+      excludedCount: 0,
+      updatedAt: 1,
+      projectionBackfillComplete: true,
+      pending: false,
+      highlights: {
+        bestTrade: { pnlRaw: "-1", symbol: "BTC", positionId: "1" },
+        worstTrade: { pnlRaw: "-2", symbol: "BTC", positionId: "2" },
+        tradeCount: 2,
+        excludedCount: 1,
+        complete: false,
+      },
+    });
+    const result = await readPositionMetrics(store, address);
+    expect(result.positionCount).toBe(1); // mean cohort is deliberately separate
+    expect(result.highlights).toMatchObject({
+      tradeCount: 2,
+      complete: false,
+      bestTrade: { pnlRaw: "-1" },
+    });
   });
 
   it("distinguishes projection/history errors from unrelated live-stream health", async () => {

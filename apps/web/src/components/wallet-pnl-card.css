@@ -1,0 +1,237 @@
+.pnl-dialog {
+  width: min(1080px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid #c8bdce;
+  border-radius: 6px;
+  background: #f5f2e9;
+  color: #282c27;
+  box-shadow: 0 24px 100px #26292540;
+  font-family: "DM Sans", sans-serif;
+}
+.pnl-dialog::backdrop {
+  background: #28262f8c;
+  backdrop-filter: blur(5px);
+}
+.pnl-dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 23px 28px 18px;
+}
+.pnl-dialog-kicker {
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  color: #81738d;
+}
+.pnl-dialog h2 {
+  margin: 5px 0 0;
+  font-size: 27px;
+  font-weight: 550;
+  letter-spacing: -0.045em;
+}
+.pnl-dialog-heading > button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  width: 40px;
+  height: 40px;
+  font-size: 28px;
+  cursor: pointer;
+}
+.pnl-dialog-controls {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px 20px;
+}
+.pnl-layouts {
+  display: flex;
+  gap: 6px;
+}
+.pnl-layouts button {
+  border: 1px solid #d7d0db;
+  background: transparent;
+  color: #74736e;
+  padding: 10px 20px;
+  min-width: 124px;
+  text-align: left;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.pnl-layouts button[aria-pressed="true"] {
+  background: #e7dfea;
+  color: #38303f;
+  border-color: #ad98bc;
+}
+.pnl-layouts strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+}
+.pnl-layouts span {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.pnl-privacy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.pnl-privacy input {
+  width: 18px;
+  height: 18px;
+  accent-color: #897398;
+}
+.pnl-privacy small {
+  display: block;
+  color: #878278;
+  font-size: 10px;
+  margin-top: 4px;
+}
+.pnl-preview {
+  margin: 0 28px;
+  padding: 20px;
+  background: #e9e5dd;
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #ddd6cb;
+}
+.pnl-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  box-shadow: 0 6px 20px #302a3217;
+}
+.pnl-preview-portrait img {
+  width: 520px;
+}
+.pnl-preview p {
+  color: #81738d;
+  font-size: 13px;
+}
+.pnl-dialog-footer {
+  padding: 20px 28px 22px;
+}
+.pnl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pnl-actions button,
+.pnl-preview button {
+  cursor: pointer;
+  border: 1px solid #c2b5cd;
+  border-radius: 3px;
+  background: #e7dfea;
+  color: #514459;
+  padding: 11px 17px;
+  font-size: 12px;
+}
+.pnl-actions button:first-child {
+  background: #2b2d28;
+  color: #f5f2e9;
+  border-color: #2b2d28;
+}
+.pnl-actions button:last-child {
+  background: transparent;
+}
+.pnl-actions button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.pnl-action-status {
+  margin: 9px 0 0;
+  color: #6d635b;
+  font-size: 12px;
+  min-height: 17px;
+}
+.pnl-source-note {
+  color: #868176;
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 6px 0 0;
+}
+.pnl-manual-link {
+  width: 100%;
+  padding: 9px;
+  border: 1px solid #c2b5cd;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+}
+.pnl-accessible-summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.pnl-dialog button:focus-visible,
+.pnl-dialog input:focus-visible {
+  outline: 2px solid #88719d;
+  outline-offset: 3px;
+}
+.wd-pnl-share {
+  display: inline-block;
+  margin: 7px 0 0 8px;
+  padding: 7px 11px;
+  border: 1px solid #c8b8d4;
+  border-radius: 2px;
+  color: #71617e;
+  background: #e7dfea;
+  font-size: 11px;
+  cursor: pointer;
+}
+.wd-pnl-share:focus-visible {
+  outline: 2px solid #88719d;
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .pnl-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .pnl-dialog-heading {
+    padding: 18px 16px 16px;
+  }
+  .pnl-dialog-controls {
+    padding: 0 16px 16px;
+    gap: 14px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .pnl-layouts {
+    width: 100%;
+  }
+  .pnl-layouts button {
+    min-width: 0;
+    flex: 1;
+    padding: 9px 12px;
+  }
+  .pnl-privacy small {
+    display: inline;
+    margin-left: 7px;
+  }
+  .pnl-preview {
+    margin: 0 12px;
+    padding: 7px;
+    min-height: 150px;
+  }
+  .pnl-dialog-footer {
+    padding: 17px 16px;
+  }
+  .pnl-actions button {
+    padding: 10px 12px;
+  }
+}

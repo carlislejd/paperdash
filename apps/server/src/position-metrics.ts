@@ -19,6 +19,8 @@ export async function readPositionMetrics(
     address ? Promise.resolve(null) : store.get<number>("account-count"),
   ]);
   const history = jobs.find((job) => job.kind === "trades");
+  const highlights = metrics.highlights;
+  const historyChecked = typeof history?.state.lastSuccessAt === "number";
   return {
     positionCount: metrics.positionCount,
     avgHoldMs: metrics.avgHoldMs,
@@ -30,9 +32,25 @@ export async function readPositionMetrics(
       now - heartbeat.value.at > 30000 ||
       Boolean(
         heartbeat.value.errors?.["position-metrics"] ||
-          heartbeat.value.errors?.["wallet-indexer"],
+        heartbeat.value.errors?.["wallet-indexer"],
       ) ||
       Boolean(history?.state.error),
+    ...(address && highlights
+      ? {
+          highlights: {
+            ...highlights,
+            tradeCount:
+              highlights.tradeCount ??
+              (historyChecked && highlights.complete ? 0 : null),
+            complete:
+              highlights.complete &&
+              historyChecked &&
+              history?.state.complete === true &&
+              history.state.cursor == null &&
+              !history.state.error,
+          },
+        }
+      : {}),
     coverage: {
       source: "retained-closed-positions",
       projectionBackfillComplete: metrics.projectionBackfillComplete,

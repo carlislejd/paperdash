@@ -33,6 +33,10 @@ import {
   type PositionReceiptSnapshot,
 } from "../lib/position-receipt";
 import { PositionReceiptDialog } from "./PositionReceiptDialog";
+import { WalletPnlCardDialog } from "./WalletPnlCardDialog";
+import type { PnlCardSnapshot } from "../lib/wallet-pnl-card";
+import type { PositionMetricsResponse } from "../../../../packages/shared/src/position-metrics";
+import { analyticsResources } from "../lib/analytics-resource";
 import {
   formatRawUsd,
   formatUsd,
@@ -592,6 +596,7 @@ export function WalletDrawer({
   const contentId = useId();
   const [data, setData] = useState<WalletResponse | null>(null);
   const [receipt, setReceipt] = useState<PositionReceiptSnapshot | null>(null);
+  const [pnlCard, setPnlCard] = useState<PnlCardSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -677,6 +682,7 @@ export function WalletDrawer({
   useEffect(() => {
     setTab("cashflows");
     setReceipt(null);
+    setPnlCard(null);
     setCopied(false);
     setCopyError(false);
     setPageError(null);
@@ -1107,6 +1113,44 @@ export function WalletDrawer({
                     ? "Following limit reached"
                     : "Follow wallet"}
               </button>
+              {wallet && (
+                <button
+                  type="button"
+                  className="wd-pnl-share"
+                  onClick={() => {
+                    const resource = analyticsResources.get(
+                      `/api/wallets/${wallet.address}/position-metrics`,
+                    );
+                    const metrics =
+                      resource.data as PositionMetricsResponse | null;
+                    setPnlCard(
+                      structuredClone({
+                        wallet: {
+                          ...wallet,
+                          accountFreshness: wallet.accountFreshness
+                            ? {
+                                ...wallet.accountFreshness,
+                                stale:
+                                  wallet.accountFreshness.stale ||
+                                  Boolean(error),
+                              }
+                            : undefined,
+                        },
+                        metrics: metrics
+                          ? {
+                              ...metrics,
+                              stale: metrics.stale || Boolean(resource.error),
+                            }
+                          : null,
+                        displayName: displayName ?? null,
+                        capturedAt: Date.now(),
+                      }),
+                    );
+                  }}
+                >
+                  Share P&amp;L card ↗
+                </button>
+              )}
             </div>
           </section>
           {error && (
@@ -1496,6 +1540,13 @@ export function WalletDrawer({
             onClose={() => setReceipt(null)}
           />
         )}
+        {pnlCard &&
+          pnlCard.wallet.address.toLowerCase() === address.toLowerCase() && (
+            <WalletPnlCardDialog
+              snapshot={pnlCard}
+              onClose={() => setPnlCard(null)}
+            />
+          )}
       </aside>
     </div>,
     document.body,

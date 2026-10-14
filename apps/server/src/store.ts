@@ -192,7 +192,7 @@ export async function createStore(
       else {
         await pool
           .query(
-            "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0; SELECT 1 FROM paperdash_house_samples LIMIT 0; SELECT 1 FROM paperdash_liquidation_state LIMIT 0; SELECT 1 FROM paperdash_wallet_watches LIMIT 0",
+            "SELECT 1 FROM paperdash_snapshots LIMIT 0; SELECT 1 FROM paperdash_history_jobs LIMIT 0; SELECT 1 FROM paperdash_history_corrections LIMIT 0; SELECT 1 FROM paperdash_analytics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_state LIMIT 0; SELECT 1 FROM paperdash_position_metrics_highlights LIMIT 0; SELECT 1 FROM paperdash_position_metrics_highlight_wallets LIMIT 0; SELECT 1 FROM paperdash_market_prices LIMIT 0; SELECT 1 FROM paperdash_house_samples LIMIT 0; SELECT 1 FROM paperdash_liquidation_state LIMIT 0; SELECT 1 FROM paperdash_wallet_watches LIMIT 0",
           )
           .catch(() => {
             throw new Error(

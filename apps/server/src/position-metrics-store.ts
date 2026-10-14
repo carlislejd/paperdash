@@ -2,6 +2,8 @@ import { rollbackPg } from "./pg-deadline.js";
 import type { DatabaseSync } from "node:sqlite";
 import type { Pool, PoolClient } from "pg";
 import { addressSchema } from "./schemas.js";
+import { normalizeClosedPosition } from "../../../packages/shared/src/position-details.js";
+import type { PositionHighlights } from "../../../packages/shared/src/position-metrics.js";
 
 export interface PositionMetrics {
   positionCount: number;
@@ -11,6 +13,8 @@ export interface PositionMetrics {
   updatedAt: number | null;
   projectionBackfillComplete: boolean;
   pending: boolean;
+  /** Internal complete flag covers projection only; response adds history coverage. */
+  highlights?: PositionHighlights;
 }
 export interface RetainedPositionCount {
   /** Recorded close/liquidation rows, including rows excluded from duration averages. */
@@ -24,7 +28,10 @@ export interface RetainedPositionCount {
 export interface PositionMetricsStore {
   read(address?: string): Promise<PositionMetrics>;
   /** One bounded saved-rollup read for a displayed leaderboard page. */
-  readMany(addresses: string[], now?: number): Promise<Record<string, RetainedPositionCount>>;
+  readMany(
+    addresses: string[],
+    now?: number,
+  ): Promise<Record<string, RetainedPositionCount>>;
   /** At most limit legacy keys queued and limit facts projected per tick. */
   tick(limit?: number): Promise<{
     backfilled: number;
@@ -43,6 +50,10 @@ CREATE TABLE IF NOT EXISTS ${prefix}position_metrics_facts(address TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS ${prefix}position_metrics_rollups(scope TEXT PRIMARY KEY,position_count TEXT NOT NULL,hold_sum TEXT NOT NULL,leverage_sum TEXT NOT NULL,excluded_count TEXT NOT NULL,updated_at ${int} NOT NULL);
 CREATE TABLE IF NOT EXISTS ${prefix}position_metrics_state(id INTEGER PRIMARY KEY,cursor_address TEXT NOT NULL,cursor_key TEXT NOT NULL,complete INTEGER NOT NULL);
 INSERT INTO ${prefix}position_metrics_state VALUES(1,'','',0) ON CONFLICT(id) DO NOTHING;
+INSERT INTO ${prefix}position_metrics_state VALUES(2,'','',0) ON CONFLICT(id) DO NOTHING;
+CREATE TABLE IF NOT EXISTS ${prefix}position_metrics_highlights(address TEXT NOT NULL,record_key TEXT NOT NULL,payload_hash TEXT NOT NULL,ambiguous INTEGER NOT NULL,received_at ${int} NOT NULL,pnl_raw TEXT,pnl_sort TEXT ${postgres ? 'COLLATE "C"' : "COLLATE BINARY"},symbol TEXT,position_id TEXT,PRIMARY KEY(address,record_key));
+CREATE INDEX IF NOT EXISTS ${prefix}position_metrics_highlight_order ON ${prefix}position_metrics_highlights(address,pnl_sort,record_key) WHERE pnl_sort IS NOT NULL;
+CREATE TABLE IF NOT EXISTS ${prefix}position_metrics_highlight_wallets(address TEXT PRIMARY KEY,trade_count TEXT NOT NULL,excluded_count TEXT NOT NULL,updated_at ${int} NOT NULL);
 CREATE INDEX IF NOT EXISTS ${prefix}history_trades_projection ON ${prefix}history_records(address,record_key) WHERE kind='trades';
 `;
 }
@@ -68,7 +79,10 @@ export function enqueuePositionMetrics(
         EXISTS (SELECT 1 FROM ${queue} q WHERE q.address=r.address AND q.record_key=r.record_key)
         OR NOT EXISTS (
           SELECT 1 FROM ${prefix}position_metrics_facts f WHERE f.address=r.address AND f.record_key=r.record_key AND f.payload_hash=r.payload_hash AND f.ambiguous=r.ambiguous
-            AND (r.source_at<=f.received_at+30000)=(r.source_at<=r.received_at+30000)))
+            AND (r.source_at<=f.received_at+30000)=(r.source_at<=r.received_at+30000))
+        OR NOT EXISTS (
+          SELECT 1 FROM ${prefix}position_metrics_highlights h WHERE h.address=r.address AND h.record_key=r.record_key AND h.payload_hash=r.payload_hash AND h.ambiguous=r.ambiguous
+            AND (r.source_at<=h.received_at+30000)=(r.source_at<=r.received_at+30000)))
       ON CONFLICT(address,record_key) DO UPDATE SET queued_at=CASE WHEN ${queue}.queued_at<excluded.queued_at THEN ${queue}.queued_at ELSE excluded.queued_at END`,
     params: [address, key],
   };
@@ -80,6 +94,7 @@ type Source = {
   payload_hash: string;
   ambiguous: number;
   received_at: string | number;
+  source_at: string | number;
 };
 type Fact = {
   payload_hash: string;
@@ -87,6 +102,17 @@ type Fact = {
   received_at: string | number;
   hold_ms: string | null;
   leverage: string | null;
+};
+type HighlightFact = Omit<Fact, "hold_ms" | "leverage"> & {
+  pnl_raw: string | null;
+  pnl_sort: string | null;
+  symbol: string | null;
+  position_id: string | null;
+};
+type HighlightWallet = {
+  trade_count: string;
+  excluded_count: string;
+  updated_at: number | string;
 };
 type Rollup = {
   position_count: string;
@@ -162,6 +188,71 @@ function factFrom(source: Source): Fact {
     leverage: valid ? BigInt(leverage).toString() : null,
   };
 }
+
+function highlightFrom(key: Key, source: Source): HighlightFact {
+  const receivedAt = Number(source.received_at);
+  const position = normalizeClosedPosition(parsed(source.payload), {
+    walletAddress: key.address,
+    receivedAt,
+    asOf: receivedAt,
+    identityAmbiguous: Number(source.ambiguous) !== 0,
+  });
+  // Missing/invalid hold or leverage does not hide an otherwise valid outcome.
+  const valid =
+    Number(source.ambiguous) === 0 &&
+    position !== null &&
+    position.closedAt !== null &&
+    position.closedAt - receivedAt <= 30000 &&
+    position.adjustedPnlRaw !== null;
+  const pnl = valid ? position.adjustedPnlRaw : null;
+  return {
+    payload_hash: source.payload_hash,
+    ambiguous: Number(source.ambiguous),
+    received_at: source.received_at,
+    pnl_raw: pnl,
+    // Offset signed int256 into uint256, then fixed-width ASCII decimal. The
+    // binary/C-collated index orders every raw wei exactly, without float casts.
+    pnl_sort:
+      pnl === null
+        ? null
+        : (BigInt(pnl) + (1n << 255n)).toString().padStart(78, "0"),
+    symbol: valid ? position.symbol : null,
+    position_id: valid ? position.positionId : null,
+  };
+}
+function highlightDelta(previous?: HighlightFact, next?: HighlightFact) {
+  const count = (fact?: HighlightFact) =>
+    fact?.pnl_sort !== null && fact !== undefined ? 1n : 0n;
+  const excluded = (fact?: HighlightFact) =>
+    fact?.pnl_sort === null ? 1n : 0n;
+  return {
+    count: count(next) - count(previous),
+    excluded: excluded(next) - excluded(previous),
+  };
+}
+function sameAppliedVersion(
+  prior: Fact | HighlightFact | undefined,
+  source: Source,
+) {
+  return (
+    prior !== undefined &&
+    prior.payload_hash === source.payload_hash &&
+    Number(prior.ambiguous) === Number(source.ambiguous) &&
+    Number(source.source_at) <= Number(prior.received_at) + 30000 ===
+      Number(source.source_at) <= Number(source.received_at) + 30000
+  );
+}
+function nextHighlightWallet(
+  previous: HighlightWallet,
+  delta: ReturnType<typeof highlightDelta>,
+  now: number,
+) {
+  const count = BigInt(previous.trade_count) + delta.count;
+  const excluded = BigInt(previous.excluded_count) + delta.excluded;
+  if (count < 0n || excluded < 0n)
+    throw new Error("Position highlights contribution is inconsistent");
+  return [count.toString(), excluded.toString(), now];
+}
 function deltaBetween(previous?: Fact, next?: Fact): Contribution {
   const before = contribution(previous),
     after = contribution(next);
@@ -193,11 +284,72 @@ interface ReadDb {
   prefix: string;
   rows<T>(sql: string, params?: (string | number)[]): Promise<T[]>;
 }
+async function readHighlights(
+  db: ReadDb,
+  wallet: string,
+): Promise<PositionHighlights> {
+  type Row = HighlightWallet & {
+    complete: number;
+    queued: boolean | number;
+    best_pnl: string | null;
+    best_symbol: string | null;
+    best_id: string | null;
+    worst_pnl: string | null;
+    worst_symbol: string | null;
+    worst_id: string | null;
+  };
+  // One consistent database snapshot; both extrema use the wallet/order index.
+  const [row] = await db.rows<Row>(
+    `WITH best AS (
+      SELECT pnl_raw,symbol,position_id FROM ${table(db.prefix, "highlights")}
+      WHERE address=? AND pnl_sort IS NOT NULL ORDER BY pnl_sort DESC,record_key DESC LIMIT 1
+    ), worst AS (
+      SELECT pnl_raw,symbol,position_id FROM ${table(db.prefix, "highlights")}
+      WHERE address=? AND pnl_sort IS NOT NULL ORDER BY pnl_sort,record_key LIMIT 1
+    ) SELECT w.trade_count,w.excluded_count,s.complete,
+      EXISTS(SELECT 1 FROM ${table(db.prefix, "queue")} q WHERE q.address=?) AS queued,
+      best.pnl_raw AS best_pnl,best.symbol AS best_symbol,best.position_id AS best_id,
+      worst.pnl_raw AS worst_pnl,worst.symbol AS worst_symbol,worst.position_id AS worst_id
+    FROM ${table(db.prefix, "state")} s
+    LEFT JOIN ${table(db.prefix, "highlight_wallets")} w ON w.address=?
+    LEFT JOIN best ON 1=1 LEFT JOIN worst ON 1=1 WHERE s.id=2`,
+    [wallet, wallet, wallet, wallet],
+  );
+  const count = row?.trade_count == null ? null : BigInt(row.trade_count);
+  const excluded = BigInt(row?.excluded_count ?? "0");
+  const safeCount =
+    count === null || (count >= 0n && count <= BigInt(Number.MAX_SAFE_INTEGER));
+  return {
+    bestTrade:
+      row?.best_pnl != null && row.best_id !== null
+        ? {
+            pnlRaw: row.best_pnl,
+            symbol: row.best_symbol,
+            positionId: row.best_id,
+          }
+        : null,
+    worstTrade:
+      row?.worst_pnl != null && row.worst_id !== null
+        ? {
+            pnlRaw: row.worst_pnl,
+            symbol: row.worst_symbol,
+            positionId: row.worst_id,
+          }
+        : null,
+    tradeCount: count !== null && safeCount ? Number(count) : null,
+    excludedCount: Number(excluded),
+    complete:
+      Number(row?.complete) === 1 &&
+      !row?.queued &&
+      excluded === 0n &&
+      safeCount,
+  };
+}
 function reader(db: ReadDb): PositionMetricsStore["read"] {
   return async (address) => {
     const wallet =
       address === undefined ? undefined : addressSchema.parse(address);
-    const [rows, checkpoints, queued] = await Promise.all([
+    const [rows, checkpoints, queued, highlights] = await Promise.all([
       db.rows<Rollup>(
         `SELECT * FROM ${table(db.prefix, "rollups")} WHERE scope=?`,
         [wallet ? `wallet:${wallet}` : "global"],
@@ -209,6 +361,7 @@ function reader(db: ReadDb): PositionMetricsStore["read"] {
         `SELECT 1 FROM ${table(db.prefix, "queue")} ${wallet ? "WHERE address=?" : ""} LIMIT 1`,
         wallet ? [wallet] : [],
       ),
+      wallet ? readHighlights(db, wallet) : Promise.resolve(undefined),
     ]);
     const row = rows[0],
       complete = Number(checkpoints[0]?.complete) === 1;
@@ -220,6 +373,7 @@ function reader(db: ReadDb): PositionMetricsStore["read"] {
       updatedAt: row ? Number(row.updated_at) : null,
       projectionBackfillComplete: complete,
       pending: !complete || queued.length > 0,
+      ...(highlights ? { highlights } : {}),
     };
   };
 }
@@ -227,7 +381,9 @@ function batchReader(db: ReadDb): PositionMetricsStore["readMany"] {
   return async (input, now = Date.now()) => {
     if (input.length > 25 || !Number.isSafeInteger(now) || now < 0)
       throw new Error("Invalid retained position-count batch");
-    const addresses = [...new Set(input.map((address) => addressSchema.parse(address)))];
+    const addresses = [
+      ...new Set(input.map((address) => addressSchema.parse(address))),
+    ];
     if (!addresses.length) return {};
     // All fields share one database snapshot. Each requested address makes
     // indexed lookups only: no history rows are downloaded or counted here.
@@ -238,39 +394,64 @@ function batchReader(db: ReadDb): PositionMetricsStore["readMany"] {
       state: unknown;
       complete: number | null;
       queued: boolean | number;
-    }>(`WITH requested(address) AS (VALUES ${addresses.map(() => "(?)").join(",")})
+    }>(
+      `WITH requested(address) AS (VALUES ${addresses.map(() => "(?)").join(",")})
       SELECT requested.address,r.position_count,r.excluded_count,j.state,s.complete,
         EXISTS(SELECT 1 FROM ${table(db.prefix, "queue")} q WHERE q.address=requested.address) AS queued
       FROM requested
       LEFT JOIN ${table(db.prefix, "rollups")} r ON r.scope='wallet:'||requested.address
       LEFT JOIN ${db.prefix}history_jobs j ON j.address=requested.address AND j.kind='trades'
-      LEFT JOIN ${table(db.prefix, "state")} s ON s.id=1`, addresses);
-    return Object.fromEntries(rows.map((row) => {
-      const state = parsed(row.state) as {
-        lastSuccessAt?: number | null; complete?: boolean; cursor?: string | null; error?: string;
-      } | null;
-      const indexedAt = typeof state?.lastSuccessAt === "number" &&
-        Number.isSafeInteger(state.lastSuccessAt) && state.lastSuccessAt >= 0
-        ? state.lastSuccessAt : null;
-      const projectionPending = Number(row.complete) !== 1 || Boolean(row.queued);
-      const total = BigInt(row.position_count ?? "0") + BigInt(row.excluded_count ?? "0");
-      const available = total > 0n || (indexedAt !== null && !projectionPending);
-      return [row.address, {
-        recordedCount: available && total >= 0n && total <= BigInt(Number.MAX_SAFE_INTEGER)
-          ? Number(total) : null,
-        indexedAt,
-        backfillComplete: state?.complete === true && state.cursor == null,
-        projectionPending,
-        excludedCount: Number(row.excluded_count ?? 0),
-        stale: indexedAt === null || indexedAt > now || now - indexedAt > 300000 || Boolean(state?.error),
-      } satisfies RetainedPositionCount];
-    }));
+      LEFT JOIN ${table(db.prefix, "state")} s ON s.id=1`,
+      addresses,
+    );
+    return Object.fromEntries(
+      rows.map((row) => {
+        const state = parsed(row.state) as {
+          lastSuccessAt?: number | null;
+          complete?: boolean;
+          cursor?: string | null;
+          error?: string;
+        } | null;
+        const indexedAt =
+          typeof state?.lastSuccessAt === "number" &&
+          Number.isSafeInteger(state.lastSuccessAt) &&
+          state.lastSuccessAt >= 0
+            ? state.lastSuccessAt
+            : null;
+        const projectionPending =
+          Number(row.complete) !== 1 || Boolean(row.queued);
+        const total =
+          BigInt(row.position_count ?? "0") + BigInt(row.excluded_count ?? "0");
+        const available =
+          total > 0n || (indexedAt !== null && !projectionPending);
+        return [
+          row.address,
+          {
+            recordedCount:
+              available &&
+              total >= 0n &&
+              total <= BigInt(Number.MAX_SAFE_INTEGER)
+                ? Number(total)
+                : null,
+            indexedAt,
+            backfillComplete: state?.complete === true && state.cursor == null,
+            projectionPending,
+            excludedCount: Number(row.excluded_count ?? 0),
+            stale:
+              indexedAt === null ||
+              indexedAt > now ||
+              now - indexedAt > 300000 ||
+              Boolean(state?.error),
+          } satisfies RetainedPositionCount,
+        ];
+      }),
+    );
   };
 }
 const nextLegacy = (prefix: string) =>
   `SELECT address,record_key FROM ${prefix}history_records WHERE kind='trades' AND (address,record_key)>(?,?) ORDER BY address,record_key LIMIT 1`;
 const loadSource = (prefix: string) =>
-  `SELECT payload,payload_hash,ambiguous,received_at FROM ${prefix}history_records WHERE address=? AND kind='trades' AND record_key=?`;
+  `SELECT payload,payload_hash,ambiguous,received_at,source_at FROM ${prefix}history_records WHERE address=? AND kind='trades' AND record_key=?`;
 const putFact = (prefix: string) =>
   `INSERT INTO ${table(prefix, "facts")} VALUES(?,?,?,?,?,?,?) ON CONFLICT(address,record_key) DO UPDATE SET payload_hash=excluded.payload_hash,ambiguous=excluded.ambiguous,received_at=excluded.received_at,hold_ms=excluded.hold_ms,leverage=excluded.leverage`;
 const factValues = (key: Key, fact: Fact) => [
@@ -282,6 +463,65 @@ const factValues = (key: Key, fact: Fact) => [
   fact.hold_ms,
   fact.leverage,
 ];
+const putHighlight = (prefix: string) =>
+  `INSERT INTO ${table(prefix, "highlights")} VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(address,record_key) DO UPDATE SET payload_hash=excluded.payload_hash,ambiguous=excluded.ambiguous,received_at=excluded.received_at,pnl_raw=excluded.pnl_raw,pnl_sort=excluded.pnl_sort,symbol=excluded.symbol,position_id=excluded.position_id`;
+const highlightValues = (key: Key, fact: HighlightFact) => [
+  key.address,
+  key.record_key,
+  fact.payload_hash,
+  fact.ambiguous,
+  fact.received_at,
+  fact.pnl_raw,
+  fact.pnl_sort,
+  fact.symbol,
+  fact.position_id,
+];
+const advanceLegacy = (prefix: string) =>
+  `UPDATE ${table(prefix, "state")} SET cursor_address=?,cursor_key=? WHERE id=2 OR (id=1 AND complete=0 AND (cursor_address,cursor_key)<(?,?))`;
+
+async function projectHighlightPg(
+  client: PoolClient,
+  key: Key,
+  source?: Source,
+) {
+  const prefix = "paperdash_",
+    params = [key.address, key.record_key];
+  const prior = (
+    await client.query(
+      `SELECT * FROM ${table(prefix, "highlights")} WHERE address=$1 AND record_key=$2 FOR UPDATE`,
+      params,
+    )
+  ).rows[0] as HighlightFact | undefined;
+  const next = source ? highlightFrom(key, source) : undefined;
+  const delta = highlightDelta(prior, next);
+  if (delta.count !== 0n || delta.excluded !== 0n) {
+    await client.query(
+      `INSERT INTO ${table(prefix, "highlight_wallets")} VALUES($1,'0','0',$2) ON CONFLICT(address) DO NOTHING`,
+      [key.address, Date.now()],
+    );
+    const current = (
+      await client.query(
+        `SELECT * FROM ${table(prefix, "highlight_wallets")} WHERE address=$1 FOR UPDATE`,
+        [key.address],
+      )
+    ).rows[0] as HighlightWallet;
+    await client.query(
+      `UPDATE ${table(prefix, "highlight_wallets")} SET trade_count=$1,excluded_count=$2,updated_at=$3 WHERE address=$4`,
+      [...nextHighlightWallet(current, delta, Date.now()), key.address],
+    );
+  }
+  if (next && source) {
+    if (!sameAppliedVersion(prior, source))
+      await client.query(
+        pgSql(putHighlight(prefix)),
+        highlightValues(key, next),
+      );
+  } else
+    await client.query(
+      `DELETE FROM ${table(prefix, "highlights")} WHERE address=$1 AND record_key=$2`,
+      params,
+    );
+}
 
 async function projectPg(client: PoolClient, key: Key) {
   const prefix = "paperdash_",
@@ -317,12 +557,15 @@ async function projectPg(client: PoolClient, key: Key) {
       );
     }
   }
-  if (next) await client.query(pgSql(putFact(prefix)), factValues(key, next));
-  else
+  if (next && source) {
+    if (!sameAppliedVersion(prior, source))
+      await client.query(pgSql(putFact(prefix)), factValues(key, next));
+  } else
     await client.query(
       `DELETE FROM ${table(prefix, "facts")} WHERE address=$1 AND record_key=$2`,
       params,
     );
+  await projectHighlightPg(client, key, source);
   await client.query(
     `DELETE FROM ${table(prefix, "queue")} WHERE address=$1 AND record_key=$2`,
     params,
@@ -346,13 +589,14 @@ export function createPgPositionMetrics(pool: Pool): PositionMetricsStore {
       let backfilled = 0,
         processed = 0;
       try {
-        // One legacy key plus cursor per transaction also prevents lock-order
-        // inversion against a producer marking several keys in a history page.
+        // Version 2 adds highlights over already retained rows. Its own cursor
+        // resumes independently; version 1's progress never moves backwards.
+        // One key/transaction avoids lock inversion with multi-row producers.
         for (; backfilled < limit; backfilled++) {
           await client.query("BEGIN");
           const state = (
             await client.query(
-              `SELECT * FROM ${table(prefix, "state")} WHERE id=1 FOR UPDATE`,
+              `SELECT * FROM ${table(prefix, "state")} WHERE id=2 FOR UPDATE`,
             )
           ).rows[0] as Checkpoint;
           if (Number(state.complete) === 1) {
@@ -367,7 +611,7 @@ export function createPgPositionMetrics(pool: Pool): PositionMetricsStore {
           ).rows[0] as Key | undefined;
           if (!key) {
             await client.query(
-              `UPDATE ${table(prefix, "state")} SET complete=1 WHERE id=1`,
+              `UPDATE ${table(prefix, "state")} SET complete=1 WHERE id IN (1,2)`,
             );
             await client.query("COMMIT");
             break;
@@ -378,10 +622,12 @@ export function createPgPositionMetrics(pool: Pool): PositionMetricsStore {
             key.record_key,
           );
           await client.query(pgSql(mark.sql), mark.params);
-          await client.query(
-            `UPDATE ${table(prefix, "state")} SET cursor_address=$1,cursor_key=$2 WHERE id=1`,
-            [key.address, key.record_key],
-          );
+          await client.query(pgSql(advanceLegacy(prefix)), [
+            key.address,
+            key.record_key,
+            key.address,
+            key.record_key,
+          ]);
           await client.query("COMMIT");
         }
         for (; processed < limit; processed++) {
@@ -415,6 +661,36 @@ export function createPgPositionMetrics(pool: Pool): PositionMetricsStore {
   };
 }
 
+function projectHighlightLocal(db: DatabaseSync, key: Key, source?: Source) {
+  const params = [key.address, key.record_key];
+  const prior = db
+    .prepare(
+      "SELECT * FROM position_metrics_highlights WHERE address=? AND record_key=?",
+    )
+    .get(...params) as HighlightFact | undefined;
+  const next = source ? highlightFrom(key, source) : undefined;
+  const delta = highlightDelta(prior, next);
+  if (delta.count !== 0n || delta.excluded !== 0n) {
+    db.prepare(
+      "INSERT INTO position_metrics_highlight_wallets VALUES(?,'0','0',?) ON CONFLICT(address) DO NOTHING",
+    ).run(key.address, Date.now());
+    const current = db
+      .prepare(
+        "SELECT * FROM position_metrics_highlight_wallets WHERE address=?",
+      )
+      .get(key.address) as HighlightWallet;
+    db.prepare(
+      "UPDATE position_metrics_highlight_wallets SET trade_count=?,excluded_count=?,updated_at=? WHERE address=?",
+    ).run(...nextHighlightWallet(current, delta, Date.now()), key.address);
+  }
+  if (next && source) {
+    if (!sameAppliedVersion(prior, source))
+      db.prepare(putHighlight("")).run(...highlightValues(key, next));
+  } else
+    db.prepare(
+      "DELETE FROM position_metrics_highlights WHERE address=? AND record_key=?",
+    ).run(...params);
+}
 function projectLocal(db: DatabaseSync, key: Key) {
   const params = [key.address, key.record_key];
   const source = db.prepare(loadSource("")).get(...params) as
@@ -438,11 +714,14 @@ function projectLocal(db: DatabaseSync, key: Key) {
         "UPDATE position_metrics_rollups SET position_count=?,hold_sum=?,leverage_sum=?,excluded_count=?,updated_at=? WHERE scope=?",
       ).run(...nextRollup(current, delta, Date.now()), scope);
     }
-  if (next) db.prepare(putFact("")).run(...factValues(key, next));
-  else
+  if (next && source) {
+    if (!sameAppliedVersion(prior, source))
+      db.prepare(putFact("")).run(...factValues(key, next));
+  } else
     db.prepare(
       "DELETE FROM position_metrics_facts WHERE address=? AND record_key=?",
     ).run(...params);
+  projectHighlightLocal(db, key, source);
   db.prepare(
     "DELETE FROM position_metrics_queue WHERE address=? AND record_key=?",
   ).run(...params);
@@ -471,7 +750,7 @@ export function createLocalPositionMetrics(
       db.exec("BEGIN IMMEDIATE");
       try {
         const state = db
-          .prepare("SELECT * FROM position_metrics_state WHERE id=1")
+          .prepare("SELECT * FROM position_metrics_state WHERE id=2")
           .get() as Checkpoint;
         if (state.complete !== 1) {
           for (; backfilled < limit; backfilled++) {
@@ -491,9 +770,16 @@ export function createLocalPositionMetrics(
             state.cursor_address = key.address;
             state.cursor_key = key.record_key;
           }
-          db.prepare(
-            "UPDATE position_metrics_state SET cursor_address=?,cursor_key=?,complete=? WHERE id=1",
-          ).run(state.cursor_address, state.cursor_key, state.complete);
+          db.prepare(advanceLegacy("")).run(
+            state.cursor_address,
+            state.cursor_key,
+            state.cursor_address,
+            state.cursor_key,
+          );
+          if (state.complete === 1)
+            db.prepare(
+              "UPDATE position_metrics_state SET complete=1 WHERE id IN (1,2)",
+            ).run();
         }
         for (; processed < limit; processed++) {
           const key = db
