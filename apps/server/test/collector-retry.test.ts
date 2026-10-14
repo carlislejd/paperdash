@@ -37,7 +37,7 @@ let store: Store;
 let collector: Collector;
 let upstream: Upstream;
 let bus: ChangeBus;
-const historyPath = "/query/protocol/history?interval=1m";
+const historyPath = "/query/protocol/history?interval=1h";
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.setSystemTime(1800000000000);
@@ -74,8 +74,8 @@ function source(path: string): unknown {
     };
   if (path === historyPath)
     return {
-      startMs: Math.floor(Date.now() / 60000) * 60000 - 60000,
-      intervalMs: 60000,
+      startMs: Math.floor(Date.now() / 3600000) * 3600000 - 3600000,
+      intervalMs: 3600000,
       source: { asOfMs: Date.now(), revision: "1", generation: "test" },
       columns: { tvl: [1] },
     };

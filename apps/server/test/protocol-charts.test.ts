@@ -11,12 +11,14 @@ import {
   retainProtocolChartSummary,
   refreshProtocolCharts,
   readProtocolCharts,
+  readPaperEconomics,
   VERIFIED_PROTOCOL_GENESIS,
 } from "../src/protocol-charts.js";
 import { buildApi } from "../src/api.js";
 import { Upstream, RequestGate } from "../src/upstream.js";
 import { ChangeBus } from "../src/bus.js";
 import { refreshHouse } from "../src/house.js";
+import { retainProtocolHistory } from "../src/collector.js";
 
 const HOUR = 3600000,
   DAY = 86400000;
@@ -114,6 +116,95 @@ describe("protocol lifetime annualized staking revenue", () => {
 });
 
 describe("retained hourly protocol charts", () => {
+  it("repairs a generation-split launch day from coherent hourly source history without inventing a baseline", async () => {
+    const day = Date.UTC(2026, 9, 10);
+    const asOf = Date.UTC(2026, 9, 14, 3, 30);
+    vi.spyOn(Date, "now").mockReturnValue(asOf);
+    const store = await createStore({ memory: true, databaseUrl: "" });
+    stores.push(store);
+    const supply = 5049945675.721906,
+      rewards = 23974675.45572573;
+    const start = day - DAY - HOUR;
+    const rows = Array.from(
+      { length: Math.floor((asOf - start) / HOUR) + 1 },
+      (_, i) => {
+        const time = start + i * HOUR;
+        const progress = Math.max(
+          0,
+          Math.min(1, (time - day - 13 * HOUR) / (10 * HOUR)),
+        );
+        return {
+          time,
+          endpointAt: Math.min(time + HOUR - 1, asOf - 1),
+          sourceAt: asOf - 1,
+          generation: time < day + 19 * HOUR ? "deployment:0" : "deployment:34",
+          complete: time + HOUR <= asOf,
+          values: {
+            tvl: 1,
+            paperSupply: supply * progress,
+            stakingRewards: rewards * progress,
+          },
+        };
+      },
+    );
+    await store.history.retainProtocolCharts("history", rows);
+    await store.put("collector-heartbeat", { at: asOf, errors: {} }, asOf);
+    await refreshProtocolCharts(store, asOf);
+    let data = await readPaperEconomics(store, asOf);
+    expect(
+      data.daily!.supplyChange.points.find((point) => point.time === day),
+    ).toMatchObject({ value: null, gapBefore: true });
+    expect(
+      data.daily!.rewardAllocation.points.find((point) => point.time === day),
+    ).toMatchObject({ value: null, gapBefore: true });
+
+    // This is a fresh coherent response, not a change that joins the two old
+    // generations or assigns the difference from lifetime totals to this day.
+    const coherent = {
+      startMs: start,
+      intervalMs: HOUR,
+      source: { asOfMs: asOf, generation: "deployment:34", revision: "1" },
+      columns: {
+        tvl: rows.map((row) => row.values.tvl),
+        paperSupply: rows.map((row) => row.values.paperSupply),
+        stakingRewards: rows.map((row) => row.values.stakingRewards),
+      },
+    };
+    await retainProtocolHistory(store, coherent);
+    await refreshProtocolCharts(store, asOf);
+    data = await readPaperEconomics(store, asOf);
+    expect(
+      data.daily!.supplyChange.points.find((point) => point.time === day),
+    ).toEqual({
+      time: day,
+      value: supply,
+      observedFromMs: day - 1,
+      observedToMs: day + DAY - 1,
+    });
+    expect(
+      data.daily!.rewardAllocation.points.find((point) => point.time === day),
+    ).toEqual({
+      time: day,
+      value: rewards,
+      observedFromMs: day - 1,
+      observedToMs: day + DAY - 1,
+    });
+    // Missing the actual preceding midnight still cannot manufacture zero.
+    await store.history.retainProtocolCharts("history", [
+      {
+        ...rows.find((row) => row.time === day - HOUR)!,
+        sourceAt: asOf + 1,
+        generation: "deployment:34",
+        values: { paperSupply: null, stakingRewards: null },
+      },
+    ]);
+    await refreshProtocolCharts(store, asOf + 1);
+    expect(
+      (
+        await readPaperEconomics(store, asOf + 1)
+      ).daily!.supplyChange.points.find((point) => point.time === day),
+    ).toMatchObject({ value: null, gapBefore: true });
+  });
   it("uses the last snapshot in each hour and differences cumulative volume, never trades for open count", async () => {
     const store = await memory();
     await retainProtocolChartHistory(store, history(), now);

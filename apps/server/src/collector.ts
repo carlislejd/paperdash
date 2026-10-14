@@ -93,13 +93,30 @@ export async function retainProtocolHistory(
   store: Store,
   history: z.infer<typeof protocolHistorySchema>,
 ): Promise<void> {
-  const previous = await store.get<{ source: typeof history.source }>(
-    "protocol-history",
-  );
+  const previous = await store.get<{
+    source: typeof history.source;
+    intervalMs?: number;
+  }>("protocol-history");
+  let previousInterval = previous?.value.intervalMs;
+  if (previous && previousInterval === undefined) {
+    // Older metadata omitted the interval. Only trust the saved raw response
+    // when it describes exactly that publication: a prior interrupted write
+    // can leave these two snapshots at different revisions.
+    const raw = await store.get<z.infer<typeof protocolHistorySchema>>(
+      "protocol-history-raw",
+    );
+    if (
+      raw?.value.source.asOfMs === previous.value.source.asOfMs &&
+      raw.value.source.generation === previous.value.source.generation &&
+      raw.value.source.revision === previous.value.source.revision
+    )
+      previousInterval = raw.value.intervalMs;
+  }
   if (
     previous &&
     (history.source.asOfMs < previous.value.source.asOfMs ||
-      (history.source.generation === previous.value.source.generation &&
+      (history.intervalMs === previousInterval &&
+        history.source.generation === previous.value.source.generation &&
         BigInt(history.source.revision) <
           BigInt(previous.value.source.revision)))
   )
@@ -112,7 +129,11 @@ export async function retainProtocolHistory(
       : [{ time: history.startMs + i * history.intervalMs, value }],
   );
   await store.history.retainProtocol(points);
-  await store.put("protocol-history", { points, source: history.source });
+  await store.put("protocol-history", {
+    points,
+    source: history.source,
+    intervalMs: history.intervalMs,
+  });
   await store.put("protocol-history-raw", history);
   await retainProtocolChartHistory(store, history);
 }
@@ -219,10 +240,14 @@ export class Collector {
     private upstream: Upstream,
     private bus: ChangeBus,
   ) {
-    this.panels = new PanelPublisher(store, () => this.bus.notify(), (error) => {
-      if (error) this.errors.set("panel-revisions", errorMessage(error));
-      else this.errors.delete("panel-revisions");
-    });
+    this.panels = new PanelPublisher(
+      store,
+      () => this.bus.notify(),
+      (error) => {
+        if (error) this.errors.set("panel-revisions", errorMessage(error));
+        else this.errors.delete("panel-revisions");
+      },
+    );
     this.intake = new TradeIntake(store, {
       change: (state) => {
         this.intakeState = state;
@@ -352,7 +377,10 @@ export class Collector {
     });
     this.loop("history", config.historyInterval, async () => {
       const h = await this.upstream.request(
-        "/query/protocol/history?interval=1m",
+        // Reconcile the whole visible daily window in one source generation.
+        // Live summary samples still preserve minute-resolution TVL, and older
+        // retained minute history is never deleted by this hourly upsert.
+        "/query/protocol/history?interval=1h",
         protocolHistorySchema,
       );
       await retainProtocolHistory(this.store, h);
@@ -736,7 +764,11 @@ export class Collector {
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
     this.client?.disconnect();
-    await Promise.all([this.marketFeed?.stop(), this.intake.stop(), this.panels.stop()]);
+    await Promise.all([
+      this.marketFeed?.stop(),
+      this.intake.stop(),
+      this.panels.stop(),
+    ]);
     await Promise.allSettled([...this.tasks]);
     await this.statusPersistence;
     await this.chain;
