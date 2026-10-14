@@ -639,7 +639,7 @@ test("an unavailable account and legacy highlights stay unknown on the rendered 
     "WALLET HIDDEN · — lifetime realized trading P&L · — PAPER owned",
   );
   await expect(dialog.locator(".pnl-accessible-summary dd")).toHaveText(
-    Array(8).fill("—"),
+    ["— · Excludes staking rewards", ...Array(7).fill("—")],
   );
   const labels = await page.evaluate(
     () => (window as unknown as { cardText: string[] }).cardText,
