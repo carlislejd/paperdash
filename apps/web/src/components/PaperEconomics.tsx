@@ -52,6 +52,15 @@ export function PaperEconomics({
   const stale = Boolean(error || data?.error || data?.stale);
   const common = { range, sourceAt, stale, loading };
   const annualized = data?.annualized;
+  const dailyAverageRaw =
+    annualized?.usdPerYearRaw != null &&
+    /^\d+$/.test(annualized.usdPerYearRaw) &&
+    Number.isSafeInteger(annualized.yearDays) &&
+    annualized.yearDays > 0
+      ? (
+          BigInt(annualized.usdPerYearRaw) / BigInt(annualized.yearDays)
+        ).toString()
+      : null;
   const stakeRatio =
     data?.stakeRatioBps != null &&
     Number.isSafeInteger(data.stakeRatioBps) &&
@@ -134,15 +143,30 @@ export function PaperEconomics({
           </p>
         </div>
         <div className="annualized-revenue">
-          <span>Annualized allocation rate</span>
-          <strong title={formatRawUsd(annualized?.usdPerYearRaw)}>
-            {formatRawUsd(annualized?.usdPerYearRaw, true)}
-            <small> USDC / year</small>
-          </strong>
+          <dl>
+            <div>
+              <dt>Annualized allocation rate</dt>
+              <dd>
+                <strong title={formatRawUsd(annualized?.usdPerYearRaw)}>
+                  {formatRawUsd(annualized?.usdPerYearRaw, true)}
+                </strong>
+                <small>USDC / year</small>
+              </dd>
+            </div>
+            <div>
+              <dt>Average daily staking revenue</dt>
+              <dd>
+                <strong title={formatRawUsd(dailyAverageRaw)}>
+                  {formatRawUsd(dailyAverageRaw, true)}
+                </strong>
+                <small>USDC / day</small>
+              </dd>
+            </div>
+          </dl>
           <p>
             {annualized?.usdPerYearRaw != null &&
             validChartTime(annualized.fromMs)
-              ? `Lifetime allocations since ${new Date(annualized.fromMs).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} ÷ protocol age × 365 days. Historical run rate, not APY or a forecast.`
+              ? `Daily average = lifetime allocations since ${new Date(annualized.fromMs).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} ÷ protocol age. Annualized = daily average × 365. Historical run rate, not APY or a forecast.`
               : "Waiting for protocol lifetime and allocation totals. This is not APY."}
           </p>
         </div>

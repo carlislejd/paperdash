@@ -154,10 +154,26 @@
   padding-top: 12px;
   margin-top: 6px;
 }
-.annualized-revenue > span {
+.annualized-revenue dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+.annualized-revenue dl > div {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-width: 0;
+}
+.annualized-revenue dt {
   display: block;
   font-size: 11px;
+  line-height: 1.4;
   color: var(--muted);
+}
+.annualized-revenue dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 .annualized-revenue strong {
   display: block;
