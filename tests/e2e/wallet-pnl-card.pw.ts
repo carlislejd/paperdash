@@ -104,6 +104,23 @@ async function previewHash(dialog: Locator) {
     });
 }
 
+async function waitForSharePreview(page: Page, dialog: Locator) {
+  // These tests pause the browser clock to freeze the source observations.
+  // Privacy changes can overlap the initial font/image load and PNG render;
+  // let browser frames settle while waiting for the regenerated preview.
+  // Keep advancement below both asset deadlines and the next data poll.
+  let advanced = 0;
+  await expect
+    .poll(async () => {
+      if (advanced < 2000) {
+        await page.clock.runFor(50);
+        advanced += 50;
+      }
+      return dialog.getByRole("button", { name: "Share card ↗" }).isEnabled();
+    })
+    .toBe(true);
+}
+
 test("all three card layouts export exactly the preview with hidden identity and no extra data reads", async ({
   page,
 }) => {
@@ -206,7 +223,7 @@ test("hiding a wallet invalidates an unredacted native-share retry and all share
   const privacy = dialog.getByRole("checkbox", { name: /Hide wallet/ });
   await privacy.uncheck();
   const share = dialog.getByRole("button", { name: "Share card ↗" });
-  await expect(share).toBeEnabled();
+  await waitForSharePreview(page, dialog);
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
     /^Aoi ·/,
@@ -216,7 +233,7 @@ test("hiding a wallet invalidates an unredacted native-share retry and all share
     "Image ready. Tap Share again",
   );
   await privacy.check();
-  await expect(share).toBeEnabled();
+  await waitForSharePreview(page, dialog);
   const hiddenHash = await previewHash(dialog);
   await share.click();
   await expect(dialog.locator(".pnl-action-status")).toContainText(
@@ -272,9 +289,7 @@ test("copy fallback strips identity and private URL state after privacy changes"
   await expect(dialog.getByRole("textbox", { name: "Share link" })).toHaveCount(
     0,
   );
-  await expect(
-    dialog.getByRole("button", { name: "Share card ↗" }),
-  ).toBeEnabled();
+  await waitForSharePreview(page, dialog);
   await dialog.getByRole("button", { name: "Share card ↗" }).click();
   await expect(dialog.getByRole("textbox", { name: "Share link" })).toHaveValue(
     "https://papertrade.club/",
