@@ -10,6 +10,12 @@ const raw = (value: number) => (BigInt(value) * 10n ** 18n).toString();
 function riskWallet(at: number, margin = 1000) {
   const wallet = walletResponse(WALLET, at);
   wallet.snapshot!.indexedThroughTimestamp = at / 1000;
+  wallet.accountFreshness = {
+    sourceAt: at,
+    receivedAt: at,
+    stale: false,
+    refreshing: false,
+  };
   wallet.snapshot!.openPositions = [
     ["1", 0, true, false, "810000", raw(margin), 100, "799600", at - 60000],
     ["2", 0, false, true, "790000", raw(2000), 100, "800800", at - 60000],
@@ -216,7 +222,9 @@ test("wallet margin preserves a matching newer snapshot and freezes PNG context 
   );
   expect(text).toContain("$6.5K USDC");
   expect(text).not.toContain("$14.5K USDC");
-  expect(text.some((line) => line.startsWith("Wallet snapshot:"))).toBe(true);
+  expect(text.some((line) => line.startsWith("Last account update:"))).toBe(
+    true,
+  );
   expect(text.some((line) => line.startsWith("Reference:"))).toBe(true);
 });
 

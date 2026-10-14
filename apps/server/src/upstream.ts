@@ -757,7 +757,7 @@ export class Upstream {
     enqueue = true,
   ): Promise<Cached<HistoryPage<T>>> {
     address = addressSchema.parse(address);
-    if (enqueue) await this.store.history.ensureWallet(address, 10);
+    if (enqueue) await this.store.history.ensureWallet(address, 30);
     const page = await this.store.history.readPage<T>(address, kind, cursor);
     return {
       value: page,
@@ -819,7 +819,7 @@ export class Upstream {
   }
   async wallet(address: string): Promise<WalletResponse> {
     address = addressSchema.parse(address);
-    await this.store.history.ensureWallet(address, 10);
+    await this.store.history.ensureWallet(address, 30);
     const results = await Promise.allSettled([
       this.snapshot(address, false, 1500),
       this.history<Cashflow>(address, "cashflows", undefined, false),
@@ -865,9 +865,15 @@ export class Upstream {
       stale:
         snapshot.status === "rejected" ||
         snapshot.value.stale ||
+        Boolean(snapshot.value.error) ||
+        !Number.isSafeInteger(snapshot.value.value.indexedThroughBlock) ||
+        snapshot.value.value.indexedThroughBlock < 0 ||
         accountReceivedAt === null ||
         accountSourceAt === null ||
-        accountNow - accountSourceAt > 30000,
+        accountSourceAt > accountReceivedAt + 30000 ||
+        // An inactive wallet can retain its last indexed account-change clock.
+        // Freshness follows the latest successful observation of the account.
+        accountNow - accountReceivedAt > 30000,
       refreshing:
         snapshot.status === "fulfilled"
           ? snapshot.value.refreshing === true

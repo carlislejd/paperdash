@@ -102,6 +102,201 @@ afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
 });
 describe("incremental retained position metrics", () => {
+  it("finishes eight small requested wallets in one tick within the shared reservation", async () => {
+    const { store, db } = await local();
+    const cold = `0x${"0".repeat(40)}`;
+    for (let i = 0; i < 30; i++)
+      retain(db, `cold-${String(i).padStart(2, "0")}`, outcome(), {
+        address: cold,
+        queue: false,
+      });
+    const requested = Array.from(
+      { length: 9 },
+      (_, i) => `0x${String(i + 1).repeat(40)}`,
+    );
+    for (const address of requested) {
+      await store.history.ensureWallet(address);
+      retain(db, "one", outcome(), { address, queue: false });
+      await store.positionMetrics.requestWallet(address);
+    }
+    expect(await store.positionMetrics.tick(20)).toMatchObject({
+      backfilled: 20,
+      processed: 20,
+    });
+    for (const address of requested.slice(0, 8))
+      expect(
+        (await store.positionMetrics.read(address)).highlights,
+      ).toMatchObject({ tradeCount: 1, complete: true });
+    expect(
+      (await store.positionMetrics.read(requested[8])).highlights,
+    ).toMatchObject({ tradeCount: null, complete: false });
+    expect(
+      db
+        .prepare(
+          "SELECT cursor_address,cursor_key FROM position_metrics_state WHERE id=2",
+        )
+        .get(),
+    ).toEqual({ cursor_address: cold, cursor_key: "cold-11" });
+    expect(
+      db
+        .prepare("SELECT complete FROM position_metrics_state WHERE id=2")
+        .get(),
+    ).toMatchObject({ complete: 0 });
+  });
+
+  it("prioritizes a viewed wallet before the global cursor, resumes after restart, and keeps global progress", async () => {
+    const { store, db, dir } = await local();
+    await store.history.ensureWallet(b);
+    for (let i = 0; i < 20; i++)
+      retain(db, `cold-${String(i).padStart(2, "0")}`, outcome(), {
+        queue: false,
+      });
+    for (let i = 0; i < 4; i++)
+      retain(
+        db,
+        `viewed-${i}`,
+        outcome({ positionId: String(i), adjustedPnlRaw: String(i) }),
+        { address: b, queue: false },
+      );
+    await store.positionMetrics.requestWallet(b);
+    const request = db
+      .prepare("SELECT * FROM position_metrics_wallet_state WHERE address=?")
+      .get(b);
+    await store.positionMetrics.requestWallet(b);
+    expect(
+      db
+        .prepare("SELECT * FROM position_metrics_wallet_state WHERE address=?")
+        .get(b),
+    ).toEqual(request);
+    expect(await store.positionMetrics.tick(4)).toMatchObject({
+      backfilled: 4,
+      processed: 4,
+    });
+    expect((await store.positionMetrics.read(b)).highlights).toMatchObject({
+      tradeCount: 2,
+      complete: false,
+    });
+    expect(
+      db
+        .prepare(
+          "SELECT cursor_address,cursor_key FROM position_metrics_state WHERE id=2",
+        )
+        .get(),
+    ).toMatchObject({ cursor_address: a, cursor_key: "cold-01" });
+    const restarted = await createStore({ dataDir: dir });
+    stores.push(restarted);
+    await restarted.positionMetrics.requestWallet(b);
+    expect(await restarted.positionMetrics.tick(4)).toMatchObject({
+      backfilled: 4,
+      processed: 4,
+    });
+    expect((await restarted.positionMetrics.read(b)).highlights).toMatchObject({
+      tradeCount: 4,
+      complete: true,
+      bestTrade: { pnlRaw: "3" },
+      worstTrade: { pnlRaw: "0" },
+    });
+    expect(
+      db
+        .prepare(
+          "SELECT cursor_address,cursor_key,complete FROM position_metrics_state WHERE id=2",
+        )
+        .get(),
+    ).toMatchObject({ cursor_address: a, cursor_key: "cold-03", complete: 0 });
+    const completed = db
+      .prepare("SELECT * FROM position_metrics_wallet_state WHERE address=?")
+      .get(b);
+    const metrics = await restarted.positionMetrics.read(b);
+    await restarted.positionMetrics.requestWallet(b);
+    expect(
+      db
+        .prepare("SELECT * FROM position_metrics_wallet_state WHERE address=?")
+        .get(b),
+    ).toEqual(completed);
+    expect(await restarted.positionMetrics.read(b)).toEqual(metrics);
+    // Later corrections and new keys behind the local cursor still use the
+    // normal durable queue; no re-enrollment or cursor reset is required.
+    retain(db, "viewed-0", outcome({ adjustedPnlRaw: "99" }), {
+      address: b,
+      at: now + 1,
+    });
+    retain(
+      db,
+      "before-cursor",
+      outcome({ positionId: "5", adjustedPnlRaw: "-5" }),
+      { address: b, at: now + 1 },
+    );
+    expect((await restarted.positionMetrics.read(b)).highlights?.complete).toBe(
+      false,
+    );
+    await restarted.positionMetrics.tick(50);
+    expect((await restarted.positionMetrics.read(b)).highlights).toMatchObject({
+      tradeCount: 5,
+      complete: true,
+      bestTrade: { pnlRaw: "99" },
+      worstTrade: { pnlRaw: "-5" },
+    });
+    expect(
+      db
+        .prepare("SELECT * FROM position_metrics_wallet_state WHERE address=?")
+        .get(b),
+    ).toEqual(completed);
+  });
+
+  it("rotates focused wallets, bounds admission, and never invents unknown wallet coverage", async () => {
+    const { store, db } = await local();
+    const unknown = `0x${"f".repeat(40)}`;
+    await store.positionMetrics.requestWallet(unknown);
+    expect(
+      db.prepare("SELECT count(*) n FROM position_metrics_wallet_state").get(),
+    ).toMatchObject({ n: 0 });
+    for (const address of [a, b]) {
+      await store.history.ensureWallet(address);
+      for (let i = 0; i < 10; i++)
+        retain(db, `key-${i}`, outcome(), { address, queue: false });
+      await store.positionMetrics.requestWallet(address);
+    }
+    await store.positionMetrics.tick(2);
+    await store.positionMetrics.tick(2);
+    expect(
+      db
+        .prepare(
+          "SELECT address,cursor_key FROM position_metrics_wallet_state ORDER BY address",
+        )
+        .all(),
+    ).toEqual([
+      { address: a, cursor_key: "key-0" },
+      { address: b, cursor_key: "key-0" },
+    ]);
+    expect(
+      db
+        .prepare("SELECT cursor_key FROM position_metrics_state WHERE id=2")
+        .get(),
+    ).toMatchObject({ cursor_key: "key-1" });
+    await store.history.ensureWallet(unknown);
+    const insert = db.prepare(
+      "INSERT INTO position_metrics_wallet_state(address,requested_at) VALUES(?,0)",
+    );
+    for (let i = 2; i < 1000; i++) insert.run(`pending-${i}`);
+    await store.positionMetrics.requestWallet(unknown);
+    expect(
+      db
+        .prepare("SELECT 1 FROM position_metrics_wallet_state WHERE address=?")
+        .get(unknown),
+    ).toBeUndefined();
+    db.prepare(
+      "UPDATE position_metrics_wallet_state SET complete=1 WHERE address='pending-2'",
+    ).run();
+    await store.positionMetrics.requestWallet(unknown);
+    expect(
+      db
+        .prepare(
+          "SELECT cursor_key,complete FROM position_metrics_wallet_state WHERE address=?",
+        )
+        .get(unknown),
+    ).toEqual({ cursor_key: "", complete: 0 });
+  });
+
   it("reads exact wallet extrema across every retained outcome using the saved order index", async () => {
     const { store, db } = await local();
     const max = ((1n << 255n) - 1n).toString(),

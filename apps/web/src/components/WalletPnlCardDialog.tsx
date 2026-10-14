@@ -11,9 +11,11 @@ import "./wallet-pnl-card.css";
 export function WalletPnlCardDialog({
   snapshot,
   onClose,
+  onRefresh,
 }: {
   snapshot: PnlCardSnapshot;
   onClose: () => void;
+  onRefresh?: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null),
     closeRef = useRef<HTMLButtonElement>(null),
@@ -207,6 +209,19 @@ export function WalletPnlCardDialog({
       </dl>
       <footer className="pnl-dialog-footer">
         <div className="pnl-actions">
+          {onRefresh && (
+            <button
+              type="button"
+              disabled={actions.busy}
+              title="Use the latest wallet data already loaded"
+              onClick={() => {
+                actions.reset();
+                onRefresh();
+              }}
+            >
+              Update card
+            </button>
+          )}
           <button
             type="button"
             disabled={!ready || actions.busy}
@@ -242,7 +257,7 @@ export function WalletPnlCardDialog({
           />
         )}
         <p className="pnl-source-note">
-          Frozen when opened · {model.captured}. Trade highlights use recorded
+          Snapshot captured · {model.captured}. Trade highlights use recorded
           closed positions, including liquidations.
         </p>
       </footer>

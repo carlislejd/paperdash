@@ -18,6 +18,7 @@ import {
   type MarginRiskExportSnapshot,
 } from "../lib/margin-risk-display";
 import { useImageActions } from "../lib/use-image-actions";
+import { walletAccountClock } from "../lib/wallet-account-clock";
 import "./wallet-margin-risk.css";
 
 function MarginBar({
@@ -85,17 +86,17 @@ export function WalletMarginRisk({
   const instrument = selectedInstrument ?? risk?.assets[0]?.instrumentId ?? 0;
   const asset = risk?.assets.find((item) => item.instrumentId === instrument);
   const snapshotAt = risk?.snapshot?.sourceAt;
+  const checkedAt = risk?.snapshot?.receivedAt;
   const quote = asset?.reference;
   const aged = (at: number | null | undefined) =>
     !validChartTime(at) || at > now + 30000 || now - at > 30000;
   const stale = Boolean(
     refreshError ||
-      risk?.stale ||
-      risk?.snapshot?.stale ||
-      aged(snapshotAt) ||
-      aged(risk?.snapshot?.receivedAt) ||
-      (quote &&
-        (quote.stale || aged(quote.sourceAt) || aged(quote.receivedAt))),
+    risk?.stale ||
+    risk?.snapshot?.stale ||
+    walletAccountClock(wallet, refreshError, now).stale ||
+    aged(risk?.snapshot?.receivedAt) ||
+    (quote && (quote.stale || aged(quote.sourceAt) || aged(quote.receivedAt))),
   );
   const maximum = asset ? riskBarMaximum(asset) : 0n;
   const positions = useMemo(() => {
@@ -110,7 +111,7 @@ export function WalletMarginRisk({
           ? normalizeOpenPosition(byId.get(position.positionId), {
               walletAddress: wallet.address,
               receivedAt: risk?.snapshot?.receivedAt ?? null,
-              asOf: snapshotAt,
+              asOf: validChartTime(checkedAt) ? checkedAt : snapshotAt,
             })
           : null,
       ]),
@@ -120,6 +121,7 @@ export function WalletMarginRisk({
     wallet.snapshot,
     wallet.address,
     snapshotAt,
+    checkedAt,
     risk?.snapshot?.receivedAt,
   ]);
   const walletLink = () => {
@@ -183,8 +185,8 @@ export function WalletMarginRisk({
       ) : (
         <>
           <p className={`wmr-clock ${stale ? "position-delayed" : ""}`}>
-            {stale ? "Last available" : "At snapshot"} ·{" "}
-            {formatChartTime(snapshotAt)}
+            {stale ? "Last available" : "At snapshot"} · Account checked{" "}
+            {formatChartTime(checkedAt)}
           </p>
           {!asset ? (
             <p className="wmr-empty">

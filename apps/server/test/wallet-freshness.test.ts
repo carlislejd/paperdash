@@ -137,7 +137,9 @@ describe("bounded wallet account freshness", () => {
     );
     const fetcher = vi.fn(async () => event());
     const client = api(store, fetcher as typeof fetch);
+    const ensure = vi.spyOn(store.history, "ensureWallet");
     const result = await client.wallet(address);
+    expect(ensure).toHaveBeenCalledExactlyOnceWith(address, 30);
     expect(result.snapshot?.balance).toBe(snapshot().balance);
     expect(result.accountFreshness).toEqual({
       receivedAt: now,
@@ -151,22 +153,75 @@ describe("bounded wallet account freshness", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("keeps source-age staleness even when a recent account check succeeds", async () => {
+  it("promotes explicit history views while internal retained reads do not reactivate a wallet", async () => {
     const store = await memory();
-    const client = api(
+    const ensure = vi.spyOn(store.history, "ensureWallet");
+    const fetcher = vi.fn<typeof fetch>();
+    const client = new Upstream(
       store,
-      vi.fn(async () =>
-        event(snapshot(undefined, now - 240000)),
-      ) as typeof fetch,
+      fetcher,
+      "https://papertrade.test",
+      new RequestGate(3, 0),
     );
+    clients.push(client);
+    await client.history(address, "trades");
+    expect(ensure).toHaveBeenCalledExactlyOnceWith(address, 30);
+    ensure.mockClear();
+    await client.history(address, "cashflows", undefined, false);
+    expect(ensure).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("treats a recently checked inactive wallet as current without re-aging its last account update", async () => {
+    const store = await memory();
+    const value = snapshot(undefined, oldAt);
+    value.paper = { balance: "0", staked: "135908219081747352598758886" };
+    const fetcher = vi.fn(async () => event(value));
+    const client = api(store, fetcher as typeof fetch);
     const result = await client.wallet(address);
     expect(result.accountFreshness).toEqual({
       receivedAt: now,
-      sourceAt: now - 240000,
-      stale: true,
+      sourceAt: oldAt,
+      stale: false,
       refreshing: false,
     });
+    expect(result.snapshot).toEqual(value);
+    expect(result.marginRisk?.snapshot).toMatchObject({
+      receivedAt: now,
+      sourceAt: oldAt,
+      stale: false,
+    });
+    expect(result.stale).toBe(true); // Older history has its own freshness.
+    expect((await client.wallet(address)).accountFreshness).toEqual(
+      result.accountFreshness,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(await store.get(`cache:wallet:${address}`)).toEqual({
+      value,
+      receivedAt: now,
+    });
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps failed or old account checks stale even when the last account update is unchanged", async () => {
+    const store = await memory(),
+      client = api(store, vi.fn<typeof fetch>());
+    const read = vi.spyOn(client, "snapshot");
+    for (const observation of [
+      { receivedAt: now - 30001, stale: false },
+      { receivedAt: now, stale: true },
+      { receivedAt: now, stale: false, error: "Account check failed." },
+    ]) {
+      read.mockResolvedValue({
+        value: snapshot(undefined, oldAt),
+        ...observation,
+      });
+      expect((await client.wallet(address)).accountFreshness).toMatchObject({
+        sourceAt: oldAt,
+        receivedAt: observation.receivedAt,
+        stale: true,
+      });
+    }
   });
 
   it("reports invalid or excessively future account clocks as unavailable and stale", async () => {
@@ -200,6 +255,14 @@ describe("bounded wallet account freshness", () => {
       stale: true,
       refreshing: false,
     });
+    for (const indexedThroughBlock of [-1, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+      read.mockResolvedValue({
+        value: { ...snapshot(undefined, oldAt), indexedThroughBlock },
+        receivedAt: now,
+        stale: false,
+      });
+      expect((await client.wallet(address)).accountFreshness?.stale).toBe(true);
+    }
   });
 
   it("returns saved data at 1500ms while the shared refresh persists its eventual result", async () => {

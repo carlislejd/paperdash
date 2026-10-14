@@ -112,7 +112,7 @@ describe("bounded history scheduling", () => {
       true,
     );
     expect(h.claimJob.mock.calls.map((args) => args[2])).toEqual([
-      "active-head",
+      "viewed-head",
       "backfill",
       "active",
       "retry",
@@ -165,7 +165,7 @@ describe("bounded history scheduling", () => {
       expect(loader).toHaveBeenCalledTimes((i + 1) * 2);
     }
     const pattern = [
-      "active-head",
+      "viewed-head",
       "backfill",
       "active",
       "retry",
@@ -175,7 +175,7 @@ describe("bounded history scheduling", () => {
       "fair",
     ];
     expect(h.claimJob.mock.calls.map((args) => args[2])).toEqual([
-      "active-head", // Empty claim keeps the first actual turn available.
+      "viewed-head", // Empty claim keeps the first actual turn available.
       ...pattern,
       ...pattern,
     ]);

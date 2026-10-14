@@ -320,7 +320,8 @@ export interface PortfolioHistory {
 export interface WalletResponse {
   address: string;
   snapshot: WalletSnapshot | null;
-  /** Account check/source clocks in milliseconds; independent of retained history. */
+  /** Successful check and last indexed account-change clocks in milliseconds.
+   * An inactive account's sourceAt can stay old after a fresh successful check. */
   accountFreshness?: {
     receivedAt: number | null;
     sourceAt: number | null;

@@ -126,7 +126,7 @@ export async function renderMarginRiskPng(
   );
   fittedText(
     ctx,
-    `${snapshot.stale ? "Last available · " : ""}Wallet snapshot: ${formatChartTime(snapshot.snapshotAt)}`,
+    `${snapshot.stale ? "Last available · " : ""}Last account update: ${formatChartTime(snapshot.snapshotAt)}`,
     70,
     950,
     1440,

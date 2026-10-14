@@ -299,9 +299,10 @@ export async function buildApi(
       return analyticsResponse(
         req,
         reply,
-        await profileReads.read(`position-metrics:${address}`, () =>
-          readPositionMetrics(store, address),
-        ),
+        await profileReads.read(`position-metrics:${address}`, async () => {
+          await store.positionMetrics.requestWallet(address);
+          return readPositionMetrics(store, address);
+        }),
       );
     },
   );

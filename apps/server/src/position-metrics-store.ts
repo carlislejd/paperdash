@@ -27,6 +27,8 @@ export interface RetainedPositionCount {
 }
 export interface PositionMetricsStore {
   read(address?: string): Promise<PositionMetrics>;
+  /** Admit a known wallet's retained rows for local projection, without a source fetch. */
+  requestWallet(address: string): Promise<void>;
   /** One bounded saved-rollup read for a displayed leaderboard page. */
   readMany(
     addresses: string[],
@@ -54,6 +56,8 @@ INSERT INTO ${prefix}position_metrics_state VALUES(2,'','',0) ON CONFLICT(id) DO
 CREATE TABLE IF NOT EXISTS ${prefix}position_metrics_highlights(address TEXT NOT NULL,record_key TEXT NOT NULL,payload_hash TEXT NOT NULL,ambiguous INTEGER NOT NULL,received_at ${int} NOT NULL,pnl_raw TEXT,pnl_sort TEXT ${postgres ? 'COLLATE "C"' : "COLLATE BINARY"},symbol TEXT,position_id TEXT,PRIMARY KEY(address,record_key));
 CREATE INDEX IF NOT EXISTS ${prefix}position_metrics_highlight_order ON ${prefix}position_metrics_highlights(address,pnl_sort,record_key) WHERE pnl_sort IS NOT NULL;
 CREATE TABLE IF NOT EXISTS ${prefix}position_metrics_highlight_wallets(address TEXT PRIMARY KEY,trade_count TEXT NOT NULL,excluded_count TEXT NOT NULL,updated_at ${int} NOT NULL);
+CREATE TABLE IF NOT EXISTS ${prefix}position_metrics_wallet_state(address TEXT PRIMARY KEY,cursor_key TEXT NOT NULL DEFAULT '',complete INTEGER NOT NULL DEFAULT 0,requested_at ${int} NOT NULL,last_served_at ${int} NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS ${prefix}position_metrics_wallet_due ON ${prefix}position_metrics_wallet_state(last_served_at,address) WHERE complete=0;
 CREATE INDEX IF NOT EXISTS ${prefix}history_trades_projection ON ${prefix}history_records(address,record_key) WHERE kind='trades';
 `;
 }
@@ -306,14 +310,15 @@ async function readHighlights(
     ), worst AS (
       SELECT pnl_raw,symbol,position_id FROM ${table(db.prefix, "highlights")}
       WHERE address=? AND pnl_sort IS NOT NULL ORDER BY pnl_sort,record_key LIMIT 1
-    ) SELECT w.trade_count,w.excluded_count,s.complete,
+    ) SELECT w.trade_count,w.excluded_count,CASE WHEN s.complete=1 OR local.complete=1 THEN 1 ELSE 0 END AS complete,
       EXISTS(SELECT 1 FROM ${table(db.prefix, "queue")} q WHERE q.address=?) AS queued,
       best.pnl_raw AS best_pnl,best.symbol AS best_symbol,best.position_id AS best_id,
       worst.pnl_raw AS worst_pnl,worst.symbol AS worst_symbol,worst.position_id AS worst_id
     FROM ${table(db.prefix, "state")} s
     LEFT JOIN ${table(db.prefix, "highlight_wallets")} w ON w.address=?
+    LEFT JOIN ${table(db.prefix, "wallet_state")} local ON local.address=?
     LEFT JOIN best ON 1=1 LEFT JOIN worst ON 1=1 WHERE s.id=2`,
-    [wallet, wallet, wallet, wallet],
+    [wallet, wallet, wallet, wallet, wallet],
   );
   const count = row?.trade_count == null ? null : BigInt(row.trade_count);
   const excluded = BigInt(row?.excluded_count ?? "0");
@@ -450,6 +455,26 @@ function batchReader(db: ReadDb): PositionMetricsStore["readMany"] {
 }
 const nextLegacy = (prefix: string) =>
   `SELECT address,record_key FROM ${prefix}history_records WHERE kind='trades' AND (address,record_key)>(?,?) ORDER BY address,record_key LIMIT 1`;
+const walletRequestEligible = (prefix: string) =>
+  `SELECT address FROM ${prefix}history_wallets WHERE address=?
+    AND EXISTS(SELECT 1 FROM ${table(prefix, "state")} WHERE id=2 AND complete=0)
+    AND NOT EXISTS(SELECT 1 FROM ${table(prefix, "wallet_state")} WHERE address=?)
+    AND (SELECT count(*) FROM (SELECT 1 FROM ${table(prefix, "wallet_state")} WHERE complete=0 LIMIT 1000) bounded)<1000`;
+const requestWalletSql = (prefix: string) =>
+  `INSERT INTO ${table(prefix, "wallet_state")}(address,requested_at)
+    SELECT address,? FROM (${walletRequestEligible(prefix)}) eligible
+    WHERE 1=1 ON CONFLICT(address) DO NOTHING`;
+const nextWallet = (prefix: string, excluded = 0) =>
+  `SELECT address FROM ${table(prefix, "wallet_state")} WHERE complete=0
+    AND EXISTS(SELECT 1 FROM ${table(prefix, "state")} WHERE id=2 AND complete=0)
+    ${excluded ? `AND address NOT IN (${Array(excluded).fill("?").join(",")})` : ""}
+    ORDER BY last_served_at,address LIMIT 1`;
+const nextWalletKey = (prefix: string) =>
+  `SELECT address,record_key FROM ${prefix}history_records WHERE address=? AND kind='trades' AND record_key>? ORDER BY record_key LIMIT 1`;
+const completeWallet = (prefix: string) =>
+  `UPDATE ${table(prefix, "wallet_state")} SET complete=1 WHERE address=? AND complete=0
+    AND NOT EXISTS(SELECT 1 FROM ${prefix}history_records r WHERE r.address=${table(prefix, "wallet_state")}.address AND r.kind='trades' AND r.record_key>${table(prefix, "wallet_state")}.cursor_key)
+    AND NOT EXISTS(SELECT 1 FROM ${table(prefix, "queue")} q WHERE q.address=${table(prefix, "wallet_state")}.address)`;
 const loadSource = (prefix: string) =>
   `SELECT payload,payload_hash,ambiguous,received_at,source_at FROM ${prefix}history_records WHERE address=? AND kind='trades' AND record_key=?`;
 const putFact = (prefix: string) =>
@@ -583,12 +608,112 @@ export function createPgPositionMetrics(pool: Pool): PositionMetricsStore {
   return {
     read,
     readMany: batchReader(db),
+    async requestWallet(input) {
+      const address = addressSchema.parse(input);
+      // Already admitted/completed wallets do not write or contend on admission.
+      if (
+        !(await db.rows(walletRequestEligible(prefix), [address, address]))
+          .length
+      )
+        return;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // A short admission lock makes the 1,000-pending-wallet cap exact across APIs.
+        await client.query("SELECT pg_advisory_xact_lock(74481236,0)");
+        await client.query(pgSql(requestWalletSql(prefix)), [
+          Date.now(),
+          address,
+          address,
+        ]);
+        await client.query("COMMIT");
+      } catch (error) {
+        await rollbackPg(client);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async tick(input = 500) {
       const limit = limitFor(input),
+        focusedLimit = Math.min(250, Math.floor(limit / 2)),
         client = await pool.connect();
       let backfilled = 0,
         processed = 0;
       try {
+        const served: string[] = [];
+        while (
+          served.length < 8 &&
+          (backfilled < focusedLimit || processed < focusedLimit)
+        ) {
+          let wallet: string | undefined;
+          await client.query("BEGIN");
+          wallet = (
+            await client.query(
+              pgSql(
+                `${nextWallet(prefix, served.length)} FOR UPDATE SKIP LOCKED`,
+              ),
+              served,
+            )
+          ).rows[0]?.address;
+          if (wallet)
+            await client.query(
+              `UPDATE ${table(prefix, "wallet_state")} SET last_served_at=GREATEST(last_served_at+1,$1) WHERE address=$2`,
+              [Date.now(), wallet],
+            );
+          await client.query("COMMIT");
+          if (!wallet) break;
+          served.push(wallet);
+          for (; backfilled < focusedLimit; backfilled++) {
+            await client.query("BEGIN");
+            const state = (
+              await client.query(
+                `SELECT cursor_key,complete FROM ${table(prefix, "wallet_state")} WHERE address=$1 FOR UPDATE`,
+                [wallet],
+              )
+            ).rows[0];
+            const key =
+              Number(state.complete) === 0
+                ? ((
+                    await client.query(pgSql(nextWalletKey(prefix)), [
+                      wallet,
+                      state.cursor_key,
+                    ])
+                  ).rows[0] as Key | undefined)
+                : undefined;
+            if (!key) {
+              await client.query("COMMIT");
+              break;
+            }
+            const mark = enqueuePositionMetrics(
+              prefix,
+              key.address,
+              key.record_key,
+            );
+            await client.query(pgSql(mark.sql), mark.params);
+            await client.query(
+              `UPDATE ${table(prefix, "wallet_state")} SET cursor_key=$1 WHERE address=$2`,
+              [key.record_key, wallet],
+            );
+            await client.query("COMMIT");
+          }
+          for (; processed < focusedLimit; processed++) {
+            await client.query("BEGIN");
+            const key = (
+              await client.query(
+                `SELECT address,record_key FROM ${table(prefix, "queue")} WHERE address=$1 ORDER BY record_key LIMIT 1 FOR UPDATE SKIP LOCKED`,
+                [wallet],
+              )
+            ).rows[0] as Key | undefined;
+            if (!key) {
+              await client.query("COMMIT");
+              break;
+            }
+            await projectPg(client, key);
+            await client.query("COMMIT");
+          }
+          await client.query(pgSql(completeWallet(prefix)), [wallet]);
+        }
         // Version 2 adds highlights over already retained rows. Its own cursor
         // resumes independently; version 1's progress never moves backwards.
         // One key/transaction avoids lock inversion with multi-row producers.
@@ -740,8 +865,14 @@ export function createLocalPositionMetrics(
   return {
     read,
     readMany: batchReader(source),
+    async requestWallet(input) {
+      const address = addressSchema.parse(input);
+      await writable();
+      db.prepare(requestWalletSql("")).run(Date.now(), address, address);
+    },
     async tick(input = 500) {
-      const limit = limitFor(input);
+      const limit = limitFor(input),
+        focusedLimit = Math.min(250, Math.floor(limit / 2));
       await writable();
       let backfilled = 0,
         processed = 0;
@@ -749,6 +880,52 @@ export function createLocalPositionMetrics(
       // another collector transaction to interleave on this connection.
       db.exec("BEGIN IMMEDIATE");
       try {
+        const served: string[] = [];
+        while (
+          served.length < 8 &&
+          (backfilled < focusedLimit || processed < focusedLimit)
+        ) {
+          const wallet = (
+            db.prepare(nextWallet("", served.length)).get(...served) as
+              { address: string } | undefined
+          )?.address;
+          if (!wallet) break;
+          served.push(wallet);
+          db.prepare(
+            "UPDATE position_metrics_wallet_state SET last_served_at=MAX(last_served_at+1,?) WHERE address=?",
+          ).run(Date.now(), wallet);
+          const state = db
+            .prepare(
+              "SELECT cursor_key FROM position_metrics_wallet_state WHERE address=?",
+            )
+            .get(wallet) as { cursor_key: string };
+          for (; backfilled < focusedLimit; backfilled++) {
+            const key = db
+              .prepare(nextWalletKey(""))
+              .get(wallet, state.cursor_key) as Key | undefined;
+            if (!key) break;
+            const mark = enqueuePositionMetrics(
+              "",
+              key.address,
+              key.record_key,
+            );
+            db.prepare(mark.sql).run(...mark.params);
+            state.cursor_key = key.record_key;
+          }
+          db.prepare(
+            "UPDATE position_metrics_wallet_state SET cursor_key=? WHERE address=?",
+          ).run(state.cursor_key, wallet);
+          for (; processed < focusedLimit; processed++) {
+            const key = db
+              .prepare(
+                "SELECT address,record_key FROM position_metrics_queue WHERE address=? ORDER BY record_key LIMIT 1",
+              )
+              .get(wallet) as Key | undefined;
+            if (!key) break;
+            projectLocal(db, key);
+          }
+          db.prepare(completeWallet("")).run(wallet);
+        }
         const state = db
           .prepare("SELECT * FROM position_metrics_state WHERE id=2")
           .get() as Checkpoint;

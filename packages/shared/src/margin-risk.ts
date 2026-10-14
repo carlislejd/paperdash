@@ -239,8 +239,9 @@ export function buildWalletMarginRisk(
     receivedAt === null ||
     receivedAt > context.asOf + 30_000 ||
     sourceAt > (receivedAt ?? context.asOf) + 30_000 ||
-    context.asOf - receivedAt > 30_000 ||
-    context.asOf - sourceAt > 30_000,
+    // The last indexed account change can be old for an unchanged wallet.
+    // Quote freshness is checked independently; the account needs a recent check.
+    context.asOf - receivedAt > 30_000,
   );
   result.snapshot = {
     sourceAt,

@@ -282,6 +282,36 @@ describe("wallet recorded-threshold margin scenarios", () => {
     }
   });
 
+  it("keeps an unchanged account current after a successful recent check without hiding stale quotes", () => {
+    const position = row();
+    position[8] = at - 5 * 3600000;
+    const unchanged = snapshot([position]);
+    unchanged.indexedThroughTimestamp = (at - 4 * 3600000) / 1000;
+    const current = buildWalletMarginRisk(unchanged, context());
+    expect(current.snapshot).toMatchObject({
+      sourceAt: at - 4 * 3600000,
+      receivedAt: at,
+      stale: false,
+    });
+    expect(current.coverage.includedCount).toBe(1);
+    expect(current.stale).toBe(false);
+    const delayed = buildWalletMarginRisk(
+      unchanged,
+      context([
+        { ...reference(), sourceAt: at - 31000, receivedAt: at - 31000 },
+      ]),
+    );
+    expect(delayed.snapshot?.stale).toBe(false);
+    expect(delayed.assets[0].reference?.stale).toBe(true);
+    expect(delayed.stale).toBe(true);
+    expect(
+      buildWalletMarginRisk(unchanged, {
+        ...context(),
+        snapshotReceivedAt: at - 30001,
+      }).snapshot?.stale,
+    ).toBe(true);
+  });
+
   it("retains stale scenarios with separate snapshot/reference clocks and deterministic newest reference", () => {
     const old = {
       ...reference(),

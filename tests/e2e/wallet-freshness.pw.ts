@@ -17,6 +17,62 @@ function accountWallet(at: number, refreshing = false) {
   return wallet;
 }
 
+test("a recently checked inactive account stays current and open-position age uses the check", async ({
+  page,
+}) => {
+  const at = Math.floor(Date.now() / 1000) * 1000;
+  const updated = at - 4 * 3600_000;
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(at);
+  await mockSources(page);
+  let failRefresh = false;
+  await page.route(`**/api/wallets/${WALLET}`, (route) => {
+    if (failRefresh)
+      return route.fulfill({ status: 503, json: { error: "Unavailable" } });
+    const wallet = accountWallet(updated);
+    wallet.accountFreshness!.receivedAt = at;
+    wallet.stale = true; // The history has its own delayed check.
+    wallet.errors = ["Closed trades: history pending"];
+    wallet.snapshot!.openPositions = [
+      [
+        "1",
+        0,
+        true,
+        false,
+        "810000",
+        "1000000000000000000000",
+        100,
+        "799600",
+        at - 5 * 3600_000,
+      ],
+    ];
+    return route.fulfill({ json: wallet });
+  });
+  await page.goto(`/?wallet=${WALLET}`);
+  const clock = page.getByRole("status", {
+    name: "Account snapshot freshness",
+  });
+  await expect(clock).toHaveText(
+    "Account snapshotLast account update 4h ago · Checked Just now",
+  );
+  await expect(page.locator(".wd-drawer")).toContainText(
+    "Account balances are current. Some history may be delayed.",
+  );
+  const positions = page.getByRole("region", {
+    name: "Current open positions",
+  });
+  await expect(positions).toContainText("At snapshot");
+  await expect(positions).not.toContainText("At saved snapshot");
+  await expect(positions.getByLabel("Held 5h at snapshot")).toBeVisible();
+  failRefresh = true;
+  await page.clock.runFor(15_100);
+  await expect(page.locator(".wd-error")).toContainText(
+    "This wallet could not be refreshed",
+  );
+  await expect(clock).toContainText("Saved account snapshot");
+  await expect(positions).toContainText("At saved snapshot");
+});
+
 test("a saved PAPER balance catches up promptly and keeps account freshness separate from old history", async ({
   page,
 }) => {
@@ -53,7 +109,7 @@ test("a saved PAPER balance catches up promptly and keeps account freshness sepa
     .filter({ has: page.getByText("Total PAPER owned", { exact: true }) });
   await expect(ownership.locator("dd")).toHaveText("4,651,319.12");
   await expect(clock).toContainText("Updating account balances…");
-  await expect(clock).toContainText("As of 1d ago");
+  await expect(clock).toContainText("Last account update 1d ago");
   const initialReads = reads;
   old = false;
   await page.clock.runFor(2_100);
@@ -66,7 +122,7 @@ test("a saved PAPER balance catches up promptly and keeps account freshness sepa
     "Unstaked 154,000.12 · Staked 6,000,000",
   );
   await expect(clock).toHaveText(
-    "Account snapshotAs of Just now · Checked Just now",
+    "Account snapshotLast account update Just now · Checked Just now",
   );
   await expect(drawer).toContainText(
     "Account balances are current. Some history may be delayed.",
@@ -154,13 +210,13 @@ test("a retained newer account never borrows the rejected response's fresh clock
   const clock = page.getByRole("status", {
     name: "Account snapshot freshness",
   });
-  await expect(clock).toContainText("As of 1d ago");
+  await expect(clock).toContainText("Last account update 1d ago");
   const initialReads = reads;
   initial = false;
   await page.clock.runFor(15_100);
   await expect.poll(() => reads).toBe(initialReads + 1);
   await expect(clock).toHaveText(
-    "Saved account snapshotAs of 1d ago · Checked 1d ago",
+    "Saved account snapshotLast account update 1d ago · Checked 1d ago",
   );
   await expect(page.locator(".wd-metrics")).toContainText("6,000,000");
   await expect(page.locator(".wd-metrics")).not.toContainText("4,000,000");
@@ -229,7 +285,7 @@ test("a full account bootstrap with a reset revision updates PAPER, freshness an
   await page.clock.runFor(15_100);
   await expect(ownership.locator("dd")).toHaveText("6,154,000");
   await expect(clock).toHaveText(
-    "Account snapshotAs of Just now · Checked Just now",
+    "Account snapshotLast account update Just now · Checked Just now",
   );
   await expect(risk.locator(".wmr-totals dd").first()).toHaveText("$2K");
   await expect(risk.locator(".wmr-clock")).toContainText("At snapshot");
@@ -253,7 +309,9 @@ test("legacy responses without an account receipt are not labeled freshly checke
   await page.goto(`/?wallet=${WALLET}`);
   await expect(
     page.getByRole("status", { name: "Account snapshot freshness" }),
-  ).toHaveText("Saved account snapshotAs of Just now · Check time unavailable");
+  ).toHaveText(
+    "Saved account snapshotLast account update Just now · Check time unavailable",
+  );
 });
 
 test("old history does not cause repeated hover fetches of a just-loaded account", async ({

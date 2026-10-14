@@ -227,7 +227,24 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       expect(
         (await api.store.history.readPortfolio(wallet))?.value.columns.equity,
       ).toEqual([2]);
+      await api.store.positionMetrics.requestWallet(wallet);
+      await api.store.positionMetrics.requestWallet(wallet);
+      expect(
+        (
+          await api.pool.query(
+            "SELECT address FROM paperdash_position_metrics_wallet_state",
+          )
+        ).rows,
+      ).toEqual([{ address: wallet }]);
       await worker.store.positionMetrics.tick(10);
+      expect(
+        (
+          await api.pool.query(
+            "SELECT complete FROM paperdash_position_metrics_wallet_state WHERE address=$1",
+            [wallet],
+          )
+        ).rows[0].complete,
+      ).toBe(1);
       await worker.store.depositMetrics.tick(10);
       const depositDay = Math.floor(at / 86400000) * 86400000;
       expect(
@@ -589,6 +606,10 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       // worker cannot manufacture or extend viewer interest. Reapplying the
       // checked-in policy above removes independently granted column rights.
       for (const query of [
+        "UPDATE paperdash_position_metrics_wallet_state SET complete=1 WHERE false",
+        "UPDATE paperdash_position_metrics_wallet_state SET cursor_key='' WHERE false",
+        "DELETE FROM paperdash_position_metrics_wallet_state WHERE false",
+        "INSERT INTO paperdash_position_metrics_wallet_state(address,requested_at,complete) VALUES('forbidden',0,1)",
         "UPDATE paperdash_wallet_watches SET next_run=0 WHERE false",
         "UPDATE paperdash_wallet_watches SET failures=0 WHERE false",
         "UPDATE paperdash_wallet_watches SET address=address WHERE false",

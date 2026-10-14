@@ -10,7 +10,7 @@ import { enqueueDepositMetrics } from "./deposit-metrics-store.js";
 
 export type LedgerKind = "cashflows" | "trades";
 export type JobKind = LedgerKind | "portfolio";
-export type HistoryLane = "active-head" | "active" | "backfill" | "retry" | "fair";
+export type HistoryLane = "viewed-head" | "active-head" | "active" | "backfill" | "retry" | "fair";
 export interface HistoryScheduleOptions {
   /** Apply the collector's adaptive cadence; explicit callers retain refreshMs. */
   adaptive?: boolean;
@@ -402,7 +402,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
     },
     async discoverWallets(addresses, priority = 0) {
       const at = Date.now();
-      priority = Math.max(0, Math.min(20, Math.floor(priority)));
+      priority = Math.max(0, Math.min(30, Math.floor(priority)));
       const statements: Statement[] = [];
       for (const address of [
         ...new Set(addresses.map((a) => addressSchema.parse(a))),
@@ -458,7 +458,9 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
       const failed = (alias: string) => db.prefix
         ? `(${alias}.state->>'failures')::integer>0`
         : `json_extract(${alias}.state,'$.failures')>0`;
-      const active = lane === "active" || lane === "active-head";
+      const head = lane === "active-head" || lane === "viewed-head";
+      const active = lane === "active" || head;
+      const activePriority = lane === "viewed-head" ? "w.priority>=30" : "w.priority>0";
       const cursorIsNull = (alias: string) => db.prefix
         ? `${alias}.state->>'cursor' IS NULL`
         : `json_extract(${alias}.state,'$.cursor') IS NULL`;
@@ -472,7 +474,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         next_run: string | number;
         priority: number;
       }>(
-        `SELECT j.address,j.kind,j.state,j.next_run,CASE WHEN w.active_until>? THEN w.priority ELSE 0 END AS priority FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? AND j.locked_until<=? ${active ? "AND w.active_until>? AND w.priority>0" : lane === "backfill" ? `AND ${incomplete}` : lane === "retry" ? `AND ${failed("j")}` : ""} ${lane === "active-head" ? `AND j.kind<>'portfolio' AND ${cursorIsNull("j")}` : ""} ${excluded("j.address", "j.kind")} ORDER BY j.next_run,j.address,j.kind LIMIT 8`,
+        `SELECT j.address,j.kind,j.state,j.next_run,CASE WHEN w.active_until>? THEN w.priority ELSE 0 END AS priority FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? AND j.locked_until<=? ${active ? `AND w.active_until>? AND ${activePriority}` : lane === "backfill" ? `AND ${incomplete}` : lane === "retry" ? `AND ${failed("j")}` : ""} ${head ? `AND j.kind<>'portfolio' AND ${cursorIsNull("j")}` : ""} ${excluded("j.address", "j.kind")} ORDER BY j.next_run,j.address,j.kind LIMIT 8`,
         [now, now, now, ...(active ? [now] : []), ...excludedParams],
       );
       const corrections = await db.rows<{
@@ -481,7 +483,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         state: unknown;
         next_run: number | string;
       }>(
-        `SELECT c.id,c.address,c.state,c.next_run FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=? AND c.locked_until<=? ${active ? "AND w.active_until>? AND w.priority>0" : lane === "backfill" ? "AND 1=0" : lane === "retry" ? `AND ${failed("c")}` : ""} ${lane === "active-head" ? `AND ${correctionIsHead} AND ${cursorIsNull("c")}` : ""} ${excluded("c.address", correctionKind)} ORDER BY c.next_run,c.id LIMIT 2`,
+        `SELECT c.id,c.address,c.state,c.next_run FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=? AND c.locked_until<=? ${active ? `AND w.active_until>? AND ${activePriority}` : lane === "backfill" ? "AND 1=0" : lane === "retry" ? `AND ${failed("c")}` : ""} ${head ? `AND ${correctionIsHead} AND ${cursorIsNull("c")}` : ""} ${excluded("c.address", correctionKind)} ORDER BY c.next_run,c.id LIMIT 2`,
         [now, now, ...(active ? [now] : []), ...excludedParams],
       );
       const jobs = [
@@ -493,7 +495,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
           ...r,
           correctionId: r.id,
           kind: parsed<JobState>(r.state).jobKind ?? "cashflows",
-          priority: active ? 10 : 0,
+          priority: lane === "viewed-head" ? 30 : active ? 10 : 0,
         })),
       ].sort((a, b) => Number(a.next_run) - Number(b.next_run));
       for (const row of jobs) {
@@ -541,7 +543,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
       // The explicit general-active and fair turns still preserve service for
       // portfolios, continuations, pending corrections and inactive wallets.
       return lane === "fair" ? null
-        : api.claimJob(now, leaseMs, lane === "active" ? "fair" : "active", exclude);
+        : api.claimJob(now, leaseMs, lane === "viewed-head" ? "active-head" : lane === "active" ? "fair" : "active", exclude);
     },
     async commitPage(job, page, at, refreshMs, options = {}) {
       if (job.kind === "portfolio")

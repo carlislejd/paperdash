@@ -91,6 +91,34 @@ describe("position metric responses", () => {
     }
   });
 
+  it("coalesces wallet projection demand in the profile cache without source work", async () => {
+    await store.history.ensureWallet(address);
+    const request = vi.spyOn(store.positionMetrics, "requestWallet");
+    const upstream = new Upstream(store);
+    const source = vi.spyOn(upstream, "request");
+    const history = vi.spyOn(store.history, "readPage");
+    const app = await buildApi(store, upstream, undefined, {
+      logger: false,
+      readCacheMs: 60000,
+    });
+    try {
+      const responses = await Promise.all(
+        Array.from({ length: 8 }, () =>
+          app.inject(`/api/wallets/${address}/position-metrics`),
+        ),
+      );
+      expect(responses.every((response) => response.statusCode === 200)).toBe(
+        true,
+      );
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledWith(address);
+      expect(source).not.toHaveBeenCalled();
+      expect(history).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it("keeps unknown counts distinct from checked-empty history and discloses partial retained highlights", async () => {
     await store.positionMetrics.tick();
     expect(

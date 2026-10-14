@@ -31,6 +31,7 @@ function snapshot(): PnlCardSnapshot {
   metrics.avgHoldMs = 5_400_000;
   metrics.avgLeverage = 555;
   metrics.coverage.historyBackfillComplete = true;
+  metrics.coverage.lastHistoryIndexedAt = at;
   metrics.highlights = {
     bestTrade: { pnlRaw: raw(1250), symbol: "BTC", positionId: "123" },
     worstTrade: { pnlRaw: raw(-500), symbol: "ETH", positionId: "124" },
@@ -47,6 +48,27 @@ function snapshot(): PnlCardSnapshot {
 }
 
 describe("wallet P&L card model", () => {
+  it("uses successful check clocks for an unchanged account and unchanged trade statistics", () => {
+    const source = snapshot();
+    const old = at - 4 * 3600_000;
+    source.wallet.snapshot!.indexedThroughTimestamp = old / 1000;
+    source.wallet.accountFreshness!.sourceAt = old;
+    source.metrics!.updatedAt = at - 3 * 86400_000;
+    const model = walletPnlCardModel(source, {
+      layout: "split",
+      hideWallet: true,
+    });
+    expect(model.accountNote).toBe("Account checked · 2026-10-13 20:00 UTC");
+    expect(model.historyNote).toBe(
+      "Recorded history · checked 2026-10-13 20:00 UTC",
+    );
+    source.wallet.accountFreshness!.stale = true;
+    expect(
+      walletPnlCardModel(source, { layout: "split", hideWallet: true })
+        .accountNote,
+    ).toContain("Saved account checked");
+  });
+
   it("sanitizes hidden identity across every output field and preserves canonical links", () => {
     const source = snapshot();
     for (const layout of PNL_CARD_LAYOUTS) {

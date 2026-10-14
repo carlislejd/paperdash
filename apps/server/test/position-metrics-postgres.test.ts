@@ -54,6 +54,7 @@ async function isolated() {
     payload: Record<string, unknown>,
     receivedAt = at,
     queue = true,
+    address = wallet,
   ) {
     const client = await scoped.connect();
     try {
@@ -61,7 +62,7 @@ async function isolated() {
       await client.query(
         "INSERT INTO paperdash_history_records VALUES($1,'trades',$2,$3,$4,$5,0,$6) ON CONFLICT(address,kind,record_key) DO UPDATE SET source_at=excluded.source_at,payload=excluded.payload,payload_hash=excluded.payload_hash,received_at=excluded.received_at WHERE paperdash_history_records.received_at<=excluded.received_at",
         [
-          wallet,
+          address,
           key,
           payload.timestampMs,
           JSON.stringify(payload),
@@ -70,7 +71,7 @@ async function isolated() {
         ],
       );
       if (queue) {
-        const mark = enqueuePositionMetrics("paperdash_", wallet, key);
+        const mark = enqueuePositionMetrics("paperdash_", address, key);
         await client.query(placeholders(mark.sql), mark.params);
       }
       await client.query("COMMIT");
@@ -99,6 +100,144 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 describe.skipIf(!databaseUrl)("PostgreSQL position metrics", () => {
+  it("prioritizes retained wallet keys across instances while preserving global progress and exact admission limits", async () => {
+    const { first, second, scoped, retain } = await isolated();
+    const cold = `0x${"0".repeat(40)}`;
+    for (let i = 0; i < 20; i++)
+      await retain(
+        `cold-${String(i).padStart(2, "0")}`,
+        value(),
+        at,
+        false,
+        cold,
+      );
+    for (let i = 0; i < 4; i++)
+      await retain(
+        `viewed-${i}`,
+        { ...value(), positionId: String(i), adjustedPnlRaw: String(i) },
+        at,
+        false,
+      );
+    await first.history.ensureWallet(wallet);
+    await Promise.all([
+      first.positionMetrics.requestWallet(wallet),
+      second.positionMetrics.requestWallet(wallet),
+    ]);
+    expect(
+      (
+        await scoped.query(
+          "SELECT count(*) n FROM paperdash_position_metrics_wallet_state",
+        )
+      ).rows[0].n,
+    ).toBe("1");
+    expect(await first.positionMetrics.tick(4)).toMatchObject({
+      backfilled: 4,
+      processed: 4,
+    });
+    expect(
+      (await second.positionMetrics.read(wallet)).highlights,
+    ).toMatchObject({ tradeCount: 2, complete: false });
+    await second.positionMetrics.requestWallet(wallet);
+    await second.positionMetrics.tick(4);
+    expect((await first.positionMetrics.read(wallet)).highlights).toMatchObject(
+      { tradeCount: 4, complete: true, bestTrade: { pnlRaw: "3" } },
+    );
+    expect(
+      (
+        await scoped.query(
+          "SELECT cursor_address,cursor_key,complete FROM paperdash_position_metrics_state WHERE id=2",
+        )
+      ).rows[0],
+    ).toMatchObject({
+      cursor_address: cold,
+      cursor_key: "cold-03",
+      complete: 0,
+    });
+    const completed = (
+      await scoped.query(
+        "SELECT * FROM paperdash_position_metrics_wallet_state WHERE address=$1",
+        [wallet],
+      )
+    ).rows[0];
+    await first.positionMetrics.requestWallet(wallet);
+    expect(
+      (
+        await scoped.query(
+          "SELECT * FROM paperdash_position_metrics_wallet_state WHERE address=$1",
+          [wallet],
+        )
+      ).rows[0],
+    ).toEqual(completed);
+    const candidates = [`0x${"a".repeat(40)}`, `0x${"b".repeat(40)}`];
+    await first.history.discoverWallets(candidates);
+    await scoped.query(
+      "INSERT INTO paperdash_position_metrics_wallet_state(address,requested_at) SELECT 'pending-'||i,0 FROM generate_series(1,999) AS i",
+    );
+    await Promise.all(
+      candidates.map((address, i) =>
+        (i ? second : first).positionMetrics.requestWallet(address),
+      ),
+    );
+    expect(
+      (
+        await scoped.query(
+          "SELECT count(*) n FROM paperdash_position_metrics_wallet_state WHERE complete=0",
+        )
+      ).rows[0].n,
+    ).toBe("1000");
+  });
+
+  it("retains a correction that races the focused projector without losing its durable cursor", async () => {
+    const { first, second, scoped, retain, waiting } = await isolated();
+    const cold = `0x${"0".repeat(40)}`;
+    for (let i = 0; i < 20; i++)
+      await retain(
+        `cold-${String(i).padStart(2, "0")}`,
+        value(),
+        at,
+        false,
+        cold,
+      );
+    await retain("one", value(2), at - 100);
+    await first.positionMetrics.tick(1);
+    await retain("one", value(4), at + 1);
+    await first.history.ensureWallet(wallet);
+    await first.positionMetrics.requestWallet(wallet);
+    const blocker = await scoped.connect();
+    let projecting: Promise<unknown> | undefined,
+      producing: Promise<unknown> | undefined;
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query(
+        "SELECT * FROM paperdash_position_metrics_rollups WHERE scope='global' FOR UPDATE",
+      );
+      projecting = first.positionMetrics.tick(2);
+      await waiting("position_metrics_rollups WHERE scope=$1 FOR UPDATE");
+      producing = retain("one", value(2), at + 2);
+      await waiting("INSERT INTO paperdash_position_metrics_queue");
+      await blocker.query("COMMIT");
+      await Promise.all([projecting, producing]);
+    } finally {
+      await blocker.query("ROLLBACK");
+      blocker.release();
+      await Promise.allSettled(
+        [projecting, producing].filter((p) => p !== undefined),
+      );
+    }
+    await second.positionMetrics.tick(50);
+    expect((await first.positionMetrics.read(wallet)).highlights).toMatchObject(
+      { tradeCount: 1, complete: true, bestTrade: { pnlRaw: "2" } },
+    );
+    expect(
+      (
+        await scoped.query(
+          "SELECT cursor_key FROM paperdash_position_metrics_wallet_state WHERE address=$1",
+          [wallet],
+        )
+      ).rows[0],
+    ).toEqual({ cursor_key: "one" });
+  }, 20000);
+
   it("does not lose an A-to-B-to-A correction behind a projecting queue row", async () => {
     const { first, second, scoped, retain, waiting } = await isolated();
     await retain("one", value());

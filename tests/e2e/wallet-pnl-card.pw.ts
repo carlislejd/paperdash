@@ -481,8 +481,11 @@ test("stalled artwork can retry without changing frozen data, privacy or layout"
       ),
     ),
   ).toBe(1);
-  await page.keyboard.press("Escape");
-  await openCard(page);
+  const readsBeforeUpdate = {
+    wallet: state.walletReads,
+    metrics: state.metricReads,
+  };
+  await dialog.getByRole("button", { name: "Update card" }).click();
   await expectPreviewReady(
     page,
     dialog.getByRole("button", { name: "Download PNG" }),
@@ -491,6 +494,14 @@ test("stalled artwork can retry without changing frozen data, privacy or layout"
     "alt",
     /\+\$9,999\.00 lifetime/,
   );
+  await expect(
+    dialog.getByRole("button", { name: /^Portrait/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    dialog.getByRole("checkbox", { name: /Hide wallet/ }),
+  ).toBeChecked();
+  expect(state.walletReads).toBe(readsBeforeUpdate.wallet);
+  expect(state.metricReads).toBe(readsBeforeUpdate.metrics);
 });
 
 test("stalled PNG encoding times out and a late callback cannot replace a retry", async ({

@@ -71,6 +71,7 @@ REVOKE ALL PRIVILEGES ON TABLE
   :"app_schema".paperdash_position_metrics_facts,
   :"app_schema".paperdash_position_metrics_highlights,
   :"app_schema".paperdash_position_metrics_highlight_wallets,
+  :"app_schema".paperdash_position_metrics_wallet_state,
   :"app_schema".paperdash_deposit_metrics_queue,
   :"app_schema".paperdash_deposit_metrics_facts,
   :"app_schema".paperdash_deposit_metrics_wallets,
@@ -128,6 +129,7 @@ BEGIN
     'paperdash_position_metrics_facts',
     'paperdash_position_metrics_highlights',
     'paperdash_position_metrics_highlight_wallets',
+    'paperdash_position_metrics_wallet_state',
     'paperdash_position_metrics_rollups',
     'paperdash_position_metrics_state',
     'paperdash_deposit_metrics_queue',
@@ -178,6 +180,7 @@ GRANT SELECT ON TABLE
   :"app_schema".paperdash_position_metrics_queue,
   :"app_schema".paperdash_position_metrics_highlights,
   :"app_schema".paperdash_position_metrics_highlight_wallets,
+  :"app_schema".paperdash_position_metrics_wallet_state,
   :"app_schema".paperdash_position_metrics_rollups,
   :"app_schema".paperdash_position_metrics_state,
   :"app_schema".paperdash_deposit_metrics_state,
@@ -215,6 +218,11 @@ GRANT UPDATE(watch_until) ON TABLE
   :"app_schema".paperdash_wallet_watches
   TO :"api_role";
 
+-- Viewers may admit retained-wallet projection work, never alter its progress.
+GRANT INSERT(address,requested_at) ON TABLE
+  :"app_schema".paperdash_position_metrics_wallet_state
+  TO :"api_role";
+
 -- Worker: explicit current tables; never blanket grants on future objects.
 
 GRANT SELECT ON TABLE
@@ -245,6 +253,7 @@ GRANT SELECT ON TABLE
   :"app_schema".paperdash_position_metrics_facts,
   :"app_schema".paperdash_position_metrics_highlights,
   :"app_schema".paperdash_position_metrics_highlight_wallets,
+  :"app_schema".paperdash_position_metrics_wallet_state,
   :"app_schema".paperdash_deposit_metrics_queue,
   :"app_schema".paperdash_deposit_metrics_facts,
   :"app_schema".paperdash_deposit_metrics_wallets,
@@ -279,6 +288,7 @@ GRANT INSERT,UPDATE ON TABLE
   :"app_schema".paperdash_position_metrics_facts,
   :"app_schema".paperdash_position_metrics_highlights,
   :"app_schema".paperdash_position_metrics_highlight_wallets,
+  :"app_schema".paperdash_position_metrics_wallet_state,
   :"app_schema".paperdash_deposit_metrics_queue,
   :"app_schema".paperdash_deposit_metrics_facts,
   :"app_schema".paperdash_deposit_metrics_wallets,

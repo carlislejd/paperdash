@@ -2,6 +2,7 @@ import type { WalletResponse } from "../../../../packages/shared/src/types";
 import type { PositionMetricsResponse } from "../../../../packages/shared/src/position-metrics";
 import { formatHoldingTime, formatLeverage } from "./position-format";
 import { formatRawUsd, shortAddress } from "./format";
+import { walletAccountClock } from "./wallet-account-clock";
 
 export const PNL_CARD_ART = "/art/paperclub-social-v4.png";
 export const PNL_CARD_LAYOUTS = [
@@ -104,22 +105,7 @@ export function walletPnlCardModel(
     !metrics.coverage.pending &&
     metrics.coverage.historyBackfillComplete === true,
   );
-  const accountAt =
-    wallet.accountFreshness?.sourceAt ??
-    (account ? account.indexedThroughTimestamp * 1000 : null);
-  const checkedAt = wallet.accountFreshness?.receivedAt;
-  const accountStale =
-    !account ||
-    !wallet.accountFreshness ||
-    wallet.accountFreshness.stale ||
-    checkedAt == null ||
-    !Number.isSafeInteger(checkedAt) ||
-    capturedAt - checkedAt > 60_000 ||
-    checkedAt > capturedAt + 30_000 ||
-    accountAt === null ||
-    !Number.isSafeInteger(accountAt) ||
-    capturedAt - accountAt > 60_000 ||
-    accountAt > capturedAt + 30_000;
+  const accountClock = walletAccountClock(wallet, false, capturedAt);
   const address = options.hideWallet ? null : wallet.address;
   const identity = options.hideWallet
     ? "WALLET HIDDEN"
@@ -178,10 +164,10 @@ export function walletPnlCardModel(
         detail: "At account snapshot",
       },
     ],
-    accountNote: `${snapshot.demo ? "DEMO DATA · " : ""}${accountStale ? "Saved account" : "Account"} · ${stamp(accountAt)}`,
+    accountNote: `${snapshot.demo ? "DEMO DATA · " : ""}${accountClock.stale ? "Saved account" : "Account"} checked · ${stamp(accountClock.checkedAt)}`,
     historyNote: !metrics
       ? "Trade statistics unavailable"
-      : `${historyComplete ? "Recorded history" : "Partial recorded history"}${metrics.stale ? " · delayed" : ""} · ${stamp(metrics.updatedAt)}`,
+      : `${historyComplete ? "Recorded history" : "Partial recorded history"}${metrics.stale ? " · delayed" : ""} · ${metrics.coverage.lastHistoryIndexedAt ? `checked ${stamp(metrics.coverage.lastHistoryIndexedAt)}` : "check time unavailable"}`,
     captured: stamp(capturedAt),
     link: link.toString(),
     filename: `paperclub-pnl-${options.layout}.png`,

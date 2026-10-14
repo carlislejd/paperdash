@@ -4,6 +4,7 @@ import type { WalletResponse } from "../../../../packages/shared/src/types";
 import { relativeTime } from "../lib/format";
 import { formatHoldingTime, formatLeverage } from "../lib/position-format";
 import { useAnalytics } from "../lib/use-analytics";
+import { walletAccountClock } from "../lib/wallet-account-clock";
 import {
   normalizeOpenPosition,
   type PositionDetails,
@@ -13,21 +14,18 @@ import "./position-metrics.css";
 function OpenPositions({
   wallet,
   onPosition,
+  refreshError = false,
 }: {
   wallet: WalletResponse;
-  onPosition?: (position: PositionDetails) => void;
+  onPosition?: (position: PositionDetails, stale?: boolean) => void;
+  refreshError?: boolean;
 }) {
   const [visibleCount, setVisibleCount] = useState(5);
   const snapshot = wallet.snapshot;
-  const saved = wallet.stale || wallet.errors.length > 0;
-  // A delayed snapshot cannot establish that a position is still open now.
-  const sourceTime = snapshot?.indexedThroughTimestamp;
-  const snapshotAt =
-    typeof sourceTime === "number" &&
-    Number.isSafeInteger(sourceTime * 1000) &&
-    sourceTime >= 0
-      ? sourceTime * 1000
-      : null;
+  const clock = walletAccountClock(wallet, refreshError);
+  const saved = clock.stale;
+  // An unchanged open position remains confirmed by a successful account check.
+  const snapshotAt = clock.checkedAt ?? clock.sourceAt;
   const total = snapshot?.openPositions.length ?? 0;
   const positions = (snapshot?.openPositions ?? [])
     .slice(0, visibleCount)
@@ -37,7 +35,7 @@ function OpenPositions({
           ? null
           : normalizeOpenPosition(tuple, {
               walletAddress: wallet.address,
-              receivedAt: null,
+              receivedAt: clock.checkedAt,
               asOf: snapshotAt,
             });
       return { key: `${details?.positionId ?? "unknown"}:${index}`, details };
@@ -81,7 +79,7 @@ function OpenPositions({
                       : "Position details unavailable"
                   }
                   onClick={() => {
-                    if (details) onPosition?.(details);
+                    if (details) onPosition?.(details, saved);
                   }}
                 >
                   <span>
@@ -145,9 +143,11 @@ function OpenPositions({
 export function PositionMetrics({
   wallet,
   onPosition,
+  refreshError = false,
 }: {
   wallet?: WalletResponse;
-  onPosition?: (position: PositionDetails) => void;
+  onPosition?: (position: PositionDetails, stale?: boolean) => void;
+  refreshError?: boolean;
 }) {
   const id = useId();
   const { data, error, loading, refresh } =
@@ -163,6 +163,9 @@ export function PositionMetrics({
       data.coverage.historyBackfillComplete === false);
   const stale = Boolean(error) || Boolean(data?.stale);
   const count = data?.positionCount ?? 0;
+  const historyAt = wallet
+    ? data?.coverage.lastHistoryIndexedAt
+    : data?.updatedAt;
   const Heading = wallet ? "h3" : "h2";
   return (
     <>
@@ -190,13 +193,14 @@ export function PositionMetrics({
                     : wallet
                       ? "Indexed history"
                       : "Partial indexed history"}
-              {data?.updatedAt && (
+              {historyAt && (
                 <time
-                  dateTime={new Date(data.updatedAt).toISOString()}
-                  title={new Date(data.updatedAt).toLocaleString()}
+                  dateTime={new Date(historyAt).toISOString()}
+                  title={new Date(historyAt).toLocaleString()}
                 >
                   {" "}
-                  · {relativeTime(data.updatedAt)}
+                  · {wallet ? "Checked " : ""}
+                  {relativeTime(historyAt)}
                 </time>
               )}
             </span>
@@ -241,6 +245,7 @@ export function PositionMetrics({
           key={wallet.address}
           wallet={wallet}
           onPosition={onPosition}
+          refreshError={refreshError}
         />
       )}
     </>

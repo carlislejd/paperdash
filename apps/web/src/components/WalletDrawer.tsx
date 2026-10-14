@@ -15,6 +15,7 @@ import type {
   WalletResponse,
 } from "../../../../packages/shared/src/types";
 import { fetchJson } from "../lib/api";
+import { walletAccountClock as accountClock } from "../lib/wallet-account-clock";
 import { useFollowing } from "../lib/use-following";
 import { FOLLOWING_LIMIT } from "../lib/following-storage";
 import { mergeHistory } from "../lib/wallet-history";
@@ -230,44 +231,6 @@ function totalPaper(wallet: WalletResponse | null): string | null {
   if (!paper || !/^\d+$/.test(paper.balance) || !/^\d+$/.test(paper.staked))
     return null;
   return (BigInt(paper.balance) + BigInt(paper.staked)).toString();
-}
-
-function accountClock(wallet: WalletResponse | null, refreshFailed = false) {
-  const sourceAt = wallet?.snapshot
-    ? wallet.snapshot.indexedThroughTimestamp * 1000
-    : null;
-  const now = Date.now();
-  const validSource =
-    sourceAt !== null &&
-    Number.isSafeInteger(sourceAt) &&
-    sourceAt > 0 &&
-    sourceAt <= now + 30_000
-      ? sourceAt
-      : null;
-  const freshness = wallet?.accountFreshness;
-  const receivedAt = freshness?.receivedAt;
-  const checkedAt =
-    receivedAt != null &&
-    Number.isSafeInteger(receivedAt) &&
-    receivedAt > 0 &&
-    receivedAt <= now + 30_000
-      ? receivedAt
-      : null;
-  return {
-    sourceAt: validSource,
-    checkedAt,
-    refreshing: !refreshFailed && freshness?.refreshing === true,
-    stale:
-      refreshFailed ||
-      !freshness ||
-      freshness.stale ||
-      freshness.sourceAt !== validSource ||
-      validSource === null ||
-      now - validSource > 30_000 ||
-      checkedAt === null ||
-      now - checkedAt > 30_000 ||
-      Boolean(wallet && sourceError(wallet, "snapshot")),
-  };
 }
 
 function dateLabel(time: number | null | undefined, withYear = false): string {
@@ -1010,6 +973,34 @@ export function WalletDrawer({
       sourceStale;
     setReceipt(freezePositionReceipt(position, displayName ?? null, stale));
   };
+  function capturePnlCard() {
+    if (!wallet) return;
+    const resource = analyticsResources.get(
+      `/api/wallets/${wallet.address}/position-metrics`,
+    );
+    const metrics = resource.data as PositionMetricsResponse | null;
+    setPnlCard(
+      structuredClone({
+        wallet: {
+          ...wallet,
+          accountFreshness: wallet.accountFreshness
+            ? {
+                ...wallet.accountFreshness,
+                stale: wallet.accountFreshness.stale || Boolean(error),
+              }
+            : undefined,
+        },
+        metrics: metrics
+          ? {
+              ...metrics,
+              stale: metrics.stale || Boolean(resource.error),
+            }
+          : null,
+        displayName: displayName ?? null,
+        capturedAt: Date.now(),
+      }),
+    );
+  }
   const closedPosition = (item: ClosedTrade) =>
     wallet
       ? normalizeClosedPosition(item, {
@@ -1117,36 +1108,7 @@ export function WalletDrawer({
                 <button
                   type="button"
                   className="wd-pnl-share"
-                  onClick={() => {
-                    const resource = analyticsResources.get(
-                      `/api/wallets/${wallet.address}/position-metrics`,
-                    );
-                    const metrics =
-                      resource.data as PositionMetricsResponse | null;
-                    setPnlCard(
-                      structuredClone({
-                        wallet: {
-                          ...wallet,
-                          accountFreshness: wallet.accountFreshness
-                            ? {
-                                ...wallet.accountFreshness,
-                                stale:
-                                  wallet.accountFreshness.stale ||
-                                  Boolean(error),
-                              }
-                            : undefined,
-                        },
-                        metrics: metrics
-                          ? {
-                              ...metrics,
-                              stale: metrics.stale || Boolean(resource.error),
-                            }
-                          : null,
-                        displayName: displayName ?? null,
-                        capturedAt: Date.now(),
-                      }),
-                    );
-                  }}
+                  onClick={capturePnlCard}
                 >
                   Share P&amp;L card ↗
                 </button>
@@ -1231,7 +1193,7 @@ export function WalletDrawer({
                     <span>
                       {accountFreshness.sourceAt === null
                         ? "Snapshot time unavailable"
-                        : `As of ${relativeTime(accountFreshness.sourceAt)}`}
+                        : `Last account update ${relativeTime(accountFreshness.sourceAt)}`}
                       {accountFreshness.checkedAt !== null
                         ? ` · Checked ${relativeTime(accountFreshness.checkedAt)}`
                         : " · Check time unavailable"}
@@ -1326,6 +1288,7 @@ export function WalletDrawer({
                   key={wallet.address}
                   wallet={wallet}
                   onPosition={selectPosition}
+                  refreshError={Boolean(error)}
                 />
                 <WalletMarginRisk
                   key={`margin-${wallet.address}`}
@@ -1512,7 +1475,7 @@ export function WalletDrawer({
                           ? "Saved snapshot"
                           : "Snapshot"}
                       {snapshot
-                        ? ` · ${relativeTime(snapshot.indexedThroughTimestamp * 1000)}`
+                        ? ` · Checked ${accountFreshness.checkedAt === null ? "time unavailable" : relativeTime(accountFreshness.checkedAt)}`
                         : ""}
                     </span>
                     <button
@@ -1544,6 +1507,7 @@ export function WalletDrawer({
           pnlCard.wallet.address.toLowerCase() === address.toLowerCase() && (
             <WalletPnlCardDialog
               snapshot={pnlCard}
+              onRefresh={capturePnlCard}
               onClose={() => setPnlCard(null)}
             />
           )}

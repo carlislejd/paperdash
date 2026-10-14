@@ -287,16 +287,55 @@ describe("wallet margin-risk saved quote adapter", () => {
       { ...observed(), stale: true },
       { ...observed(), error: "Saved account observation." },
       { ...observed(), receivedAt: at - 30001 },
-      {
-        ...observed(),
-        value: { ...snapshot(), indexedThroughTimestamp: (at - 31000) / 1000 },
-      },
     ]) {
       const result = await readWalletMarginRisk(store, address, input, at);
       expect(result.snapshot?.stale).toBe(true);
       expect(result.stale).toBe(true);
       expect(result.references.every((r) => !r.stale)).toBe(true);
     }
+  });
+  it("uses a fresh account check for unchanged positions while keeping quote-age checks independent", async () => {
+    const store = await memory();
+    const value = snapshot();
+    value.indexedThroughTimestamp = (at - 4 * 3600000) / 1000;
+    (value.openPositions[0] as unknown[])[8] = at - 5 * 3600000;
+    const result = await readWalletMarginRisk(
+      store,
+      address,
+      { ...observed(), value },
+      at,
+    );
+    expect(result.snapshot).toMatchObject({
+      sourceAt: at - 4 * 3600000,
+      receivedAt: at - 100,
+      stale: false,
+    });
+    expect(result.coverage).toMatchObject({
+      includedCount: 1,
+      excludedCount: 0,
+    });
+    expect(result.stale).toBe(false);
+    await store.put(
+      "market:0",
+      {
+        ...quote(),
+        price: {
+          ...quote().price,
+          sourceAt: at - 31000,
+          receivedAt: at - 31000,
+        },
+      },
+      at,
+    );
+    const oldQuote = await readWalletMarginRisk(
+      store,
+      address,
+      { ...observed(), value },
+      at,
+    );
+    expect(oldQuote.snapshot?.stale).toBe(false);
+    expect(oldQuote.assets[0].reference?.stale).toBe(true);
+    expect(oldQuote.stale).toBe(true);
   });
   it("returns a true empty snapshot as zero without quotes, but missing snapshot as unavailable", async () => {
     const store = await memory();
@@ -383,7 +422,11 @@ describe("wallet response margin-risk enrichment", () => {
           sourceAt: at,
         },
       });
-      expect(snapshotCall).toHaveBeenCalledExactlyOnceWith(address, false, 1500);
+      expect(snapshotCall).toHaveBeenCalledExactlyOnceWith(
+        address,
+        false,
+        1500,
+      );
       expect(fetcher).not.toHaveBeenCalled();
       expect(bulk).toHaveBeenCalledTimes(1);
       expect(bulk.mock.calls[0][0].some((key) => key.includes("wallet"))).toBe(
