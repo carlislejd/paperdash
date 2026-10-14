@@ -182,6 +182,7 @@ export function FollowingView({
                       </td>
                       <td className="numeric">
                         {account &&
+                        account.currentOpenPositionCount != null &&
                         Number.isSafeInteger(account.currentOpenPositionCount)
                           ? account.currentOpenPositionCount.toLocaleString()
                           : "—"}

@@ -24,7 +24,8 @@ export interface Account {
   currentBalance: Raw;
   currentQueued: Raw;
   currentOpenNotional: Raw;
-  currentOpenPositionCount: number;
+  /** Omitted by newer account-directory responses; null is unknown, never zero. */
+  currentOpenPositionCount: number | null;
   currentUnrealizedPnl: Raw;
   realizedPnl: Raw;
   totalVolume: Raw;

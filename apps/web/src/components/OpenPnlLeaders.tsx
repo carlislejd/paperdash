@@ -21,7 +21,7 @@ export function OpenPnlLeaders({
   const rows = (data?.accounts ?? []).filter(
     (account) =>
       (rawToNumber(account.currentUnrealizedPnl) ?? 0) > 0 &&
-      account.currentOpenPositionCount > 0,
+      (account.currentOpenPositionCount == null || account.currentOpenPositionCount > 0),
   );
   const maximum = Math.max(
     1,
@@ -60,10 +60,9 @@ export function OpenPnlLeaders({
                     {account.leaderboardName || shortAddress(account.address)}
                   </strong>
                   <small>
-                    {account.currentOpenPositionCount.toLocaleString()} open{" "}
-                    {account.currentOpenPositionCount === 1
-                      ? "position"
-                      : "positions"}
+                    {account.currentOpenPositionCount == null
+                      ? "Position count unavailable"
+                      : `${account.currentOpenPositionCount.toLocaleString()} open ${account.currentOpenPositionCount === 1 ? "position" : "positions"}`}
                   </small>
                 </span>
                 <span className="open-pnl-value">

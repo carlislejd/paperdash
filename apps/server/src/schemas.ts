@@ -42,7 +42,9 @@ export const accountSchema = z.object({
   currentBalance: rawSchema,
   currentQueued: rawSchema,
   currentOpenNotional: uint,
-  currentOpenPositionCount: time,
+  // The directory no longer supplies this field. Preserve older counts while
+  // allowing other account data/discovery to refresh without inventing a zero.
+  currentOpenPositionCount: time.nullish().transform((value) => value ?? null),
   currentUnrealizedPnl: rawSchema,
   realizedPnl: rawSchema,
   totalVolume: uint,

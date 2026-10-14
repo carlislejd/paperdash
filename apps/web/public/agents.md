@@ -71,7 +71,7 @@ node paperclub.mjs leaderboard --metric pnl --page 0 --pretty
 
 Current unrealized PnL, lifetime realized PnL and rolling-24h PnL are different measures. If the user just asks for "top PnL", clarify the measure or explicitly state which one you chose. The rolling leaderboard's `pnlRaw` is protocol-reported window PnL; do not relabel it realized PnL. `currentUnrealizedPnlRaw`, when present in leaderboard rows, is a separate current snapshot. Directory `totalWindowedPnl` is not the rolling-24h leaderboard value.
 
-For the dashboard's positive open-PnL leaders, filter current-uPnL rows to `currentUnrealizedPnl > 0` and `currentOpenPositionCount > 0`. A page may then contain fewer than ten qualifying wallets. Compare raw amounts with integer/decimal arithmetic.
+For the dashboard's positive open-PnL leaders, filter current-uPnL rows to `currentUnrealizedPnl > 0` and exclude rows only when `currentOpenPositionCount` is explicitly zero. The count can be `null` when the source does not provide it; treat that as unavailable, never zero. A page may then contain fewer than ten qualifying wallets. Compare raw amounts with integer/decimal arithmetic.
 
 ### PAPER ownership
 

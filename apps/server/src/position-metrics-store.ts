@@ -49,7 +49,12 @@ CREATE INDEX IF NOT EXISTS ${prefix}history_trades_projection ON ${prefix}histor
 
 /** Called after a trade upsert inside the same fenced history transaction.
  * Mark the actual retained version, including when an older incoming row lost
- * the source received_at guard. Existing marks keep their original queue age. */
+ * the source received_at guard. Receipt-only overlap does not change a fact;
+ * recheck it only if the canonical timestampMs (history_records.source_at)
+ * crosses the same 30-second future-clock boundary used by factFrom.
+ * Existing marks must still be touched even if the current fact matches: a
+ * projector may hold that mark while applying an intermediate A-to-B-to-A
+ * version. Its producer then waits and leaves a fresh mark after commit. */
 export function enqueuePositionMetrics(
   prefix: string,
   address: string,
@@ -59,8 +64,11 @@ export function enqueuePositionMetrics(
   return {
     sql: `INSERT INTO ${queue}(address,record_key,queued_at)
       SELECT r.address,r.record_key,r.received_at FROM ${prefix}history_records r
-      WHERE r.address=? AND r.kind='trades' AND r.record_key=? AND NOT EXISTS (
-        SELECT 1 FROM ${prefix}position_metrics_facts f WHERE f.address=r.address AND f.record_key=r.record_key AND f.payload_hash=r.payload_hash AND f.ambiguous=r.ambiguous AND f.received_at=r.received_at)
+      WHERE r.address=? AND r.kind='trades' AND r.record_key=? AND (
+        EXISTS (SELECT 1 FROM ${queue} q WHERE q.address=r.address AND q.record_key=r.record_key)
+        OR NOT EXISTS (
+          SELECT 1 FROM ${prefix}position_metrics_facts f WHERE f.address=r.address AND f.record_key=r.record_key AND f.payload_hash=r.payload_hash AND f.ambiguous=r.ambiguous
+            AND (r.source_at<=f.received_at+30000)=(r.source_at<=r.received_at+30000)))
       ON CONFLICT(address,record_key) DO UPDATE SET queued_at=CASE WHEN ${queue}.queued_at<excluded.queued_at THEN ${queue}.queued_at ELSE excluded.queued_at END`,
     params: [address, key],
   };

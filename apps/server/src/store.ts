@@ -4,18 +4,19 @@ import {
   followingSchemaSql,
   type FollowingStore,
 } from "./following-store.js";
-import { DeadlinePgClient, rollbackPg } from "./pg-deadline.js";
+import { DeadlinePgClient, PG_QUERY_DEADLINE_MS, rollbackPg } from "./pg-deadline.js";
+import { acquirePgMigrationLock } from "./pg-migration-lock.js";
 import { monitorPgLease } from "./pg-lease.js";
 import {
   createPgDepositMetrics,
   createLocalDepositMetrics,
   depositMetricsSchemaSql,
-  migratePgDepositMetricsIndexes,
+  runPgDepositMetricsIndexPhase,
   depositMetricsIndexStatusSql,
   type DepositMetricsStore,
 } from "./deposit-metrics-store.js";
 import {
-  migratePgAnalyticsIndexes,
+  runPgAnalyticsIndexPhase,
   walletAssetIndexStatusSql,
 } from "./analytics-indexes.js";
 import {
@@ -121,29 +122,45 @@ CREATE TABLE IF NOT EXISTS paperdash_samples (time bigint PRIMARY KEY, value dou
 CREATE TABLE IF NOT EXISTS paperdash_stream_events (id bigserial PRIMARY KEY, payload jsonb NOT NULL);
 `;
 export async function migrate(pool: Pool): Promise<void> {
-  const client = await pool.connect();
+  // Hold owner admission for the entire migration, including concurrent index
+  // builds after COMMIT. Otherwise another owner can start ordinary index DDL
+  // while our concurrent build is waiting for its virtual transaction.
+  // One session owns the locks AND every DDL phase: loss of owner admission
+  // also stops its index build before another owner can acquire the lock.
+  const client = new DeadlinePgClient({
+    ...pool.options, connectionTimeoutMillis: 10000,
+    statement_timeout: 10000, query_timeout: 130000,
+  }, 130000);
+  const schemaQuery = (text: string) => {
+    const query = { text, query_timeout: PG_QUERY_DEADLINE_MS };
+    return client.query(query);
+  };
+  client.on("error", () => {}); // query errors still reject their callers
   try {
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(74481231, 0)");
-    await client.query(PG_SCHEMA);
-    await client.query(historySchemaSql("paperdash_", true));
-    await client.query(analyticsSchemaSql("paperdash_", true));
-    await client.query(positionMetricsSchemaSql("paperdash_", true));
-    await client.query(depositMetricsSchemaSql("paperdash_", true));
-    await client.query(marketSchemaSql("paperdash_", true));
-    await client.query(houseSchemaSql("paperdash_", true));
-    await client.query(liquidationsSchemaSql("paperdash_", true));
-    await client.query(tradeInboxSchemaSql("paperdash_", true));
-    await client.query(followingSchemaSql("paperdash_", true));
-    await client.query("COMMIT");
-  } catch (error) {
-    await rollbackPg(client);
-    throw error;
+    await client.connect();
+    await acquirePgMigrationLock(client, undefined, 0);
+    // Also serialize against standalone index owners, before any transaction.
+    await acquirePgMigrationLock(client);
+    await schemaQuery("BEGIN");
+    await schemaQuery(PG_SCHEMA);
+    await schemaQuery(historySchemaSql("paperdash_", true));
+    await schemaQuery(analyticsSchemaSql("paperdash_", true));
+    await schemaQuery(positionMetricsSchemaSql("paperdash_", true));
+    await schemaQuery(depositMetricsSchemaSql("paperdash_", true));
+    await schemaQuery(marketSchemaSql("paperdash_", true));
+    await schemaQuery(houseSchemaSql("paperdash_", true));
+    await schemaQuery(liquidationsSchemaSql("paperdash_", true));
+    await schemaQuery(tradeInboxSchemaSql("paperdash_", true));
+    await schemaQuery(followingSchemaSql("paperdash_", true));
+    await schemaQuery("COMMIT");
+    await schemaQuery("SET statement_timeout=120000");
+    await runPgAnalyticsIndexPhase(client);
+    await runPgDepositMetricsIndexPhase(client);
   } finally {
-    client.release();
+    // Closing releases keys 0/2 and rolls back any uncommitted DDL, including when
+    // a failed query has an unknown outcome. No lock returns to the pool.
+    await client.end();
   }
-  await migratePgAnalyticsIndexes(pool);
-  await migratePgDepositMetricsIndexes(pool);
 }
 
 export async function createStore(

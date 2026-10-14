@@ -223,6 +223,48 @@ describe("incremental retained position metrics", () => {
       excludedCount: 0,
     });
   });
+  it("skips all projection work for an unchanged 75-trade overlap while advancing history freshness", async () => {
+    const { store, db } = await local();
+    const items = Array.from({ length: 75 }, (_, i) => closed({
+      positionId: String(i + 1), timestampMs: now - 1000 - i,
+      openedAtMs: now - 1100 - i,
+    }));
+    await store.history.commitPage(await tradeJob(store, now), { items, nextCursor: null }, now, 60000);
+    expect((await store.positionMetrics.tick()).processed).toBe(75);
+    const before = await store.positionMetrics.read();
+    const replayAt = now + 60000;
+    const job = await store.history.claimJob(replayAt);
+    expect(job?.kind).toBe("trades");
+    await store.history.commitPage(job!, { items, nextCursor: null }, replayAt, 60000);
+    expect(db.prepare("SELECT count(*) n FROM position_metrics_queue").get()).toMatchObject({ n: 0 });
+    expect(await store.positionMetrics.tick()).toMatchObject({ backfilled: 0, processed: 0, pending: false });
+    expect(await store.positionMetrics.read()).toEqual(before);
+    expect(db.prepare("SELECT min(received_at) oldest, max(received_at) newest FROM position_metrics_facts").get())
+      .toMatchObject({ oldest: now, newest: now });
+    expect(db.prepare("SELECT min(received_at) oldest FROM history_records WHERE kind='trades'").get())
+      .toMatchObject({ oldest: replayAt });
+    expect((await store.positionMetrics.readMany([a], replayAt))[a])
+      .toMatchObject({ recordedCount: 75, indexedAt: replayAt, stale: false, projectionPending: false });
+  });
+  it("skips unchanged excluded observations but projects the exact future-clock eligibility transition", async () => {
+    const { store, db } = await local();
+    const future = closed({ timestampMs: now + 60000 });
+    retain(db, "future", future);
+    retain(db, "invalid", closed({ leverage: 0 }));
+    retain(db, "ambiguous", closed(), { ambiguous: 1 });
+    expect((await store.positionMetrics.tick()).processed).toBe(3);
+    retain(db, "future", future, { at: now + 29999 });
+    retain(db, "invalid", closed({ leverage: 0 }), { at: now + 29999 });
+    retain(db, "ambiguous", closed(), { at: now + 29999, ambiguous: 1 });
+    expect((await store.positionMetrics.tick()).processed).toBe(0);
+    retain(db, "future", future, { at: now + 30000 });
+    expect((await store.positionMetrics.tick()).processed).toBe(1);
+    expect(await store.positionMetrics.read()).toMatchObject({ positionCount: 1, excludedCount: 2 });
+    // An ambiguity correction still retracts the exclusion even with the same hash.
+    retain(db, "ambiguous", closed(), { at: now + 30001, ambiguous: 0 });
+    expect((await store.positionMetrics.tick()).processed).toBe(1);
+    expect(await store.positionMetrics.read()).toMatchObject({ positionCount: 2, excludedCount: 1 });
+  });
   it("excludes invalid and ambiguous rows and rechecks clock-skew exclusions when observed later", async () => {
     const { store, db } = await local();
     const values = [

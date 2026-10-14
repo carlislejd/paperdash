@@ -217,7 +217,11 @@ export function LeaderboardView({
             </dd>
           </div>
           <div>
-            <dt>% of tracked PAPER</dt>
+            <dt
+              title="PAPER held by the wallets shown as a share of PAPER across all tracked accounts. This does not measure history indexing progress."
+            >
+              This page’s share
+            </dt>
             <dd>
               {data?.paperOwnership?.pageShareBps != null &&
               Number.isSafeInteger(data.paperOwnership.pageShareBps) &&

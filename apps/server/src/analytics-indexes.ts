@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Client, Pool } from "pg";
 import { DeadlinePgClient } from "./pg-deadline.js";
 import { acquirePgIndexMigrationLock } from "./pg-migration-lock.js";
 
@@ -13,6 +13,27 @@ export const walletAssetIndexStatusSql = `SELECT i.indisvalid AND i.indisready A
   AND pg_get_indexdef(i.indexrelid,2,true)='source_at'
   AND pg_get_indexdef(i.indexrelid,3,true)='fingerprint' AS expected
   FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_am am ON am.oid=c.relam WHERE i.indexrelid=to_regclass('${name}')`;
+
+/** Caller owns key 2 on this same autocommit session and its build deadlines. */
+export async function runPgAnalyticsIndexPhase(
+  client: Pick<Client, "query">,
+): Promise<void> {
+  const current = (await client.query(walletAssetIndexStatusSql)).rows[0];
+  if (current && !current.expected)
+    throw new Error(
+      "Wallet asset index has an unexpected definition; migration stopped.",
+    );
+  if (current?.valid) return;
+  if (current) await client.query(`DROP INDEX CONCURRENTLY ${name}`);
+  await client.query(
+    `CREATE INDEX CONCURRENTLY ${name} ON ${table}(wallet,source_at,fingerprint)`,
+  );
+  const result = (await client.query(walletAssetIndexStatusSql)).rows[0];
+  if (!result?.valid || !result.expected)
+    throw new Error(
+      "Wallet asset index did not become valid; retry the owner migration.",
+    );
+}
 
 /** Owner-only, deliberately outside the schema transaction. Runtime readers
  * only inspect the catalog; they never attempt this DDL. Query deadlines still
@@ -32,25 +53,11 @@ export async function migratePgAnalyticsIndexes(pool: Pool): Promise<void> {
   client.on("error", () => {}); // active queries still reject; no unhandled idle error
   try {
     await client.connect();
-    // Advisory namespace 74481231: 0 = transactional schema migration,
+    // Advisory namespace 74481231: 0 = whole owner migration,
     // 1 = live collector ownership, 2 = concurrent index migration. This
     // owner-only build must never wait for the long-lived collector lease.
     await acquirePgIndexMigrationLock(client);
-    const current = (await client.query(walletAssetIndexStatusSql)).rows[0];
-    if (current && !current.expected)
-      throw new Error(
-        "Wallet asset index has an unexpected definition; migration stopped.",
-      );
-    if (current?.valid) return;
-    if (current) await client.query(`DROP INDEX CONCURRENTLY ${name}`);
-    await client.query(
-      `CREATE INDEX CONCURRENTLY ${name} ON ${table}(wallet,source_at,fingerprint)`,
-    );
-    const result = (await client.query(walletAssetIndexStatusSql)).rows[0];
-    if (!result?.valid || !result.expected)
-      throw new Error(
-        "Wallet asset index did not become valid; retry the owner migration.",
-      );
+    await runPgAnalyticsIndexPhase(client);
   } finally {
     // Closing the dedicated session also releases the migration lock, even
     // when a cancelled CREATE leaves an invalid index for the next retry.

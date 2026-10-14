@@ -55,7 +55,7 @@ async function isolated() {
     try {
       await client.query("BEGIN");
       await client.query(
-        "INSERT INTO paperdash_history_records VALUES($1,'trades',$2,$3,$4,$5,0,$6) ON CONFLICT(address,kind,record_key) DO UPDATE SET payload=excluded.payload,payload_hash=excluded.payload_hash,received_at=excluded.received_at WHERE paperdash_history_records.received_at<=excluded.received_at",
+        "INSERT INTO paperdash_history_records VALUES($1,'trades',$2,$3,$4,$5,0,$6) ON CONFLICT(address,kind,record_key) DO UPDATE SET source_at=excluded.source_at,payload=excluded.payload,payload_hash=excluded.payload_hash,received_at=excluded.received_at WHERE paperdash_history_records.received_at<=excluded.received_at",
         [
           wallet,
           key,
@@ -95,7 +95,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 describe.skipIf(!databaseUrl)("PostgreSQL position metrics", () => {
-  it("does not lose a correction when its producer waits behind a projecting queue row", async () => {
+  it("does not lose an A-to-B-to-A correction behind a projecting queue row", async () => {
     const { first, second, scoped, retain, waiting } = await isolated();
     await retain("one", value());
     await first.positionMetrics.tick();
@@ -112,7 +112,9 @@ describe.skipIf(!databaseUrl)("PostgreSQL position metrics", () => {
       );
       projecting = first.positionMetrics.tick(1);
       await waiting("position_metrics_rollups WHERE scope=$1 FOR UPDATE");
-      producing = retain("one", value(8), at + 2);
+      // The restored source matches the old projected hash. Queue presence must
+      // still force a mark while the projector is applying intermediate B.
+      producing = retain("one", value(2), at + 2);
       await waiting("INSERT INTO paperdash_position_metrics_queue");
       await blocker.query("COMMIT");
       await Promise.all([projecting, producing]);
@@ -135,7 +137,7 @@ describe.skipIf(!databaseUrl)("PostgreSQL position metrics", () => {
     expect(await first.positionMetrics.read()).toMatchObject({
       positionCount: 1,
       avgHoldMs: 100,
-      avgLeverage: 8,
+      avgLeverage: 2,
       pending: false,
     });
     expect(
@@ -145,6 +147,26 @@ describe.skipIf(!databaseUrl)("PostgreSQL position metrics", () => {
         )
       ).rows[0].n,
     ).toBe("1");
+  }, 20000);
+  it("skips 75 unchanged facts and preserves future-clock rechecks", async () => {
+    const { first, scoped, retain } = await isolated();
+    for (let i = 0; i < 75; i++) await retain(String(i), { ...value(), positionId: String(i) });
+    expect((await first.positionMetrics.tick()).processed).toBe(75);
+    const before = await first.positionMetrics.read();
+    for (let i = 0; i < 75; i++) await retain(String(i), { ...value(), positionId: String(i) }, at + 1000);
+    expect((await scoped.query("SELECT count(*) n FROM paperdash_position_metrics_queue")).rows[0].n).toBe("0");
+    expect(await first.positionMetrics.tick()).toMatchObject({ processed: 0, pending: false });
+    expect(await first.positionMetrics.read()).toEqual(before);
+    expect((await scoped.query("SELECT min(received_at) oldest,max(received_at) newest FROM paperdash_position_metrics_facts")).rows[0])
+      .toEqual({ oldest: String(at), newest: String(at) });
+    const future = { ...value(), timestampMs: at + 60000 };
+    await retain("future", future);
+    await first.positionMetrics.tick();
+    await retain("future", future, at + 29999);
+    expect((await first.positionMetrics.tick()).processed).toBe(0);
+    await retain("future", future, at + 30000);
+    expect((await first.positionMetrics.tick()).processed).toBe(1);
+    expect(await first.positionMetrics.read()).toMatchObject({ positionCount: 76, excludedCount: 0, pending: false });
   }, 20000);
   it("resumes bounded legacy work and rolls back failed fact/rollup/queue changes together", async () => {
     const { first, second, scoped, retain } = await isolated();

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { Pool } from "pg";
+import type { Client, Pool } from "pg";
 import { DeadlinePgClient, rollbackPg } from "./pg-deadline.js";
 import { acquirePgIndexMigrationLock } from "./pg-migration-lock.js";
 
@@ -53,6 +53,26 @@ export const depositMetricsIndexStatusSql = `SELECT i.indisvalid AND i.indisread
   AND pg_get_indexdef(i.indexrelid,2,true)='record_key'
   AND pg_get_expr(i.indpred,i.indrelid)='(kind = ''cashflows''::text)' AS expected
   FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_am am ON am.oid=c.relam WHERE i.indexrelid=to_regclass('${legacyIndex}')`;
+/** Caller owns key 2 on this same autocommit session and its build deadlines. */
+export async function runPgDepositMetricsIndexPhase(
+  client: Pick<Client, "query">,
+): Promise<void> {
+  const current = (await client.query(depositMetricsIndexStatusSql)).rows[0];
+  if (current && !current.expected)
+    throw new Error(
+      "Deposit history index has an unexpected definition; migration stopped.",
+    );
+  if (current?.valid) return;
+  if (current) await client.query(`DROP INDEX CONCURRENTLY ${legacyIndex}`);
+  await client.query(
+    `CREATE INDEX CONCURRENTLY ${legacyIndex} ON paperdash_history_records(address,record_key) WHERE kind='cashflows'`,
+  );
+  const result = (await client.query(depositMetricsIndexStatusSql)).rows[0];
+  if (!result?.valid || !result.expected)
+    throw new Error(
+      "Deposit history index did not become valid; retry the owner migration.",
+    );
+}
 /** Owner-only after the schema transaction; runtime connections only validate
  * the catalog. Share the existing concurrent-index migration advisory lock. */
 export async function migratePgDepositMetricsIndexes(
@@ -71,21 +91,7 @@ export async function migratePgDepositMetricsIndexes(
   try {
     await client.connect();
     await acquirePgIndexMigrationLock(client);
-    const current = (await client.query(depositMetricsIndexStatusSql)).rows[0];
-    if (current && !current.expected)
-      throw new Error(
-        "Deposit history index has an unexpected definition; migration stopped.",
-      );
-    if (current?.valid) return;
-    if (current) await client.query(`DROP INDEX CONCURRENTLY ${legacyIndex}`);
-    await client.query(
-      `CREATE INDEX CONCURRENTLY ${legacyIndex} ON paperdash_history_records(address,record_key) WHERE kind='cashflows'`,
-    );
-    const result = (await client.query(depositMetricsIndexStatusSql)).rows[0];
-    if (!result?.valid || !result.expected)
-      throw new Error(
-        "Deposit history index did not become valid; retry the owner migration.",
-      );
+    await runPgDepositMetricsIndexPhase(client);
   } finally {
     await client.end();
   }

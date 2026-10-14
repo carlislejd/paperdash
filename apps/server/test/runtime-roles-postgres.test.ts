@@ -47,7 +47,7 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
     const owner = new Pool({ connectionString: scopedUrl.toString() });
     const stores: Store[] = [];
     const pools: Pool[] = [];
-    const at = Date.now();
+    let at = Date.now();
     try {
       await admin.query(`CREATE SCHEMA ${schema}`);
       await admin.query(
@@ -136,6 +136,9 @@ describe.skipIf(!databaseUrl)("PostgreSQL runtime role separation", () => {
       ).toBe(2);
       await api.store.history.ensureWallet(wallet, 10);
       await api.store.history.ensureWallet(wallet, 10);
+      // Owner migrations may wait on other test schemas. Start the simulated
+      // claim clock after discovery, not before that unrelated setup delay.
+      at = Date.now();
       const jobs = new Map<string, HistoryJob>();
       for (let i = 0; i < 3; i++) {
         const job = await worker.store.history.claimJob(at + 1000);

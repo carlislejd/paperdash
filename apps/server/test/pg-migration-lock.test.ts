@@ -1,11 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acquirePgIndexMigrationLock } from "../src/pg-migration-lock.js";
+import {
+  acquirePgIndexMigrationLock,
+  acquirePgMigrationLock,
+} from "../src/pg-migration-lock.js";
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 describe("concurrent index migration admission", () => {
+  it("admits a whole owner migration on key zero and never admits the collector key", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ acquired: true }] });
+    await acquirePgMigrationLock({ query } as never, 1000, 0);
+    expect(query.mock.calls[0][0].text).toBe(
+      "SELECT pg_try_advisory_lock(74481231, 0) AS acquired",
+    );
+    await expect(
+      acquirePgMigrationLock({ query } as never, 1000, 1 as never),
+    ).rejects.toThrow("Invalid migration lock key");
+    expect(query).toHaveBeenCalledTimes(1);
+  });
   it("ends each unsuccessful nonblocking statement before delaying and never opens a transaction", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const query = vi

@@ -8,6 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createStore, visibleTrades, type Store } from "../src/store.js";
 import {
   accountsSchema,
+  accountSchema,
   cashflowSchema,
   normalizeTrade,
   walletSchema,
@@ -74,6 +75,21 @@ afterEach(async () => {
 });
 
 describe("exact public account data", () => {
+  it("accepts a removed directory position count as unknown while retaining exact account totals", () => {
+    const account = {
+      address, leaderboardName: null, currentBalance: raw, currentQueued: "0",
+      currentOpenNotional: raw, currentUnrealizedPnl: "123", realizedPnl: "-45",
+      totalVolume: raw, totalWindowedPnl: "12", paperTotal: raw, lastActiveTs: 123,
+      stakingRewards: "456",
+    };
+    expect(accountSchema.parse(account)).toMatchObject({ currentOpenPositionCount: null, currentBalance: raw, paperTotal: raw });
+    expect(accountSchema.parse({ ...account, currentOpenPositionCount: null }).currentOpenPositionCount).toBeNull();
+    expect(accountSchema.parse({ ...account, currentOpenPositionCount: 0 }).currentOpenPositionCount).toBe(0);
+    expect(accountSchema.parse({ ...account, currentOpenPositionCount: 42 }).currentOpenPositionCount).toBe(42);
+    for (const invalid of [-1, 1.5, "2", true, Number.MAX_SAFE_INTEGER + 1])
+      expect(accountSchema.safeParse({ ...account, currentOpenPositionCount: invalid }).success).toBe(false);
+    expect(accountSchema.safeParse({ ...account, paperTotal: "broken" }).success).toBe(false);
+  });
   it("keeps raw deposited amounts exact and removes session keys/operations", () => {
     const parsed = walletSchema.parse(wallet);
     expect(parsed.lifetime.depositedRaw).toBe(raw);

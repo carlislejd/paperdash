@@ -129,3 +129,19 @@ test("legacy TVL and House funds links still open after LP balance takes the fea
   ).toBeVisible();
   expect(new URL(page.url()).searchParams.get("chart")).toBe("house-funds");
 });
+
+test("a missing directory position count preserves open PnL without inventing a count", async ({ page }) => {
+  await mockSources(page);
+  await page.route("**/api/accounts?**", async (route) => {
+    await route.fulfill({ json: {
+      accounts: [{ ...account(WALLET, "Count unavailable"), currentUnrealizedPnl: "123000000000000000000", currentOpenPositionCount: null }],
+      count: 1, pageInfo: { page: 0, totalPages: 1 }, summary: { uniqueAccounts: 1 }, receivedAt: Date.now(), stale: false,
+    } });
+  });
+  await page.goto("/");
+  const leaders = page.getByRole("region", { name: "Top open PnL" });
+  await expect(leaders).toContainText("Count unavailable");
+  await expect(leaders).toContainText("Position count unavailable");
+  await expect(leaders).toContainText("+$123");
+  await expect(leaders).not.toContainText("0 open positions");
+});

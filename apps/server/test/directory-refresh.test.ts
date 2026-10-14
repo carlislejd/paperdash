@@ -86,6 +86,25 @@ function paperPath(index: number) {
 }
 
 describe("bounded collector directory rotation", () => {
+  it("keeps discovery and holder promotion running when source accounts omit the position count", async () => {
+    const store = await fixture();
+    const fetcher = vi.fn(async (url: URL | RequestInfo) => {
+      const data = page(String(url));
+      return Response.json({ ...data, accounts: data.accounts.map(({ currentOpenPositionCount: _removed, ...account }) => account) });
+    });
+    const upstream = new Upstream(store, fetcher as typeof fetch, "https://papertrade.test", new RequestGate(3, 0));
+    upstreams.push(upstream);
+    const discover = vi.spyOn(store.history, "discoverWallets");
+    await refreshDirectoryHead(store, upstream);
+    now += 30000;
+    await refreshDirectoryHead(store, upstream);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(discover).toHaveBeenLastCalledWith(expect.arrayContaining([wallet(1), wallet(25)]), 10);
+    const saved = await store.get<{ accounts: { currentOpenPositionCount: number | null }[] }>(`cache:${paperPath(0)}`);
+    expect(saved?.value.accounts).toHaveLength(25);
+    expect(saved?.value.accounts.every((account) => account.currentOpenPositionCount === null)).toBe(true);
+    expect((await store.get<{ paperPage: number }>(key))?.value.paperPage).toBe(1);
+  });
   it("rotates one request per turn, retains all 100 holders, and warms the canonical leaderboard cache", async () => {
     const store = await fixture();
     const upstream = source();
