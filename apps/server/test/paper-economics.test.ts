@@ -143,7 +143,7 @@ describe("saved PAPER economics", () => {
   });
 
   it("subtracts available raw endpoints before converting approximate chart output", async () => {
-    const store = await memory();
+    const store = await memory(null);
     const base = 9007199254740993000000000000000000n;
     await store.history.retainProtocolCharts("history", [
       row(
@@ -176,7 +176,7 @@ describe("saved PAPER economics", () => {
   });
 
   it("shows signed net supply change and allocated-reward deltas with partial current hours", async () => {
-    const store = await memory();
+    const store = await memory(null);
     await store.history.retainProtocolCharts("history", [
       row(-2, { paperSupply: 100, paperStaked: 50, stakingRewards: 10 }),
       row(-1, { paperSupply: 90, paperStaked: 40, stakingRewards: 16 }),
@@ -219,7 +219,7 @@ describe("saved PAPER economics", () => {
   });
 
   it("does not bridge missing hours, generation changes, null endpoints or partial prior hours", async () => {
-    const store = await memory();
+    const store = await memory(null);
     await store.history.retainProtocolCharts("history", [
       row(-8, { paperSupply: 10, stakingRewards: 10 }),
       row(-6, { paperSupply: 20, stakingRewards: 20 }),
@@ -290,7 +290,7 @@ describe("saved PAPER economics", () => {
   });
 
   it("applies history corrections idempotently and bounds each series to169 hourly points", async () => {
-    const store = await memory();
+    const store = await memory(null);
     await store.history.retainProtocolCharts(
       "history",
       Array.from({ length: 170 }, (_, index) =>

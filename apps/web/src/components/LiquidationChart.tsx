@@ -93,15 +93,14 @@ export function LiquidationChart({
         }
         unit={metric === "count" ? "liquidations" : "USDC"}
         kind="bar"
-        valueCaption={stale ? "Latest hour snapshot" : "Current hour"}
+        aggregate="sum"
+        totalLabel="Recorded total"
         points={points}
         segments={segments}
         range={{
           from: Math.floor(from / HOUR_MS) * HOUR_MS,
           to: Math.floor(to / HOUR_MS) * HOUR_MS + HOUR_MS,
-          label: stale
-            ? "Rolling 24h · saved hourly snapshot"
-            : "Rolling 24h · current hour in progress",
+          label: "Rolling 24h · UTC hour buckets",
         }}
         sourceAt={hourly ? (data?.receivedAt ?? null) : null}
         coverage={

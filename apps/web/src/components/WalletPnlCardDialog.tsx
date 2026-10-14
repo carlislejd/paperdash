@@ -1,6 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   PNL_CARD_LAYOUTS,
+  PNL_CARD_PNL_LABEL,
+  PNL_CARD_PNL_NOTE,
   walletPnlCardModel,
   type PnlCardLayout,
   type PnlCardSnapshot,
@@ -179,7 +181,7 @@ export function WalletPnlCardDialog({
             src={ready.url}
             width={model.width}
             height={model.height}
-            alt={`${model.identity} · ${model.pnl} lifetime realized P&L · ${model.paper} PAPER owned`}
+            alt={`${model.identity} · ${model.pnl} lifetime realized trading P&L · ${model.paper} PAPER owned`}
           />
         ) : previewError ? (
           <div role="alert">
@@ -196,8 +198,10 @@ export function WalletPnlCardDialog({
         )}
       </div>
       <dl className="pnl-accessible-summary" aria-label="Card statistics">
-        <dt>Lifetime realized P&amp;L</dt>
-        <dd>{model.pnl}</dd>
+        <dt>{PNL_CARD_PNL_LABEL}</dt>
+        <dd>
+          {model.pnl} · {PNL_CARD_PNL_NOTE}
+        </dd>
         <dt>PAPER owned, staked and unstaked</dt>
         <dd>{model.paper}</dd>
         {model.stats.map((stat) => (

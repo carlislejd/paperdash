@@ -64,10 +64,10 @@ function history() {
     },
   };
 }
-async function memory() {
+async function memory(value: ProtocolSummary | null = summary()) {
   const store = await createStore({ memory: true, databaseUrl: "" });
   stores.push(store);
-  await store.put("summary", summary(), now);
+  if (value) await store.put("summary", value, now);
   await store.put("collector-heartbeat", { at: now, errors: {} }, now);
   return store;
 }
@@ -116,6 +116,143 @@ describe("protocol lifetime annualized staking revenue", () => {
 });
 
 describe("retained hourly protocol charts", () => {
+  it("publishes every live snapshot from the saved summary before hourly retention catches up, without additional reads", async () => {
+    const store = await memory(null);
+    await retainProtocolChartHistory(store, history(), now);
+    await retainProtocolChartSummary(
+      store,
+      summary(now - 1000, "1500000000000000000000"),
+      now,
+    );
+    const fresh = summary(now, "1600000000000000000000");
+    fresh.activity.open = 77;
+    fresh.balances.tvl = "250000000000000000000";
+    fresh.paper.supply = "301000000000000000000";
+    fresh.paper.staked = "151000000000000000000";
+    fresh.fees.lifetime = "448000000000000000000";
+    await store.put("summary", fresh, now);
+    const readRows = vi.spyOn(store.history, "protocolChartRows");
+    const reads = vi.spyOn(store, "get");
+    await refreshProtocolCharts(store, now);
+    expect(readRows.mock.calls).toEqual([["history"], ["summary"]]);
+    expect(reads.mock.calls).toEqual([["summary"]]);
+    const data = await readProtocolCharts(store, now);
+    expect(data.sourceAt).toBe(now);
+    for (const [metric, value] of Object.entries({
+      tvl: 250,
+      volume: 410,
+      openPositions: 77,
+      paperSupply: 301,
+      paperStaked: 151,
+      stakingRewards: 448,
+    })) {
+      expect(
+        data.series[metric as keyof typeof data.series].points.at(-1),
+      ).toMatchObject({ value, partial: true });
+    }
+    const economics = await readPaperEconomics(store, now);
+    expect(economics.series.supply.points.at(-1)?.value).toBe(301);
+    // Accurate snapshots do not grant permission to join economic-delta
+    // endpoints from the summary and history generation namespaces.
+    expect(economics.series.supplyChange.points.at(-1)).toMatchObject({
+      value: null,
+      gapBefore: true,
+    });
+  });
+
+  it("prefers exact current-summary counters at a matching history timestamp without losing small raw changes", async () => {
+    const store = await memory(null);
+    const base = 9007199254740993000000000000000000n;
+    await store.history.retainProtocolCharts("history", [
+      {
+        time: hour - HOUR,
+        endpointAt: hour - 1,
+        sourceAt: now,
+        generation: "a",
+        complete: true,
+        values: { volume: Number(base) / 1e18 },
+        volumeRaw: base.toString(),
+      },
+      {
+        time: hour,
+        endpointAt: now,
+        sourceAt: now,
+        generation: "a",
+        complete: false,
+        values: { volume: Number(base + 10n ** 18n) / 1e18 },
+      },
+    ]);
+    await store.put(
+      "summary",
+      summary(now, (base + 10n ** 18n).toString()),
+      now,
+    );
+    await refreshProtocolCharts(store, now);
+    expect(
+      (await readProtocolCharts(store, now)).series.volume.points.at(-1),
+    ).toMatchObject({ value: 1, partial: true });
+    expect(await store.history.protocolChartRows("summary")).toEqual([]);
+  });
+
+  it("keeps daily source-boundary precision explicit instead of forcing approximate observed days to equal lifetime totals", async () => {
+    const store = await memory(null);
+    const today = Math.floor(now / DAY) * DAY;
+    const start = today - DAY - HOUR;
+    await store.history.retainProtocolCharts(
+      "history",
+      Array.from({ length: 25 }, (_, i) => {
+        const time = start + i * HOUR;
+        return {
+          time,
+          endpointAt: time + HOUR - 1,
+          sourceAt: now,
+          generation: "history-a",
+          complete: true,
+          values: {
+            paperSupply: i === 0 ? 0 : 100.03,
+            stakingRewards: i === 0 ? 0 : 100.03,
+          },
+        };
+      }),
+    );
+    await store.history.retainProtocolCharts(
+      "summary",
+      Array.from({ length: (hour - today) / HOUR + 2 }, (_, i) => {
+        const time = today - HOUR + i * HOUR;
+        return {
+          time,
+          endpointAt: Math.min(time + HOUR - 2000, now - 1000),
+          sourceAt: now,
+          generation: `genesis:${VERIFIED_PROTOCOL_GENESIS}`,
+          complete: false,
+          values: { paperSupply: 100, stakingRewards: 100 },
+          paperSupplyRaw: "100000000000000000000",
+          allocatedRewardsRaw: "100000000000000000000",
+        };
+      }),
+    );
+    const fresh = summary(now);
+    fresh.paper.supply = "105000000000000000000";
+    fresh.fees.lifetime = "105000000000000000000";
+    await store.put("summary", fresh, now);
+    await refreshProtocolCharts(store, now);
+    const data = await readPaperEconomics(store, now);
+    const days = data.daily!.rewardAllocation.points;
+    expect(days.at(-2)).toMatchObject({
+      value: 100.03,
+      observedToMs: today - 1,
+    });
+    expect(days.at(-1)).toMatchObject({
+      value: 5,
+      valueRaw: "5000000000000000000",
+      partial: true,
+      observedFromMs: today - 2000,
+      observedToMs: now,
+    });
+    expect(days.at(-2)!.value! + days.at(-1)!.value!).toBeCloseTo(105.03, 8);
+    expect(data.allocatedRewardsRaw).toBe("105000000000000000000");
+  });
+
   it("repairs a generation-split launch day from coherent hourly source history without inventing a baseline", async () => {
     const day = Date.UTC(2026, 9, 10);
     const asOf = Date.UTC(2026, 9, 14, 3, 30);
@@ -206,11 +343,12 @@ describe("retained hourly protocol charts", () => {
     ).toMatchObject({ value: null, gapBefore: true });
   });
   it("uses the last snapshot in each hour and differences cumulative volume, never trades for open count", async () => {
-    const store = await memory();
+    const store = await memory(null);
     await retainProtocolChartHistory(store, history(), now);
     await refreshProtocolCharts(store, now);
     const data = await readProtocolCharts(store, now);
-    expect(data.stale).toBe(false);
+    // History alone never claims a fresh summary clock or an open-position count.
+    expect(data.stale).toBe(true);
     expect(data.series.tvl.points.map((p) => p.value)).toEqual([159, 219, 249]);
     expect(data.series.volume.points.map((p) => p.value)).toEqual([
       null,
@@ -229,6 +367,7 @@ describe("retained hourly protocol charts", () => {
     const store = await memory();
     await retainProtocolChartHistory(store, history(), now);
     const live = summary(now, "1600000000000000000000");
+    await store.put("summary", live, now);
     await retainProtocolChartSummary(store, live, now);
     await retainProtocolChartSummary(
       store,
@@ -256,7 +395,7 @@ describe("retained hourly protocol charts", () => {
     expect(data.series.tvl.points[0].value).toBe(159);
   });
   it("preserves supplied raw precision with a complete baseline and leaves missing hours unjoined", async () => {
-    const store = await memory();
+    const store = await memory(null);
     const base = 9007199254740993000000000000000000n;
     await store.history.retainProtocolCharts("history", [
       {
@@ -274,6 +413,7 @@ describe("retained hourly protocol charts", () => {
       summary(now, String(base + 10n ** 18n)),
       now,
     );
+    await store.put("summary", summary(now, String(base + 10n ** 18n)), now);
     await refreshProtocolCharts(store, now);
     expect(
       (await readProtocolCharts(store, now)).series.volume.points.at(-1),
@@ -293,7 +433,7 @@ describe("retained hourly protocol charts", () => {
   });
 
   it("does not assign a multi-hour difference to one bar after an early prior-hour observation", async () => {
-    const store = await memory();
+    const store = await memory(summary(now, "600000000000000000000"));
     await retainProtocolChartSummary(
       store,
       summary(hour - HOUR + 10 * 60000, "100000000000000000000"),
@@ -318,7 +458,7 @@ describe("retained hourly protocol charts", () => {
     ).toMatchObject({ value: 200, partial: true });
   });
   it("does not bridge nulls, cumulative counter decreases or generation changes", async () => {
-    const store = await memory();
+    const store = await memory(null);
     const h = history();
     h.columns.volume[119] = -1;
     await retainProtocolChartHistory(store, h, now);

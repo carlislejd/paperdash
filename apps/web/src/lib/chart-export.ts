@@ -18,6 +18,7 @@ import {
   type ChartRange,
   type ChartSegment,
 } from "./chart-data";
+import type { ChartSummary } from "./chart-summary";
 
 export interface ChartExportSnapshot {
   title: string;
@@ -34,6 +35,8 @@ export interface ChartExportSnapshot {
   bucketMs?: number;
   valueLabel?: string;
   valueCaption?: string;
+  /** Frozen with the displayed points before asynchronous image generation. */
+  summary?: ChartSummary;
 }
 
 export const CHART_EXPORT_SIZE = { width: 1800, height: 1000 };
@@ -50,6 +53,16 @@ export function chartExportMetadata(snapshot: ChartExportSnapshot): string[] {
     ...(snapshot.kind === "bar" && snapshot.segments?.length
       ? [
           `${snapshot.segments.map((segment) => segment.label).join(" + ")} · ${snapshot.unit}`,
+        ]
+      : []),
+    ...(snapshot.summary
+      ? [
+          snapshot.summary.coverage,
+          ...(snapshot.summary.total
+            ? [
+                `${snapshot.summary.total.label}: ${formatChartNumber(snapshot.summary.total.value, false)} ${snapshot.unit}`,
+              ]
+            : []),
         ]
       : []),
   ];
@@ -87,7 +100,7 @@ export async function renderChartPng(
   fittedText(ctx, snapshot.unit, 1720, 189, 280, 25);
   ctx.textAlign = "left";
 
-  const plot = { x: 180, y: 302, width: 1540, height: 420 };
+  const plot = { x: 180, y: 318, width: 1540, height: 404 };
   const geometry = chartGeometry(
     snapshot.points,
     snapshot.range,
@@ -116,9 +129,30 @@ export async function renderChartPng(
   );
   ctx.fillStyle = muted;
   if (snapshot.valueCaption)
-    fittedText(ctx, snapshot.valueCaption, 820, 255, 300, 22);
+    fittedText(
+      ctx,
+      snapshot.valueCaption,
+      snapshot.summary?.total ? 80 : 820,
+      snapshot.summary?.total ? 295 : 255,
+      snapshot.summary?.total ? 700 : 300,
+      22,
+    );
   ctx.textAlign = "right";
-  fittedText(ctx, snapshot.range.label, 1720, 255, 560, 24);
+  if (snapshot.summary?.total) {
+    fittedText(ctx, snapshot.summary.total.label, 1720, 224, 700, 22);
+    ctx.fillStyle = ink;
+    fittedText(
+      ctx,
+      `${formatChartNumber(snapshot.summary.total.value)} ${snapshot.unit}`,
+      1720,
+      272,
+      700,
+      38,
+      650,
+    );
+  } else {
+    fittedText(ctx, snapshot.range.label, 1720, 255, 560, 24);
+  }
   ctx.textAlign = "left";
 
   ctx.save();
@@ -223,7 +257,14 @@ export async function renderChartPng(
     });
   }
   ctx.fillStyle = muted;
-  fittedText(ctx, metadata[2], 80, 820, 1640, 23);
+  fittedText(
+    ctx,
+    `${metadata[2]} · ${snapshot.range.label}`,
+    80,
+    820,
+    1640,
+    23,
+  );
   ctx.font = '22px "DM Sans", sans-serif';
   wrappedText(
     ctx,
@@ -233,6 +274,8 @@ export async function renderChartPng(
     1640,
     30,
   );
+  if (snapshot.summary)
+    fittedText(ctx, snapshot.summary.coverage, 80, 922, 1640, 20);
   fittedText(ctx, metadata[4], 80, 954, 1640, 20);
   return canvasPng(canvas);
 }

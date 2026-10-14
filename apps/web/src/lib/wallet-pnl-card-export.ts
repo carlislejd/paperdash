@@ -1,5 +1,10 @@
 import { canvasPng, fittedText, imageCanvas } from "./image-export";
-import { PNL_CARD_ART, type PnlCardModel } from "./wallet-pnl-card";
+import {
+  PNL_CARD_ART,
+  PNL_CARD_PNL_LABEL,
+  PNL_CARD_PNL_NOTE,
+  type PnlCardModel,
+} from "./wallet-pnl-card";
 
 const C = {
   paper: "#f5f2e9",
@@ -170,7 +175,7 @@ async function renderCard(
       );
   };
   const hero = (x: number, y: number, width: number, size = 90) => {
-    text("LIFETIME REALIZED P&L", x, y, width, 14, C.muted, 500);
+    text(PNL_CARD_PNL_LABEL.toUpperCase(), x, y, width, 14, C.muted, 500);
     text(
       m.pnl,
       x - 3,
@@ -184,6 +189,7 @@ async function renderCard(
           : C.ink,
       600,
     );
+    text(PNL_CARD_PNL_NOTE, x, y + size + 25, width, 13, C.muted);
   };
   const paper = (x: number, y: number, width: number, size = 42) => {
     text("PAPER OWNED", x, y, width, 14, C.muted);

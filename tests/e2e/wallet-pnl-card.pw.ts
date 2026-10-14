@@ -264,7 +264,7 @@ for (const username of ["  moon trader  ", null]) {
     await waitForSharePreview(page, dialog);
     await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
       "alt",
-      `${identity} · +$1,250.00 lifetime realized P&L · 6,154,000.00 PAPER owned`,
+      `${identity} · +$1,250.00 lifetime realized trading P&L · 6,154,000.00 PAPER owned`,
     );
     expect(
       await page.evaluate(() => (window as CardDiagnosticWindow).cardText),
@@ -308,7 +308,7 @@ test("all three card layouts export exactly the preview with hidden identity and
     await expectPreviewReady(page, downloadButton);
     await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
       "alt",
-      "WALLET HIDDEN · +$1,250.00 lifetime realized P&L · 6,154,000.00 PAPER owned",
+      "WALLET HIDDEN · +$1,250.00 lifetime realized trading P&L · 6,154,000.00 PAPER owned",
     );
     const expectedHash = await previewHash(dialog);
     const event = page.waitForEvent("download");
@@ -334,6 +334,8 @@ test("all three card layouts export exactly the preview with hidden identity and
   );
   expect(labels.join(" ")).not.toContain("Aoi");
   expect(labels.join(" ")).not.toContain(WALLET);
+  expect(labels).toContain("LIFETIME REALIZED TRADING P&L");
+  expect(labels).toContain("Excludes staking rewards");
   expect(labels).toContain("Recorded closed trades");
   expect(labels).toContain("42");
   expect(labels).toContain("1h 30m");
@@ -515,7 +517,7 @@ test("stalled artwork can retry without changing frozen data, privacy or layout"
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · +$1,250.00 lifetime realized P&L · 6,154,000.00 PAPER owned",
+    "WALLET HIDDEN · +$1,250.00 lifetime realized trading P&L · 6,154,000.00 PAPER owned",
   );
   await expect(dialog.locator(".pnl-accessible-summary")).toContainText(
     "+$3,200.00",
@@ -618,7 +620,7 @@ test("stalled PNG encoding times out and a late callback cannot replace a retry"
   expect(await previewHash(dialog)).toBe(currentHash);
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · +$1,250.00 lifetime realized P&L · 6,154,000.00 PAPER owned",
+    "WALLET HIDDEN · +$1,250.00 lifetime realized trading P&L · 6,154,000.00 PAPER owned",
   );
   await expect(dialog.getByRole("alert")).toHaveCount(0);
 });
@@ -634,7 +636,7 @@ test("an unavailable account and legacy highlights stay unknown on the rendered 
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · — lifetime realized P&L · — PAPER owned",
+    "WALLET HIDDEN · — lifetime realized trading P&L · — PAPER owned",
   );
   await expect(dialog.locator(".pnl-accessible-summary dd")).toHaveText(
     Array(8).fill("—"),
@@ -658,7 +660,7 @@ test("large negative P&L and PAPER totals remain exact in the compact export", a
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · −$10,000,000,000.00 lifetime realized P&L · 90,000,000,000.00 PAPER owned",
+    "WALLET HIDDEN · −$10,000,000,000.00 lifetime realized trading P&L · 90,000,000,000.00 PAPER owned",
   );
   const labels = await page.evaluate(
     () => (window as unknown as { cardText: string[] }).cardText,

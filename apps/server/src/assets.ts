@@ -109,7 +109,63 @@ interface RetainedAnalytics {
   activity: AssetActivity[];
   history: Record<number, AssetOiSample[]>;
 }
-function thinHistory(points: AssetOiSample[], limit = 300): AssetOiSample[] {
+const MINUTE_MS = 60000;
+const DAY_MS = 86400000;
+const HISTORY_LIMIT = 300;
+const validClock = (value: number) => Number.isSafeInteger(value) && value >= 0;
+
+/** Join the saved head to its older chart publication without changing storage. */
+function alignAssetHistory(
+  points: AssetOiSample[],
+  asset: Omit<AssetSummary, "activity" | "history">,
+  sourceAt: number,
+  receivedAt: number,
+  now: number,
+): { history: AssetOiSample[]; regressed: boolean } {
+  const byMinute = new Map<number, AssetOiSample>();
+  for (const point of points) {
+    if (
+      point.instrument !== asset.instrument ||
+      !validClock(point.time) ||
+      !validClock(point.sourceAt) ||
+      !validClock(point.receivedAt) ||
+      point.time !== Math.floor(point.sourceAt / MINUTE_MS) * MINUTE_MS ||
+      point.sourceAt > now + 30000 ||
+      point.receivedAt > now + 30000 ||
+      point.sourceAt > point.receivedAt + 30000 ||
+      point.time < sourceAt - DAY_MS ||
+      typeof point.longRaw !== "string" ||
+      typeof point.shortRaw !== "string" ||
+      !/^\d+$/.test(point.longRaw) ||
+      !/^\d+$/.test(point.shortRaw)
+    )
+      continue;
+    const saved = byMinute.get(point.time);
+    if (!saved || point.sourceAt >= saved.sourceAt)
+      byMinute.set(point.time, point);
+  }
+  const history = [...byMinute.values()].sort((a, b) => a.time - b.time);
+  // The independent reads can straddle a collector publication. Never replace
+  // a newer recorded observation with the older head captured by this read.
+  if ((history.at(-1)?.sourceAt ?? -1) > sourceAt)
+    return { history: history.slice(-HISTORY_LIMIT), regressed: true };
+  const head: AssetOiSample = {
+    instrument: asset.instrument,
+    time: Math.floor(sourceAt / MINUTE_MS) * MINUTE_MS,
+    longRaw: asset.openInterest.longRaw,
+    shortRaw: asset.openInterest.shortRaw,
+    sourceBlock: null,
+    sourceAt,
+    receivedAt,
+  };
+  if (history.at(-1)?.time === head.time) history[history.length - 1] = head;
+  else history.push(head);
+  return { history: history.slice(-HISTORY_LIMIT), regressed: false };
+}
+function thinHistory(
+  points: AssetOiSample[],
+  limit = HISTORY_LIMIT,
+): AssetOiSample[] {
   if (points.length <= limit) return points;
   return Array.from(
     { length: limit },
@@ -138,28 +194,51 @@ export async function readAssets(
   store: Store,
   now = Date.now(),
 ): Promise<AssetsResponse> {
-  const [source, analytics, collectionDelayed] = await Promise.all([
+  const [savedSource, analytics, collectionDelayed] = await Promise.all([
     store.get<HouseSnapshot>("asset-source"),
     store.get<RetainedAnalytics>("asset-analytics"),
     activityDelayed(store, now),
   ]);
-  const marketStale =
-    !source ||
-    now - source.receivedAt > 20000 ||
-    now - source.value.sourceAsOfMs > 30000;
-  const activityStale =
-    !analytics || now - analytics.receivedAt > 30000 || collectionDelayed;
-  return {
-    assets: source
-      ? assetNotionals(source.value).map((asset) => ({
+  const parsed = houseSchema.safeParse(savedSource?.value);
+  const source =
+    savedSource &&
+    parsed.success &&
+    validClock(savedSource.receivedAt) &&
+    savedSource.receivedAt <= now + 30000 &&
+    parsed.data.sourceAsOfMs <= now + 30000 &&
+    parsed.data.sourceAsOfMs <= savedSource.receivedAt + 30000
+      ? { ...savedSource, value: parsed.data }
+      : null;
+  let historyRegressed = false;
+  const assets = source
+    ? assetNotionals(source.value).map((asset) => {
+        const aligned = alignAssetHistory(
+          analytics?.value.history[asset.instrument] ?? [],
+          asset,
+          source.value.sourceAsOfMs,
+          source.receivedAt,
+          now,
+        );
+        historyRegressed ||= aligned.regressed;
+        return {
           ...asset,
           activity:
             analytics?.value.activity.find(
               (row) => row.instrument === asset.instrument,
             ) ?? null,
-          history: analytics?.value.history[asset.instrument] ?? [],
-        }))
-      : [],
+          history: aligned.history,
+        };
+      })
+    : [];
+  const marketStale =
+    !source ||
+    historyRegressed ||
+    now - source.receivedAt > 20000 ||
+    now - source.value.sourceAsOfMs > 30000;
+  const activityStale =
+    !analytics || now - analytics.receivedAt > 30000 || collectionDelayed;
+  return {
+    assets,
     sourceAt: source?.value.sourceAsOfMs ?? null,
     indexedBlock: null,
     receivedAt: source?.receivedAt ?? null,

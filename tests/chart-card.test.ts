@@ -22,6 +22,7 @@ import {
   CHART_EXPORT_SIZE,
   renderChartPng,
 } from "../apps/web/src/lib/chart-export";
+import { summarizeChart } from "../apps/web/src/lib/chart-summary";
 
 const from = Date.UTC(2026, 9, 10);
 const range = { from, to: from + 6 * HOUR_MS, label: "6h" };
@@ -532,6 +533,21 @@ describe("stacked bar breakdowns", () => {
         width: 300,
       });
       expect(textBoxes).toContainEqual({ text: "100", x: 80, width: 700 });
+      const summary = summarizeChart(snapshot.points, range, "bar", {
+        aggregate: "sum",
+        now: from + HOUR_MS / 2,
+      });
+      const withTotal = { ...snapshot, summary };
+      expect(chartExportMetadata(withTotal)).toContain(
+        "Available subtotal: 100 liquidations",
+      );
+      expect(chartExportMetadata(withTotal)).toContain(
+        "1/6 buckets available · 5 unknown · 1 in progress",
+      );
+      await renderChartPng(withTotal);
+      expect(labels).toContain("Available subtotal");
+      expect(labels).toContain("100 liquidations");
+      expect(labels).toContain(summary.coverage);
       for (const color of ["lavender", "green"] as const) {
         expect(
           fills.some(

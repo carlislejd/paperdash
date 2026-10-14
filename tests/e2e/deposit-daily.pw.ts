@@ -46,6 +46,16 @@ test("daily deposit charts share the existing request, grow today, and expand/ex
   await expect(first).toContainText("Partial history");
   await expect(first).toContainText("Stored totals updated:");
   await expect(first).toContainText("Today so far");
+  await expect(first.locator(".pc-chart-period-total")).toContainText(
+    "Recorded total",
+  );
+  await expect(first.locator(".pc-chart-period-total")).toContainText("13");
+  await expect(volume.locator(".pc-chart-period-total")).toContainText(
+    "18.13K",
+  );
+  await expect(volume.locator(".pc-chart-bucket-coverage")).toContainText(
+    "7/7 buckets available · 1 in progress",
+  );
   expect(reads).toBe(1);
   expect(walletReads).toEqual([]);
   for (const label of await first
@@ -75,6 +85,7 @@ test("daily deposit charts share the existing request, grow today, and expand/ex
     exact: true,
   });
   await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".pc-chart-period-total")).toContainText("13");
   await dialog.getByRole("img").focus();
   await page.keyboard.press("Home");
   await page.keyboard.press("ArrowRight");
@@ -135,6 +146,12 @@ test("catching-up and stale retained history preserve known bars but never inven
   });
   await expect(dialog.locator(".pc-chart-headline > strong")).toHaveText("—");
   await expect(dialog).toContainText("stored history catching up");
+  await expect(dialog.locator(".pc-chart-period-total")).toContainText(
+    "Available subtotal",
+  );
+  await expect(dialog.locator(".pc-chart-bucket-coverage")).toContainText(
+    "2 unknown",
+  );
   await expect(dialog.locator(".pc-chart-plot rect[data-partial]")).toHaveCount(
     5,
   );

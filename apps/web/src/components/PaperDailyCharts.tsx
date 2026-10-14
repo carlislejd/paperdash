@@ -52,6 +52,7 @@ export function PaperDailyCharts({
         key={definition.id}
         {...definition}
         kind="bar"
+        aggregate="sum"
         bucketMs={DAY_MS}
         points={series?.points ?? []}
         range={range}

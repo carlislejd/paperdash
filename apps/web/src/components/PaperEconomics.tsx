@@ -9,6 +9,7 @@ import {
 } from "../lib/chart-data";
 import { ChartCard } from "./ChartCard";
 import "./paper-economics.css";
+import { hourlyChartRangeLabel } from "../lib/chart-summary";
 
 function paperTitle(raw: string | null | undefined): string {
   if (raw == null || !/^\d+$/.test(raw)) return "Unavailable";
@@ -46,7 +47,7 @@ export function PaperEconomics({
       Math.floor(to / HOUR_MS) * HOUR_MS - (hours - 1) * HOUR_MS,
     ),
     to,
-    label: hours === 168 ? "7 days" : "24 hours",
+    label: hourlyChartRangeLabel(hours),
   };
   const stale = Boolean(error || data?.error || data?.stale);
   const common = { range, sourceAt, stale, loading };

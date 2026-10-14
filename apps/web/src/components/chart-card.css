@@ -63,6 +63,35 @@
 .pc-chart-headline small {
   margin-left: auto;
 }
+.pc-chart-period-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0 0 12px;
+  padding: 6px 9px;
+  background: #9078ad0b;
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pc-chart-period-total strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.pc-chart-period-total small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+.pc-chart-bucket-coverage {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted);
+}
 .pc-chart-plot {
   position: relative;
   min-width: 0;
@@ -243,6 +272,18 @@
 }
 .pc-chart-dialog .pc-chart-headline strong {
   font-size: 40px;
+}
+.pc-chart-dialog .pc-chart-period-total {
+  margin-top: -8px;
+  margin-bottom: 20px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.pc-chart-dialog .pc-chart-period-total strong {
+  font-size: 20px;
+}
+.pc-chart-dialog .pc-chart-bucket-coverage {
+  font-size: 12px;
 }
 .pc-chart-dialog .pc-chart-plot {
   --pc-plot-height: clamp(190px, 30cqw, 340px);

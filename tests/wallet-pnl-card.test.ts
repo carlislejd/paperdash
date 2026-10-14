@@ -96,11 +96,13 @@ describe("wallet P&L card model", () => {
   it("uses exact large account totals, independent retained trade counts and immutable presentation fields", () => {
     const source = snapshot();
     source.metrics!.positionCount = 30;
+    source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(1000);
     const model = walletPnlCardModel(source, {
       layout: "gallery",
       hideWallet: true,
     });
     expect(model.pnl).toBe("+$10,000,000,000.12");
+    expect(model.shareText).toContain("realized trading P&L");
     expect(model.paper).toBe("6,154,000.12");
     expect(
       model.stats.find((item) => item.label === "Recorded closed trades")

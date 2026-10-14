@@ -20,6 +20,7 @@ import {
 import type { ChartExportSnapshot } from "../lib/chart-export";
 import { useImageActions } from "../lib/use-image-actions";
 import { formatAxisTick } from "../lib/chart-axis";
+import { chartValueCaption, summarizeChart } from "../lib/chart-summary";
 import "./chart-card.css";
 
 export interface ChartCardProps {
@@ -48,6 +49,9 @@ export interface ChartCardProps {
   valueTitle?: string;
   compact?: boolean;
   bucketMs?: number;
+  /** Sum only flows such as volume or daily allocations, never position snapshots. */
+  aggregate?: "sum";
+  totalLabel?: "Selected-period total" | "Recorded total";
 }
 
 function ExpandIcon() {
@@ -487,6 +491,46 @@ export function ChartCard(props: ChartCardProps) {
     [points, range.from, range.to, props.kind, props.bucketMs],
   );
   const last = prepared.points.at(-1);
+  const now = Date.now();
+  const summaryBucket = Math.floor(now / (props.bucketMs || 3_600_000));
+  const summary = useMemo(
+    () =>
+      summarizeChart(points, range, props.kind, {
+        bucketMs: props.bucketMs,
+        aggregate: props.aggregate,
+        totalLabel: props.totalLabel,
+        now,
+      }),
+    [
+      points,
+      range.from,
+      range.to,
+      props.kind,
+      props.bucketMs,
+      props.aggregate,
+      props.totalLabel,
+      summaryBucket,
+    ],
+  );
+  const valueCaption =
+    props.valueCaption ??
+    chartValueCaption(
+      props.kind,
+      props.aggregate,
+      last?.time,
+      props.bucketMs,
+      now,
+    );
+  const periodSummary = summary.total && (
+    <div className="pc-chart-period-total">
+      <span>{summary.total.label}</span>
+      <strong
+        title={`${formatChartNumber(summary.total.value, false)} ${unit}`}
+      >
+        {formatChartNumber(summary.total.value)} <small>{unit}</small>
+      </strong>
+    </div>
+  );
   const link = () => props.shareUrl ?? chartShareUrl(window.location.href, id);
   const exportCoverage = `${coverage}${prepared.truncated ? " · Latest 2,048 observations" : ""}`;
 
@@ -539,7 +583,8 @@ export function ChartCard(props: ChartCardProps) {
       color: props.color ?? "lavender",
       bucketMs: props.bucketMs,
       valueLabel: props.valueLabel,
-      valueCaption: props.valueCaption,
+      valueCaption,
+      summary,
     };
   }
   async function png(frozen = snapshot()) {
@@ -607,15 +652,17 @@ export function ChartCard(props: ChartCardProps) {
           {props.valueLabel ?? formatChartNumber(last?.value)}
         </strong>
         <span>{unit}</span>
-        {props.valueCaption && <span>· {props.valueCaption}</span>}
+        <span>· {valueCaption}</span>
         {compact && <ChartPlot {...props} compact />}
       </div>
+      {periodSummary}
       {!compact && <ChartPlot {...props} />}
       <div className="pc-chart-meta">
         <span>
           {range.label} · {status}
         </span>
         {!compact && <span title={exportCoverage}>{exportCoverage}</span>}
+        <span className="pc-chart-bucket-coverage">{summary.coverage}</span>
       </div>
       {error && onRetry && (
         <button type="button" className="pc-chart-retry" onClick={onRetry}>
@@ -682,13 +729,15 @@ export function ChartCard(props: ChartCardProps) {
                 {props.valueLabel ?? formatChartNumber(last?.value)}
               </strong>
               <span>{unit}</span>
-              {props.valueCaption && <span>· {props.valueCaption}</span>}
+              <span>· {valueCaption}</span>
               <small>{status}</small>
             </div>
+            {periodSummary}
             <ChartPlot {...props} expanded compact={false} />
             <p id={coverageId} className="pc-chart-coverage">
               {exportCoverage}
             </p>
+            <p className="pc-chart-bucket-coverage">{summary.coverage}</p>
             <p className="pc-chart-stamp">
               {props.timestampLabel ?? "Data timestamp"}:{" "}
               {formatChartTime(sourceAt)}

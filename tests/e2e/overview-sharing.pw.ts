@@ -53,6 +53,18 @@ test("overview ranks open PnL, expands hourly charts and exports a branded PNG",
   const dialog = page.getByRole("dialog", { name: "Volume / hour" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("partial");
+  await expect(dialog).toContainText("This hour so far");
+  await expect(dialog.locator(".pc-chart-period-total")).toContainText(
+    "Available subtotal",
+  );
+  await expect(dialog.locator(".pc-chart-period-total")).toContainText("292B");
+  await expect(dialog.locator(".pc-chart-bucket-coverage")).toContainText(
+    "23/24 buckets available",
+  );
+  await expect(dialog.locator(".pc-chart-bucket-coverage")).toContainText(
+    "1 unknown",
+  );
+  await expect(dialog).toContainText("24 UTC hour buckets");
   await dialog.getByRole("img").focus();
   await page.keyboard.press("Home");
   await expect(dialog.locator(".pc-chart-inspect")).toContainText("UTC");
@@ -87,6 +99,8 @@ test("a shared chart link opens directly and closes without retaining its query"
   const dialog = page.getByRole("dialog", { name: "Open positions" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("7 days");
+  await expect(dialog).toContainText("Latest hourly snapshot");
+  await expect(dialog.locator(".pc-chart-period-total")).toHaveCount(0);
   await expect(dialog.getByRole("img")).toHaveAttribute(
     "aria-label",
     /available observations/,
@@ -130,13 +144,27 @@ test("legacy TVL and House funds links still open after LP balance takes the fea
   expect(new URL(page.url()).searchParams.get("chart")).toBe("house-funds");
 });
 
-test("a missing directory position count preserves open PnL without inventing a count", async ({ page }) => {
+test("a missing directory position count preserves open PnL without inventing a count", async ({
+  page,
+}) => {
   await mockSources(page);
   await page.route("**/api/accounts?**", async (route) => {
-    await route.fulfill({ json: {
-      accounts: [{ ...account(WALLET, "Count unavailable"), currentUnrealizedPnl: "123000000000000000000", currentOpenPositionCount: null }],
-      count: 1, pageInfo: { page: 0, totalPages: 1 }, summary: { uniqueAccounts: 1 }, receivedAt: Date.now(), stale: false,
-    } });
+    await route.fulfill({
+      json: {
+        accounts: [
+          {
+            ...account(WALLET, "Count unavailable"),
+            currentUnrealizedPnl: "123000000000000000000",
+            currentOpenPositionCount: null,
+          },
+        ],
+        count: 1,
+        pageInfo: { page: 0, totalPages: 1 },
+        summary: { uniqueAccounts: 1 },
+        receivedAt: Date.now(),
+        stale: false,
+      },
+    });
   });
   await page.goto("/");
   const leaders = page.getByRole("region", { name: "Top open PnL" });

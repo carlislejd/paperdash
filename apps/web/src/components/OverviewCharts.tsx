@@ -8,6 +8,7 @@ import { ChartCard } from "./ChartCard";
 import { HouseStats } from "./HouseStats";
 import { PaperDailyCharts } from "./PaperDailyCharts";
 import { DepositDailyCharts } from "./DepositDailyCharts";
+import { hourlyChartRangeLabel } from "../lib/chart-summary";
 
 export function OverviewCharts() {
   const readHours = () =>
@@ -41,7 +42,7 @@ export function OverviewCharts() {
       Math.floor(to / 3600000) * 3600000 - (hours - 1) * 3600000,
     ),
     to,
-    label: hours === 24 ? "24 hours" : "7 days",
+    label: hourlyChartRangeLabel(hours),
   };
   const common = {
     range,
@@ -86,8 +87,9 @@ export function OverviewCharts() {
             title="Volume / hour"
             unit="USDC"
             kind="bar"
+            aggregate="sum"
             points={data?.series.volume.points ?? []}
-            coverage="Traded notional · partial hours marked; gaps unknown"
+            coverage="Traded notional in the selected buckets · partial hours marked; gaps unknown"
           />
           <ChartCard
             {...common}

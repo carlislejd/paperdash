@@ -381,7 +381,9 @@ function series(
       )
         continue;
       const previous = selected.get(row.time);
-      if (!previous || row.endpointAt > previous.endpointAt)
+      // At an identical source endpoint, prefer the summary's exact raw
+      // counters and current snapshot over approximate history columns.
+      if (!previous || row.endpointAt >= previous.endpointAt)
         selected.set(row.time, { ...row, origin });
     }
   const rows = [...selected.values()].sort((a, b) => a.time - b.time);
@@ -486,6 +488,17 @@ export async function refreshProtocolCharts(
     retainedDepositCharts(store, now),
   ]);
   const sourceAt = summary?.value.source.at ?? null;
+  const current = summary?.value ?? null;
+  // The same saved summary supplies the published clock and headline values.
+  // Include it even before its separate hourly-retention write finishes; all
+  // series share these existing reads and the normal continuity safeguards.
+  const currentSummaries =
+    current &&
+    Number.isSafeInteger(current.source.at) &&
+    current.source.at >= 0 &&
+    current.source.at <= now + 30000
+      ? [...summaries, summaryObservation(current)]
+      : summaries;
   const data: ProtocolChartsResponse = {
     ...empty(),
     receivedAt: now,
@@ -501,7 +514,7 @@ export async function refreshProtocolCharts(
     series: Object.fromEntries(
       METRICS.map((metric) => [
         metric,
-        series(metric, histories, summaries, now),
+        series(metric, histories, currentSummaries, now),
       ]),
     ) as ProtocolChartsResponse["series"],
   };
@@ -509,16 +522,6 @@ export async function refreshProtocolCharts(
   await store.put("protocol-charts", data, now);
   // Reuse this invocation's bounded observations and summary. Viewers read the
   // saved response; economics adds no upstream request or history scan.
-  const current = summary?.value ?? null;
-  // This same summary drives the headline. Include it even if the separate
-  // hourly-retention write has not happened yet; this adds no storage read.
-  const dailySummaries =
-    current &&
-    Number.isSafeInteger(current.source.at) &&
-    current.source.at >= 0 &&
-    current.source.at <= now + 30000
-      ? [...summaries, summaryObservation(current)]
-      : summaries;
   const economics: PaperEconomicsResponse = {
     ...emptyEconomics(),
     sourceAt,
@@ -534,11 +537,17 @@ export async function refreshProtocolCharts(
       supply: data.series.paperSupply,
       staked: data.series.paperStaked,
       allocated: data.series.stakingRewards,
-      supplyChange: series("paperSupply", histories, summaries, now, "signed"),
+      supplyChange: series(
+        "paperSupply",
+        histories,
+        currentSummaries,
+        now,
+        "signed",
+      ),
       rewardAllocation: series(
         "stakingRewards",
         histories,
-        summaries,
+        currentSummaries,
         now,
         "nonnegative",
       ),
@@ -546,11 +555,16 @@ export async function refreshProtocolCharts(
     daily: {
       intervalMs: DAY,
       timeZone: "UTC",
-      supplyChange: dailySeries("paperSupply", histories, dailySummaries, now),
+      supplyChange: dailySeries(
+        "paperSupply",
+        histories,
+        currentSummaries,
+        now,
+      ),
       rewardAllocation: dailySeries(
         "stakingRewards",
         histories,
-        dailySummaries,
+        currentSummaries,
         now,
       ),
     },

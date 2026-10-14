@@ -58,6 +58,8 @@ export function DepositDailyCharts({
       key={definition.id}
       {...definition}
       kind="bar"
+      aggregate="sum"
+      totalLabel="Recorded total"
       bucketMs={DAY_MS}
       range={range}
       sourceAt={data?.updatedAt ?? null}

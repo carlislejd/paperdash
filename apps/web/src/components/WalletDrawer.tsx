@@ -352,7 +352,7 @@ function PortfolioChart({
             aria-pressed={series === "pnl"}
             onClick={() => setSeries("pnl")}
           >
-            P&amp;L
+            Account P&amp;L
           </button>
         </div>
       </div>
@@ -366,12 +366,14 @@ function PortfolioChart({
         <figure className="wd-chart">
           <div className="wd-chart-value">
             <strong>{formatUsd(chart.last.value)}</strong>
-            <span>last recorded {series === "equity" ? "equity" : "P&L"}</span>
+            <span>
+              last recorded {series === "equity" ? "equity" : "account P&L"}
+            </span>
           </div>
           <svg
             viewBox="0 0 604 180"
             role="img"
-            aria-label={`Recorded ${series === "equity" ? "equity" : "P and L"} from ${dateLabel(chart.start, true)} to ${dateLabel(chart.end, true)}. Latest ${formatUsd(chart.last.value)}. ${history?.coverage.complete ? "Complete coverage for the returned period." : "History is incomplete."}`}
+            aria-label={`Recorded ${series === "equity" ? "equity" : "account P and L"} from ${dateLabel(chart.start, true)} to ${dateLabel(chart.end, true)}. Latest ${formatUsd(chart.last.value)}. ${history?.coverage.complete ? "Complete coverage for the returned period." : "History is incomplete."}`}
           >
             {chart.axis.ticks.map((value) => (
               <g key={value}>
@@ -418,7 +420,7 @@ function PortfolioChart({
               {chart.gaps ? "Known gaps are left unconnected. " : ""}
               {series === "equity"
                 ? "Equity includes cashflows; it is not a return."
-                : "P&L is reported by the source."}
+                : "Source-reported account P&L can include staking rewards. Realized trading P&L is shown separately."}
             </span>
           </figcaption>
         </figure>
@@ -1232,7 +1234,7 @@ export function WalletDrawer({
                 </dl>
                 <div className="wd-position-note">
                   <span>
-                    Realized P&amp;L{" "}
+                    Realized trading P&amp;L{" "}
                     <strong>
                       {formatRawUsd(snapshot?.lifetime.realizedPnlRaw ?? null)}
                     </strong>

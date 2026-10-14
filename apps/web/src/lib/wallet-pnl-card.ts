@@ -5,6 +5,8 @@ import { formatRawUsd, shortAddress } from "./format";
 import { walletAccountClock } from "./wallet-account-clock";
 
 export const PNL_CARD_ART = "/art/paperclub-social-v4.png";
+export const PNL_CARD_PNL_LABEL = "Lifetime realized trading P&L";
+export const PNL_CARD_PNL_NOTE = "Excludes staking rewards";
 export const PNL_CARD_LAYOUTS = [
   {
     id: "gallery",
@@ -171,6 +173,6 @@ export function walletPnlCardModel(
     captured: stamp(capturedAt),
     link: link.toString(),
     filename: `paperclub-pnl-${options.layout}.png`,
-    shareText: `${pnl} realized P&L · ${paper} PAPER owned · paperclub`,
+    shareText: `${pnl} realized trading P&L · ${paper} PAPER owned · paperclub`,
   };
 }
