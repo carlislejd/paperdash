@@ -123,11 +123,22 @@ export async function retainProtocolHistory(
     throw new Error(
       "Protocol history source moved backward; retaining saved samples.",
     );
-  const points = history.columns.tvl.flatMap((value, i) =>
-    value === null
-      ? []
-      : [{ time: history.startMs + i * history.intervalMs, value }],
-  );
+  const points = history.columns.tvl.flatMap((value, i) => {
+    const start = history.startMs + i * history.intervalMs;
+    if (value === null || start > history.source.asOfMs) return [];
+    // Hourly snapshots hold closing values. Use the closing minute's key,
+    // matching retained minute history and live summary samples, rather than
+    // overwriting minute zero with a value from up to an hour later. Clip an
+    // unfinished hour to its observed minute so live samples still win ties.
+    const time =
+      history.intervalMs === 3600000
+        ? Math.floor(
+            Math.min(start + history.intervalMs - 1, history.source.asOfMs) /
+              60000,
+          ) * 60000
+        : start;
+    return [{ time, value }];
+  });
   await store.history.retainProtocol(points);
   await store.put("protocol-history", {
     points,

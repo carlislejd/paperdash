@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Collector, protocolHistoryDigest } from "../src/collector.js";
+import {
+  Collector,
+  protocolHistoryDigest,
+  retainProtocolHistory,
+} from "../src/collector.js";
 import { createStore, type Store } from "../src/store.js";
 import { Upstream } from "../src/upstream.js";
 import { ChangeBus } from "../src/bus.js";
@@ -59,6 +63,26 @@ async function messages(type: string) {
 }
 
 describe("live TVL history payload suppression", () => {
+  it("keeps newer live TVL at the active-minute tail after a partial hourly history observation", async () => {
+    const activeMinute = minute + 30 * 60000;
+    vi.spyOn(Date, "now").mockReturnValue(activeMinute + 50000);
+    await retainProtocolHistory(store, {
+      startMs: minute - 3600000,
+      intervalMs: 3600000,
+      source: { asOfMs: activeMinute + 33333, generation: "a", revision: "1" },
+      columns: { tvl: [80, 90] },
+    });
+    await observe(100, activeMinute + 40000);
+    expect(
+      (await store.get<Overview>("overview"))?.value.history.at(-1),
+    ).toEqual({ time: activeMinute, value: 100 });
+    expect(await messages("history")).toHaveLength(1);
+    await observe(101, activeMinute + 45000);
+    expect(
+      (await store.get<Overview>("overview"))?.value.history.at(-1),
+    ).toEqual({ time: activeMinute, value: 101 });
+    expect(await messages("history")).toHaveLength(1);
+  });
   it("holds publication until a new summary and its active-minute sample are coherent", async () => {
     vi.spyOn(Date, "now").mockReturnValue(minute + 10000);
     await observe(100);
