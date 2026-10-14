@@ -6,6 +6,7 @@ import {
   portfolioSchema,
 } from "./schemas.js";
 import type { HistoryJob, HistoryLane, HistoryStore } from "./history-store.js";
+import { portfolioHistoryRange } from "./portfolio-history-policy.js";
 
 export type HistoryLoader = <T>(
   path: string,
@@ -47,14 +48,14 @@ export class HistoryIndexer {
       2,
       Math.max(1, (options.sourceConcurrency ?? 3) - 1),
     );
-    // Reserve one turn for viewed ledger heads, one for all active heads,
-    // and two for all active work. The viewed turn borrows active heads first.
+    // Reserve one turn each for viewed heads, all active heads, active
+    // portfolios, and all active work. The viewed turn borrows active heads first.
     // Empty backfill/retry turns borrow general active work before maintenance;
     // the explicit fair turn still serves older inactive jobs.
     const lanes: readonly HistoryLane[] = [
       "viewed-head",
       "backfill",
-      "active",
+      "active-portfolio",
       "retry",
       "active-head",
       "backfill",
@@ -131,17 +132,10 @@ export class HistoryIndexer {
   }
   private async run(job: HistoryJob) {
     if (job.kind === "portfolio") {
-      const age = this.now() - (job.state.lastSuccessAt ?? 0);
-      const fullAge = this.now() - (job.state.portfolio?.fullFetchedAt ?? 0);
       // There is no verified since filter. Retain the baseline, refresh a small
-      // supported window, and expand after outages. Weekly full reconciliation
-      // catches older upstream corrections without per-visitor full downloads.
-      const range =
-        !job.state.complete || fullAge > 7 * 86400000 || age > 6 * 86400000
-          ? "all"
-          : age > 20 * 3600000
-            ? "1w"
-            : "1d";
+      // supported window, and expand using retained coverage after outages.
+      // Repair attempts are bounded independently of source partial coverage.
+      const range = portfolioHistoryRange(job.state, this.now());
       const value = await this.load(
         path(`/query/accounts/${job.address}/portfolio-history`, { range }),
         portfolioSchema,

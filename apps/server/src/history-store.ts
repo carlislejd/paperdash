@@ -7,10 +7,16 @@ import type {
 import { addressSchema, digest } from "./schemas.js";
 import { enqueuePositionMetrics } from "./position-metrics-store.js";
 import { enqueueDepositMetrics } from "./deposit-metrics-store.js";
+import {
+  boundedPortfolioGaps,
+  crossesPortfolioGap,
+  portfolioLocalGaps,
+  type PortfolioGap,
+} from "./portfolio-history-policy.js";
 
 export type LedgerKind = "cashflows" | "trades";
 export type JobKind = LedgerKind | "portfolio";
-export type HistoryLane = "viewed-head" | "active-head" | "active" | "backfill" | "retry" | "fair";
+export type HistoryLane = "viewed-head" | "active-head" | "active-portfolio" | "active" | "backfill" | "retry" | "fair";
 export interface HistoryScheduleOptions {
   /** Apply the collector's adaptive cadence; explicit callers retain refreshMs. */
   adaptive?: boolean;
@@ -54,6 +60,12 @@ export interface JobState {
     sourceComplete: boolean;
     gap: boolean;
     availableToMs: number | null;
+    /** Canonical bounded missing intervals; unrelated to source incomplete flags. */
+    localGaps?: PortfolioGap[];
+    /** Derived earliest interval boundary; retained for older-reader compatibility. */
+    localGapAfterMs?: number | null;
+    /** Last successful 1w/all repair; bounds repeated broad source reads. */
+    repairFetchedAt?: number;
     range: string;
     source?: { asOfMs: number; revision: string; generation: string };
   };
@@ -459,7 +471,8 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         ? `(${alias}.state->>'failures')::integer>0`
         : `json_extract(${alias}.state,'$.failures')>0`;
       const head = lane === "active-head" || lane === "viewed-head";
-      const active = lane === "active" || head;
+      const portfolio = lane === "active-portfolio";
+      const active = lane === "active" || head || portfolio;
       const activePriority = lane === "viewed-head" ? "w.priority>=30" : "w.priority>0";
       const cursorIsNull = (alias: string) => db.prefix
         ? `${alias}.state->>'cursor' IS NULL`
@@ -474,16 +487,18 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         next_run: string | number;
         priority: number;
       }>(
-        `SELECT j.address,j.kind,j.state,j.next_run,CASE WHEN w.active_until>? THEN w.priority ELSE 0 END AS priority FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? AND j.locked_until<=? ${active ? `AND w.active_until>? AND ${activePriority}` : lane === "backfill" ? `AND ${incomplete}` : lane === "retry" ? `AND ${failed("j")}` : ""} ${head ? `AND j.kind<>'portfolio' AND ${cursorIsNull("j")}` : ""} ${excluded("j.address", "j.kind")} ORDER BY j.next_run,j.address,j.kind LIMIT 8`,
+        `SELECT j.address,j.kind,j.state,j.next_run,CASE WHEN w.active_until>? THEN w.priority ELSE 0 END AS priority FROM ${t("jobs")} j JOIN ${t("wallets")} w ON w.address=j.address WHERE j.next_run<=? AND j.locked_until<=? ${active ? `AND w.active_until>? AND ${activePriority}` : lane === "backfill" ? `AND ${incomplete}` : lane === "retry" ? `AND ${failed("j")}` : ""} ${head ? `AND j.kind<>'portfolio' AND ${cursorIsNull("j")}` : portfolio ? "AND j.kind='portfolio'" : ""} ${excluded("j.address", "j.kind")} ORDER BY j.next_run,j.address,j.kind LIMIT 8`,
         [now, now, now, ...(active ? [now] : []), ...excludedParams],
       );
-      const corrections = await db.rows<{
+      // These reserved lanes cannot select corrections. Avoid the database
+      // round trip; an empty lane still checks them in its general-active fallback.
+      const corrections = portfolio || lane === "backfill" ? [] : await db.rows<{
         id: string;
         address: string;
         state: unknown;
         next_run: number | string;
       }>(
-        `SELECT c.id,c.address,c.state,c.next_run FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=? AND c.locked_until<=? ${active ? `AND w.active_until>? AND ${activePriority}` : lane === "backfill" ? "AND 1=0" : lane === "retry" ? `AND ${failed("c")}` : ""} ${head ? `AND ${correctionIsHead} AND ${cursorIsNull("c")}` : ""} ${excluded("c.address", correctionKind)} ORDER BY c.next_run,c.id LIMIT 2`,
+        `SELECT c.id,c.address,c.state,c.next_run FROM ${t("corrections")} c JOIN ${t("wallets")} w ON w.address=c.address WHERE c.next_run<=? AND c.locked_until<=? ${active ? `AND w.active_until>? AND ${activePriority}` : lane === "retry" ? `AND ${failed("c")}` : ""} ${head ? `AND ${correctionIsHead} AND ${cursorIsNull("c")}` : ""} ${excluded("c.address", correctionKind)} ORDER BY c.next_run,c.id LIMIT 2`,
         [now, now, ...(active ? [now] : []), ...excludedParams],
       );
       const jobs = [
@@ -789,6 +804,50 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         ? value.baseTimeMs + value.timeOffsetsMs.at(-1)!
         : null;
       const full = range === "all";
+      // Portfolio publications contain change samples, not one sample at every
+      // covered instant. A quiet window's first change cannot identify a gap.
+      // Only trust requested bounds as coverage when the source says complete.
+      const sourceFrom =
+        value.coverage.availableFromMs ??
+        (value.coverage.complete ? (value.fromMs ?? first) : null);
+      const sourceTo =
+        value.coverage.availableToMs ??
+        (value.coverage.complete ? (value.toMs ?? last) : null);
+      const availableFrom =
+        sourceFrom === null
+          ? null
+          : Math.max(sourceFrom, value.fromMs ?? sourceFrom);
+      const availableTo =
+        sourceTo === null
+          ? null
+          : Math.min(sourceTo, value.toMs ?? sourceTo, source?.asOfMs ?? sourceTo);
+      const observedTo = availableTo ?? last;
+      const priorGaps = portfolioLocalGaps(prior);
+      let localGaps = generationChanged
+        ? []
+        : priorGaps.filter(
+            (gap) =>
+              !(availableFrom !== null &&
+                availableTo !== null &&
+                availableFrom <= gap.afterMs &&
+                availableTo >= gap.beforeMs),
+          );
+      if (!generationChanged) {
+        if (
+          prior?.availableToMs != null &&
+          availableFrom !== null &&
+          availableFrom > prior.availableToMs
+        )
+          localGaps.push({
+            afterMs: prior.availableToMs,
+            beforeMs: availableFrom,
+          });
+      }
+      localGaps = boundedPortfolioGaps(localGaps);
+      const localGapAfterMs = localGaps[0]?.afterMs ?? null;
+      // Old checkpoints did not distinguish a local gap from a partial source.
+      // Keep an unlocated legacy gap conservative until a full reconciliation.
+      const unlocatedGap = Boolean(prior?.gap && priorGaps.length === 0);
       const state: JobState = {
         ...job.state,
         complete: full || (job.state.complete && !generationChanged),
@@ -801,19 +860,23 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
           fullFetchedAt: full ? at : (prior?.fullFetchedAt ?? 0),
           sourceComplete: full
             ? value.coverage.complete
-            : (prior?.sourceComplete ?? false),
-          gap: full
-            ? !value.coverage.complete
-            : Boolean(generationChanged) ||
-              (prior?.gap ?? true) ||
-              (prior?.availableToMs != null &&
-                first !== null &&
-                first > prior.availableToMs),
+            : !generationChanged &&
+              Boolean(prior?.sourceComplete && value.coverage.complete),
+          gap:
+            (!full && (Boolean(generationChanged) || unlocatedGap)) ||
+            localGapAfterMs !== null,
           availableToMs:
-            value.coverage.availableToMs ??
-            last ??
-            prior?.availableToMs ??
-            null,
+            generationChanged
+              ? observedTo
+              : observedTo === null
+                ? (prior?.availableToMs ?? null)
+                : Math.max(observedTo, prior?.availableToMs ?? observedTo),
+          localGapAfterMs,
+          localGaps,
+          repairFetchedAt:
+            full || range === "1w"
+              ? at
+              : (prior?.repairFetchedAt ?? prior?.fullFetchedAt ?? 0),
           range,
           source,
         },
@@ -847,12 +910,17 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
           params: [job.address],
         });
       else if (
-        (value.fromMs ?? first) !== null &&
-        (value.toMs ?? last) !== null
+        availableFrom !== null &&
+        availableTo !== null &&
+        availableFrom <= availableTo
       )
         statements.push({
-          sql: `DELETE FROM ${t("points")} WHERE scope=? AND time>=? AND time<=?`,
-          params: [job.address, value.fromMs ?? first, value.toMs ?? last],
+          // Explicit source windows are [fromMs,toMs). Legacy point-only batches
+          // still replace their final sample inclusively. A partial publication
+          // cannot retract previously retained samples outside its available
+          // interval; absent partial bounds permit only returned-sample upserts.
+          sql: `DELETE FROM ${t("points")} WHERE scope=? AND time>=? AND time${value.toMs === undefined ? "<=" : "<"}?`,
+          params: [job.address, availableFrom, availableTo],
         });
       const groups = new Map<
         number,
@@ -1003,6 +1071,7 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
         ).samples.map((p) => ({ time: Number(r.time), ...p })),
       );
       const baseTimeMs = points[0]?.time ?? 0;
+      const localGaps = portfolioLocalGaps(state.portfolio);
       return {
         receivedAt: state.lastSuccessAt,
         coverage: {
@@ -1016,7 +1085,13 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
             equity: points.map((p) => p.equity),
             pnl: points.map((p) => p.pnl),
           },
-          gapIndices: points.flatMap((p, i) => (p.gap ? [i] : [])),
+          gapIndices: points.flatMap((p, i) =>
+            p.gap ||
+            (i > 0 &&
+              crossesPortfolioGap(points[i - 1].time, p.time, localGaps))
+              ? [i]
+              : [],
+          ),
           coverage: {
             availableFromMs: points[0]?.time ?? null,
             availableToMs: points.at(-1)?.time ?? null,

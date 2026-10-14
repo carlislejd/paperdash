@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
 import { createStore, type Store } from "../src/store.js";
-import { createHistoryStore, historySchemaSql, type HistoryLane, type JobKind } from "../src/history-store.js";
+import { createHistoryStore, historySchemaSql, type HistoryLane, type HistoryStore, type JobKind } from "../src/history-store.js";
 import { depositMetricsSchemaSql } from "../src/deposit-metrics-store.js";
 
 const hour = 3_600_000;
@@ -77,7 +77,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL scheduler SQL parity
       await history.commitPage(job!, { items: [{ ...deposit(100), kind: "Withdrawal", withdrawalStatus: "in_transit" }], nextCursor: "older" }, now, cold, adaptive);
       now += 300001;
       const exclude = [address, other].flatMap((a) => kinds.map((kind) => ({ address: a, kind })));
-      for (const lane of ["viewed-head", "active-head", "active", "backfill", "retry", "fair"] as const)
+      for (const lane of ["viewed-head", "active-head", "active-portfolio", "active", "backfill", "retry", "fair"] as const)
         expect(await history.claimJob(now, 120000, lane, exclude)).toBeNull();
       const stats = await history.stats();
       expect(stats.pending).toBe(stats.activeDue + stats.backfillDue + stats.maintenanceDue + stats.correctionsDue);
@@ -153,6 +153,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("PostgreSQL scheduler SQL parity
       now = viewedRetryAt;
       expect((await history.claimJob(now, 120000, "viewed-head", viewedOnly))?.correctionId)
         .toBe(`head:${viewedAddress}:cashflows`);
+      await verifyActivePortfolioLane(history, [address, other, activeAddress, viewedAddress]
+        .flatMap((address) => kinds.map((kind) => ({ address, kind }))));
     } finally {
       await client.query("ROLLBACK");
       client.release();
@@ -209,7 +211,75 @@ async function completeWallet(store: Store, target: string, refreshMs: number) {
   }
 }
 
+async function verifyActivePortfolioLane(history: HistoryStore, excluded: { address: string; kind: JobKind }[] = []) {
+  const [coldWallet, trader, holder, profile] = ["a", "b", "c", "d"].map((char) => `0x${char.repeat(40)}`);
+  const wallets = [coldWallet, trader, holder, profile];
+  const only = (address: string, kind: JobKind) => wallets.flatMap((wallet) => kinds
+    .filter((candidate) => wallet !== address || candidate !== kind)
+    .map((candidate) => ({ address: wallet, kind: candidate })));
+  const claim = (lane: HistoryLane, extra: { address: string; kind: JobKind }[] = []) =>
+    history.claimJob(now, 120000, lane, [...excluded, ...extra]);
+  const walletCount = (await history.stats()).wallets;
+  await history.ensureWallet(coldWallet);
+  now++;
+  await history.ensureWallet(trader, 20);
+  const ledger = await claim("fair", only(trader, "cashflows"));
+  await history.commitPage(ledger!, {
+    items: [{ ...deposit(100), kind: "Withdrawal", withdrawalStatus: "in_transit" }], nextCursor: "older-trades",
+  }, now, 60000, adaptive);
+  now += 300001;
+  await history.ensureWallet(holder, 10);
+  now++;
+  await history.ensureWallet(profile, 30);
+
+  // Earlier ledger continuations, head/pending corrections and cold portfolios
+  // cannot crowd out this lane. Its cohort remains oldest-due, not priority-sorted.
+  const first = await claim("active-portfolio");
+  expect(first).toMatchObject({ address: trader, kind: "portfolio", priority: 20 });
+  expect(first?.correctionId).toBeUndefined();
+  const retryAt = now + 120000;
+  await history.failJob(first!, "HTTP 429", now, retryAt);
+  await history.ensureWallet(trader, 30);
+  expect((await history.getStatus(trader)).find((job) => job.kind === "portfolio")?.nextRun).toBe(retryAt);
+  expect(await claim("active-portfolio", only(trader, "portfolio"))).toBeNull();
+  expect(await claim("active-portfolio")).toMatchObject({ address: holder, kind: "portfolio", priority: 10 });
+  expect(await claim("active-portfolio")).toMatchObject({ address: profile, kind: "portfolio", priority: 30 });
+  expect(await claim("active-portfolio", only(holder, "portfolio"))).toBeNull(); // Live lease.
+  const allExcluded = wallets.flatMap((address) => kinds.map((kind) => ({ address, kind })));
+  expect(await claim("active-portfolio", allExcluded)).toBeNull(); // Batch exclusions survive every fallback.
+
+  // An idle reserved slot borrows general active work before cold maintenance.
+  const borrowed = await claim("active-portfolio");
+  expect(borrowed).toMatchObject({ address: trader, kind: "trades" });
+  expect((await history.getStatus(trader)).find((job) => job.kind === "cashflows")?.state.cursor)
+    .toBe("older-trades");
+  expect(await claim("fair")).toMatchObject({ address: coldWallet, kind: "cashflows", priority: 0 });
+  expect((await history.stats()).wallets).toBe(walletCount + 4); // Claims enroll no extra wallets.
+
+  now = retryAt;
+  const retry = await claim("active-portfolio", only(trader, "portfolio"));
+  expect(retry).toMatchObject({ address: trader, kind: "portfolio", state: { failures: 1 } });
+  expect(await claim("active-portfolio", only(trader, "portfolio"))).toBeNull();
+  await expect(history.commitPortfolio(first!, emptyPortfolio(), "all", now, 300000, adaptive))
+    .rejects.toThrow("History job lease changed");
+  await history.commitPortfolio(retry!, emptyPortfolio(), "all", now, 300000, adaptive);
+
+  // Expired promotion is not silently kept alive by collection. A new active
+  // holder receives the reserved turn while fair work still reaches cold history.
+  now += 600001;
+  await history.ensureWallet(holder, 10);
+  expect(await claim("active-portfolio")).toMatchObject({ address: holder, kind: "portfolio", priority: 10 });
+  const inactive = await claim("active-portfolio", only(trader, "portfolio"));
+  expect(inactive).toMatchObject({ address: trader, kind: "portfolio", priority: 0 }); // Fair fallback.
+  expect((await history.stats()).wallets).toBe(walletCount + 4);
+}
+
 describe("history scheduler retention and cadence", () => {
+  it("reserves active portfolio progress with unchanged enrollment, backoff, leases and fair fallbacks", async () => {
+    const store = await memory();
+    await verifyActivePortfolioLane(store.history);
+  });
+
   it.each(["active-head", "viewed-head"] as const)("reserves %s ledger heads while general active turns still serve older portfolios and continuations", async (lane) => {
     const store = await memory();
     await store.history.ensureWallet(address, lane === "viewed-head" ? 30 : 10);
@@ -510,7 +580,7 @@ describe("history scheduler retention and cadence", () => {
     }, now, 60000, adaptive);
     now += 300001;
     const exclude = kinds.map((kind) => ({ address, kind }));
-    for (const lane of ["active-head", "active", "backfill", "retry", "fair"] as const)
+    for (const lane of ["active-head", "active-portfolio", "active", "backfill", "retry", "fair"] as const)
       expect(await store.history.claimJob(now, 120000, lane, exclude)).toBeNull();
     const correction = await store.history.claimJob(now, 120000, "fair", exceptCashflow());
     expect(correction).not.toBeNull();

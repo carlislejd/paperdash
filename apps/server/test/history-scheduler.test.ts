@@ -114,7 +114,7 @@ describe("bounded history scheduling", () => {
     expect(h.claimJob.mock.calls.map((args) => args[2])).toEqual([
       "viewed-head",
       "backfill",
-      "active",
+      "active-portfolio",
       "retry",
       "active-head",
       "backfill",
@@ -167,7 +167,7 @@ describe("bounded history scheduling", () => {
     const pattern = [
       "viewed-head",
       "backfill",
-      "active",
+      "active-portfolio",
       "retry",
       "active-head",
       "backfill",
