@@ -9,6 +9,20 @@ import {
 } from "./fixtures";
 
 const raw = (value: number) => (BigInt(value) * 10n ** 18n).toString();
+type CardCanvasDiagnostic = {
+  id: number;
+  width: number;
+  height: number;
+  textCalls: number;
+  blobCalls: number;
+  blobCallbacks: number;
+  blobBytes: number | null;
+};
+type CardDiagnosticWindow = Window & {
+  cardText: string[];
+  cardCanvases: CardCanvasDiagnostic[];
+  cardFontLoads: { font: string; state: string; documentReady: string }[];
+};
 async function setup(
   page: Page,
   options: { missing?: boolean; large?: boolean } = {},
@@ -19,14 +33,68 @@ async function setup(
   await mockSources(page);
   const state = { changed: false, walletReads: 0, metricReads: 0 };
   await page.addInitScript(() => {
-    const target = window as unknown as { cardText: string[] };
+    const target = window as CardDiagnosticWindow;
     target.cardText = [];
+    target.cardCanvases = [];
+    target.cardFontLoads = [];
+    const canvases = new WeakMap<HTMLCanvasElement, CardCanvasDiagnostic>();
+    const record = (canvas: HTMLCanvasElement) => {
+      let value = canvases.get(canvas);
+      if (!value) {
+        value = {
+          id: target.cardCanvases.length + 1,
+          width: canvas.width,
+          height: canvas.height,
+          textCalls: 0,
+          blobCalls: 0,
+          blobCallbacks: 0,
+          blobBytes: null,
+        };
+        canvases.set(canvas, value);
+        target.cardCanvases.push(value);
+      }
+      return value;
+    };
     const original = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.fillText = function (
       ...args: Parameters<typeof original>
     ) {
       target.cardText.push(args[0]);
+      if (this.canvas instanceof HTMLCanvasElement)
+        record(this.canvas).textCalls++;
       return original.apply(this, args);
+    };
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
+      const value = record(this);
+      value.blobCalls++;
+      return toBlob.call(
+        this,
+        (blob) => {
+          value.blobCallbacks++;
+          value.blobBytes = blob?.size ?? null;
+          callback(blob);
+        },
+        ...args,
+      );
+    };
+    const loadFont = document.fonts.load.bind(document.fonts);
+    document.fonts.load = (font, text) => {
+      const value = { font, state: "pending", documentReady: "pending" };
+      target.cardFontLoads.push(value);
+      const result = loadFont(font, text);
+      void document.fonts.ready.then(() => {
+        value.documentReady = "resolved";
+      });
+      void result.then(
+        () => {
+          value.state = "resolved";
+        },
+        () => {
+          value.state = "rejected";
+        },
+      );
+      return result;
     };
   });
   await page.route(`**/api/wallets/${WALLET}`, (route) => {
@@ -104,21 +172,66 @@ async function previewHash(dialog: Locator) {
     });
 }
 
+async function withPreviewDiagnostic(page: Page, check: () => Promise<void>) {
+  try {
+    await check();
+  } catch (cause) {
+    const diagnostic = await page.evaluate(() => {
+      const target = window as CardDiagnosticWindow;
+      return {
+        preview: document.querySelector(".pnl-preview")?.textContent?.trim(),
+        fontStatus: document.fonts.status,
+        fontReady: document.fonts.check('600 36px "DM Sans"'),
+        fontLoads: target.cardFontLoads,
+        canvases: target.cardCanvases,
+        resources: performance
+          .getEntriesByType("resource")
+          .filter((entry) =>
+            /dm-sans|paperclub-social|wallet-pnl-card-export/.test(entry.name),
+          )
+          .map((entry) => ({
+            path: new URL(entry.name).pathname,
+            duration: Math.round(entry.duration),
+            bytes: (entry as PerformanceResourceTiming).decodedBodySize,
+          })),
+      };
+    });
+    const message = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(
+      `${message}\nP&L preview diagnostic: ${JSON.stringify(diagnostic)}`,
+    );
+  }
+}
+
+async function expectPreviewReady(page: Page, button: Locator) {
+  // Covers the renderer's 12s deadline and Chromium's native idle PNG fallback.
+  await withPreviewDiagnostic(page, () =>
+    expect(button).toBeEnabled({ timeout: 15_000 }),
+  );
+}
+
 async function waitForSharePreview(page: Page, dialog: Locator) {
   // These tests pause the browser clock to freeze the source observations.
   // Privacy changes can overlap the initial font/image load and PNG render;
   // let browser frames settle while waiting for the regenerated preview.
   // Keep advancement below both asset deadlines and the next data poll.
   let advanced = 0;
-  await expect
-    .poll(async () => {
-      if (advanced < 2000) {
-        await page.clock.runFor(50);
-        advanced += 50;
-      }
-      return dialog.getByRole("button", { name: "Share card ↗" }).isEnabled();
-    })
-    .toBe(true);
+  await withPreviewDiagnostic(page, () =>
+    expect
+      .poll(
+        async () => {
+          if (advanced < 2000) {
+            await page.clock.runFor(50);
+            advanced += 50;
+          }
+          return dialog
+            .getByRole("button", { name: "Share card ↗" })
+            .isEnabled();
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true),
+  );
 }
 
 test("all three card layouts export exactly the preview with hidden identity and no extra data reads", async ({
@@ -142,7 +255,7 @@ test("all three card layouts export exactly the preview with hidden identity and
       .getByRole("button", { name: new RegExp(`^${layout.name}`) })
       .click();
     const downloadButton = dialog.getByRole("button", { name: "Download PNG" });
-    await expect(downloadButton).toBeEnabled();
+    await expectPreviewReady(page, downloadButton);
     await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
       "alt",
       "WALLET HIDDEN · +$1,250.00 lifetime realized P&L · 6,154,000.00 PAPER owned",
@@ -327,12 +440,21 @@ test("stalled artwork can retry without changing frozen data, privacy or layout"
     dialog.getByRole("button", { name: "Download PNG" }),
   ).toBeDisabled();
   await expect(dialog.locator(".pnl-preview img")).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      (window as CardDiagnosticWindow).cardCanvases.reduce(
+        (total, canvas) => total + canvas.blobCalls,
+        0,
+      ),
+    ),
+  ).toBe(0);
   releaseArt!();
   await dialog.getByRole("button", { name: "Try again", exact: true }).click();
   await expect.poll(() => artRequests).toBe(2);
-  await expect(
+  await expectPreviewReady(
+    page,
     dialog.getByRole("button", { name: "Download PNG" }),
-  ).toBeEnabled();
+  );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "width",
     "1080",
@@ -351,12 +473,93 @@ test("stalled artwork can retry without changing frozen data, privacy or layout"
   await expect(dialog.locator(".pnl-accessible-summary")).not.toContainText(
     "9,999",
   );
+  expect(
+    await page.evaluate(() =>
+      (window as CardDiagnosticWindow).cardCanvases.reduce(
+        (total, canvas) => total + canvas.blobCalls,
+        0,
+      ),
+    ),
+  ).toBe(1);
   await page.keyboard.press("Escape");
   await openCard(page);
+  await expectPreviewReady(
+    page,
+    dialog.getByRole("button", { name: "Download PNG" }),
+  );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
     /\+\$9,999\.00 lifetime/,
   );
+});
+
+test("stalled PNG encoding times out and a late callback cannot replace a retry", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const target = window as Window & {
+      releaseCardEncoding?: () => Promise<void>;
+    };
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    let stalled = false;
+    HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
+      if (stalled) return toBlob.call(this, callback, ...args);
+      stalled = true;
+      target.releaseCardEncoding = () =>
+        new Promise<void>((resolve) => {
+          toBlob.call(
+            this,
+            (blob) => {
+              callback(blob);
+              resolve();
+            },
+            ...args,
+          );
+        });
+    };
+  });
+  const dialog = await openCard(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Boolean(
+          (window as Window & { releaseCardEncoding?: unknown })
+            .releaseCardEncoding,
+        ),
+      ),
+    )
+    .toBe(true);
+  await page.clock.runFor(12_100);
+  await expect(dialog.getByRole("alert")).toContainText(/Try again/);
+  await expect(
+    dialog.getByRole("button", { name: "Download PNG" }),
+  ).toBeDisabled();
+  await expect(dialog.locator(".pnl-preview img")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Try again", exact: true }).click();
+  await expectPreviewReady(
+    page,
+    dialog.getByRole("button", { name: "Download PNG" }),
+  );
+  const currentUrl = await dialog
+    .locator(".pnl-preview img")
+    .getAttribute("src");
+  const currentHash = await previewHash(dialog);
+  await page.evaluate(() =>
+    (
+      window as Window & { releaseCardEncoding: () => Promise<void> }
+    ).releaseCardEncoding(),
+  );
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
+    "src",
+    currentUrl!,
+  );
+  expect(await previewHash(dialog)).toBe(currentHash);
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
+    "alt",
+    "WALLET HIDDEN · +$1,250.00 lifetime realized P&L · 6,154,000.00 PAPER owned",
+  );
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
 });
 
 test("an unavailable account and legacy highlights stay unknown on the rendered card", async ({
@@ -364,9 +567,10 @@ test("an unavailable account and legacy highlights stay unknown on the rendered 
 }) => {
   await setup(page, { missing: true });
   const dialog = await openCard(page);
-  await expect(
+  await expectPreviewReady(
+    page,
     dialog.getByRole("button", { name: "Download PNG" }),
-  ).toBeEnabled();
+  );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
     "WALLET HIDDEN · — lifetime realized P&L · — PAPER owned",
@@ -387,9 +591,10 @@ test("large negative P&L and PAPER totals remain exact in the compact export", a
   await setup(page, { large: true });
   const dialog = await openCard(page);
   await dialog.getByRole("button", { name: /^Spotlight/ }).click();
-  await expect(
+  await expectPreviewReady(
+    page,
     dialog.getByRole("button", { name: "Download PNG" }),
-  ).toBeEnabled();
+  );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
     "WALLET HIDDEN · −$10,000,000,000.00 lifetime realized P&L · 90,000,000,000.00 PAPER owned",

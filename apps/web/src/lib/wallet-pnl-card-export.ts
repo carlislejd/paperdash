@@ -64,20 +64,49 @@ function mark(
 /** The dialog preview and the downloaded file use these exact same pixels. */
 export async function renderWalletPnlCardPng(
   input: PnlCardModel,
+  { signal }: { signal?: AbortSignal } = {},
 ): Promise<Blob> {
+  const controller = new AbortController();
+  const forwardAbort = () => controller.abort(signal?.reason);
+  const expiresAt = performance.now() + 12_000;
+  const timeout = () =>
+    controller.abort(new Error("Creating the card took too long. Try again."));
+  const check = () => {
+    if (performance.now() >= expiresAt) timeout();
+    controller.signal.throwIfAborted();
+  };
+  let rejectAbort: () => void;
+  const aborted = new Promise<never>((_, reject) => {
+    rejectAbort = () => reject(controller.signal.reason);
+    controller.signal.addEventListener("abort", rejectAbort, { once: true });
+  });
+  signal?.addEventListener("abort", forwardAbort, { once: true });
+  if (signal?.aborted) forwardAbort();
+  const deadline = setTimeout(timeout, 12_000);
+  try {
+    // The shared artwork load survives a cancelled preview; another preview
+    // may still need it. Checks in the pipeline prevent cancelled work encoding.
+    return await Promise.race([renderCard(input, check), aborted]);
+  } finally {
+    clearTimeout(deadline);
+    signal?.removeEventListener("abort", forwardAbort);
+    controller.signal.removeEventListener("abort", rejectAbort!);
+  }
+}
+
+async function renderCard(
+  input: PnlCardModel,
+  check: () => void,
+): Promise<Blob> {
+  check();
   const m = structuredClone(input);
   const fonts = document.fonts?.load('600 36px "DM Sans"');
-  let deadline: ReturnType<typeof setTimeout> | undefined;
-  const [{ canvas, ctx }, art] = await Promise.race([
-    Promise.all([imageCanvas(m.width, m.height), artwork(), fonts]),
-    new Promise<never>((_, reject) => {
-      deadline = setTimeout(
-        () =>
-          reject(new Error("Card assets took too long to load. Try again.")),
-        12_000,
-      );
-    }),
-  ]).finally(() => clearTimeout(deadline));
+  const [{ canvas, ctx }, art] = await Promise.all([
+    imageCanvas(m.width, m.height),
+    artwork(),
+    fonts,
+  ]);
+  check();
   const w = m.width,
     h = m.height;
   ctx.fillStyle = C.paper;
@@ -215,5 +244,8 @@ export async function renderWalletPnlCardPng(
     stats(48, 906, w - 70, 3, 136, 36);
     footer(48, 1260, w - 96);
   }
-  return canvasPng(canvas);
+  check();
+  const blob = await canvasPng(canvas);
+  check();
+  return blob;
 }

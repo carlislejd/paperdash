@@ -71,11 +71,14 @@ export function WalletPnlCardDialog({
     };
   }, []);
   useEffect(() => {
+    const controller = new AbortController();
     let cancelled = false,
       url: string | null = null;
     setPreviewError("");
     import("../lib/wallet-pnl-card-export")
-      .then((module) => module.renderWalletPnlCardPng(model))
+      .then((module) =>
+        module.renderWalletPnlCardPng(model, { signal: controller.signal }),
+      )
       .then((blob) => {
         if (cancelled) return;
         url = URL.createObjectURL(blob);
@@ -91,6 +94,7 @@ export function WalletPnlCardDialog({
       });
     return () => {
       cancelled = true;
+      controller.abort();
       if (url) URL.revokeObjectURL(url);
     };
   }, [model, retry]);
