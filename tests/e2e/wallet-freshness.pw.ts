@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { mockSources, WALLET, walletResponse } from "./fixtures";
+import {
+  buildWalletMarginRisk,
+  referencePriceRaw,
+} from "../../packages/shared/src/margin-risk";
 
 function accountWallet(at: number, refreshing = false) {
   const wallet = walletResponse(WALLET, at);
@@ -122,7 +126,8 @@ test("a retained newer account never borrows the rejected response's fresh clock
   await page.route(`**/api/wallets/${WALLET}`, (route) => {
     reads++;
     const wallet = accountWallet(initial ? old : at);
-    wallet.snapshot!.accountRevision = initial ? 5 : 4;
+    wallet.snapshot!.accountRevision = initial ? 5 : 6;
+    if (!initial) wallet.snapshot!.indexedThroughBlock--;
     wallet.snapshot!.paper.staked = initial
       ? "6000000000000000000000000"
       : "4000000000000000000000000";
@@ -142,6 +147,78 @@ test("a retained newer account never borrows the rejected response's fresh clock
   );
   await expect(page.locator(".wd-metrics")).toContainText("6,000,000");
   await expect(page.locator(".wd-metrics")).not.toContainText("4,000,000");
+});
+
+test("a full account bootstrap with a reset revision updates PAPER, freshness and matching margin risk", async ({
+  page,
+}) => {
+  const at = Math.floor(Date.now() / 1000) * 1000;
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(at);
+  await mockSources(page);
+  let initial = true;
+  await page.route(`**/api/wallets/${WALLET}`, (route) => {
+    const sourceAt = initial ? at - 60_000 : at + 15_000;
+    const wallet = accountWallet(sourceAt);
+    wallet.snapshot!.accountRevision = initial ? 3 : 1;
+    wallet.snapshot!.indexedThroughBlock = initial ? 12345 : 12346;
+    wallet.snapshot!.paper.staked = initial
+      ? "4700000000000000000000000"
+      : "6154000000000000000000000";
+    wallet.snapshot!.openPositions = [
+      [
+        "1",
+        0,
+        true,
+        false,
+        "810000",
+        initial ? "1000000000000000000000" : "2000000000000000000000",
+        100,
+        "799600",
+        sourceAt - 60_000,
+      ],
+    ];
+    wallet.marginRisk = buildWalletMarginRisk(wallet.snapshot, {
+      address: WALLET,
+      asOf: sourceAt,
+      snapshotReceivedAt: sourceAt,
+      snapshotStale: false,
+      references: [
+        {
+          instrumentId: 0,
+          symbol: "BTC",
+          priceUsd: 80000,
+          priceRaw: referencePriceRaw(80000)!,
+          sourceAt,
+          receivedAt: sourceAt,
+          stale: false,
+          source: "hyperliquid-bbo-mid",
+        },
+      ],
+    });
+    return route.fulfill({ json: wallet });
+  });
+  await page.goto(`/?wallet=${WALLET}`);
+  const ownership = page.locator(".wd-metrics > div").filter({
+    has: page.getByText("Total PAPER owned", { exact: true }),
+  });
+  const clock = page.getByRole("status", {
+    name: "Account snapshot freshness",
+  });
+  const risk = page.getByRole("region", { name: "Wallet margin at risk" });
+  await expect(ownership.locator("dd")).toHaveText("4,700,000");
+  await expect(risk.locator(".wmr-totals dd").first()).toHaveText("$1K");
+  initial = false;
+  await page.clock.runFor(15_100);
+  await expect(ownership.locator("dd")).toHaveText("6,154,000");
+  await expect(clock).toHaveText(
+    "Account snapshotAs of Just now · Checked Just now",
+  );
+  await expect(risk.locator(".wmr-totals dd").first()).toHaveText("$2K");
+  await expect(risk.locator(".wmr-clock")).toContainText("At snapshot");
+  await expect(risk).not.toContainText(
+    "Margin view unavailable for this snapshot",
+  );
 });
 
 test("legacy responses without an account receipt are not labeled freshly checked", async ({

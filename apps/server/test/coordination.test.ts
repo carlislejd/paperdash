@@ -81,7 +81,13 @@ describe("shared cache and request admission", () => {
     };
     const at = Date.now() - 60000;
     await s.put(`cache:wallet:${address}`, current, at);
-    const older = { ...current, accountRevision: 9, balance: "10" };
+    const older = {
+      ...current,
+      indexedThroughBlock: 99,
+      indexedThroughTimestamp: 999,
+      accountRevision: 11,
+      balance: "10",
+    };
     const fetcher = vi.fn(
       async () =>
         new Response(`event: wallet\ndata: ${JSON.stringify(older)}\n\n`),
@@ -93,7 +99,7 @@ describe("shared cache and request admission", () => {
     expect(
       (await s.get<{ message: string }>(`cache-error:wallet:${address}`))!.value
         .message,
-    ).toContain("older account revision");
+    ).toContain("older indexed account state");
   });
 
   it("coalesces across Upstream instances and reads a newer database cache", async () => {

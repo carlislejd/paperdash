@@ -88,6 +88,46 @@ function deferredFetch() {
 }
 
 describe("bounded wallet account freshness", () => {
+  it.each([false, true])(
+    "persists a full snapshot after a revision reset (equal chain clocks: %s)",
+    async (equalClocks) => {
+      const store = await memory();
+      const saved = {
+        ...snapshot("4651000000000000000000000", now - 60000),
+        accountRevision: 3,
+      };
+      const candidate = {
+        ...snapshot(),
+        accountRevision: 1,
+        indexedThroughBlock: equalClocks
+          ? saved.indexedThroughBlock
+          : saved.indexedThroughBlock + 1,
+        indexedThroughTimestamp: equalClocks
+          ? saved.indexedThroughTimestamp
+          : now / 1000,
+      };
+      await store.put(`cache:wallet:${address}`, saved, now - 60000);
+      const fetcher = vi.fn(async () => event(candidate));
+      const client = api(store, fetcher as typeof fetch);
+      const response = await client.wallet(address);
+      expect(response.snapshot).toEqual(candidate);
+      expect(response.accountFreshness).toMatchObject({
+        receivedAt: now,
+        refreshing: false,
+        sourceAt: candidate.indexedThroughTimestamp * 1000,
+      });
+      expect(response.errors.join(" ")).not.toContain(
+        "older indexed account state",
+      );
+      expect(await store.get(`cache:wallet:${address}`)).toEqual({
+        value: candidate,
+        receivedAt: now,
+      });
+      expect(await store.get(`cache-error:wallet:${address}`)).toBeNull();
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("replaces a 46-hour saved account during the first response without borrowing history's clock", async () => {
     const store = await memory();
     await store.put(

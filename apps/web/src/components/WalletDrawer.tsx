@@ -23,6 +23,7 @@ import { closedHoldingTimeMs, formatHoldingTime } from "../lib/position-format";
 import { PositionMetrics } from "./PositionMetrics";
 import { WalletMarginRisk } from "./WalletMarginRisk";
 import { riskMatchesSnapshot } from "../lib/margin-risk-display";
+import { isOlderWalletSnapshot } from "../../../../packages/shared/src/wallet-snapshot";
 import {
   normalizeClosedPosition,
   type PositionDetails,
@@ -790,12 +791,7 @@ export function WalletDrawer({
           if (
             current.snapshot &&
             (!response.snapshot ||
-              current.snapshot.accountRevision >
-                response.snapshot.accountRevision ||
-              current.snapshot.indexedThroughBlock >
-                response.snapshot.indexedThroughBlock ||
-              current.snapshot.indexedThroughTimestamp >
-                response.snapshot.indexedThroughTimestamp)
+              isOlderWalletSnapshot(response.snapshot, current.snapshot))
           ) {
             next.snapshot = current.snapshot;
             // Never attach a newer response's clock to an older saved payload.

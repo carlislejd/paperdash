@@ -164,12 +164,17 @@ test("wallet margin preserves a matching newer snapshot and freezes PNG context 
   });
   let revision = 3,
     reads = 0,
-    regressBlock = false;
+    regressBlock = false,
+    regressTime = false;
   await page.route(`**/api/wallets/${WALLET}`, (route) => {
     reads++;
     const wallet = riskWallet(at, revision === 3 ? 1000 : 9000);
     wallet.snapshot!.accountRevision = revision;
     wallet.marginRisk!.snapshot!.accountRevision = revision;
+    if (regressTime) {
+      wallet.snapshot!.indexedThroughTimestamp--;
+      wallet.marginRisk!.snapshot!.sourceAt! -= 1000;
+    }
     if (regressBlock) {
       wallet.snapshot!.indexedThroughBlock--;
       wallet.marginRisk!.snapshot!.indexedThroughBlock--;
@@ -182,12 +187,14 @@ test("wallet margin preserves a matching newer snapshot and freezes PNG context 
   const downloadEvent = page.waitForEvent("download");
   await panel.getByRole("button", { name: "Download PNG" }).click();
   const before = reads;
-  revision = 2;
+  revision = 4;
+  regressTime = true;
   await page.clock.fastForward(16000);
   await expect.poll(() => reads).toBeGreaterThan(before);
   await expect(panel.locator(".wmr-totals dd").first()).toHaveText("$6.5K");
   await expect(panel).toContainText("Last available");
-  revision = 4;
+  revision = 5;
+  regressTime = false;
   regressBlock = true;
   await page.clock.fastForward(16000);
   await expect(panel.locator(".wmr-totals dd").first()).toHaveText("$6.5K");

@@ -9,6 +9,7 @@ import type {
   WalletResponse,
   WalletSnapshot,
 } from "../../../packages/shared/src/types.js";
+import { isOlderWalletSnapshot } from "../../../packages/shared/src/wallet-snapshot.js";
 import { config, errorMessage } from "./config.js";
 import { accountsSchema, addressSchema, walletSchema } from "./schemas.js";
 import type { Store } from "./store.js";
@@ -804,16 +805,9 @@ export class Upstream {
             const previous = await this.store.get<WalletSnapshot>(
               `cache:wallet:${address}`,
             );
-            if (
-              previous &&
-              (value.accountRevision < previous.value.accountRevision ||
-                value.indexedThroughBlock <
-                  previous.value.indexedThroughBlock ||
-                value.indexedThroughTimestamp <
-                  previous.value.indexedThroughTimestamp)
-            )
+            if (previous && isOlderWalletSnapshot(value, previous.value))
               throw new UpstreamError(
-                "Papertrade returned an older account revision; retaining the saved snapshot.",
+                "Papertrade returned older indexed account state; retaining the saved snapshot.",
               );
             return value;
           } finally {
