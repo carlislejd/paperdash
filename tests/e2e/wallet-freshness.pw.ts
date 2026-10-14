@@ -93,21 +93,38 @@ test("account rechecks are bounded and stop when the drawer closes", async ({
   let reads = 0;
   await page.route(`**/api/wallets/${WALLET}`, (route) => {
     reads++;
-    return route.fulfill({ json: accountWallet(at - 46 * 3600_000, true) });
+    const wallet = accountWallet(at - 46 * 3600_000, true);
+    wallet.snapshot!.paper.balance = (BigInt(reads) * 10n ** 18n).toString();
+    return route.fulfill({ json: wallet });
   });
   await page.goto(`/?wallet=${WALLET}`);
   await expect(
     page.getByRole("status", { name: "Account snapshot freshness" }),
   ).toContainText("Updating account balances…");
+  const ownership = page
+    .locator(".wd-metrics > div")
+    .filter({ has: page.getByText("Total PAPER owned", { exact: true }) })
+    .locator("dd");
+  const refresh = page.getByRole("button", { name: "Refresh wallet details" });
   const initialReads = reads;
+  await expect(ownership).toHaveText(String(initialReads));
+  await expect(refresh).toBeEnabled();
   await page.clock.runFor(2_100);
   await expect.poll(() => reads).toBe(initialReads + 1);
+  // A started request is not a settled response. Wait for its distinct balance
+  // and completed loading state before advancing the next delivery timer.
+  await expect(ownership).toHaveText(String(initialReads + 1));
+  await expect(refresh).toBeEnabled();
   await page.clock.runFor(2_100);
   await expect.poll(() => reads).toBe(initialReads + 2);
+  await expect(ownership).toHaveText(String(initialReads + 2));
+  await expect(refresh).toBeEnabled();
   await page.clock.runFor(5_000);
   expect(reads).toBe(initialReads + 2);
-  await page.getByRole("button", { name: "Refresh wallet details" }).click();
+  await refresh.click();
   await expect.poll(() => reads).toBe(initialReads + 3);
+  await expect(ownership).toHaveText(String(initialReads + 3));
+  await expect(refresh).toBeEnabled();
   await page.getByRole("button", { name: "Close wallet details" }).click();
   await page.clock.runFor(20_000);
   expect(reads).toBe(initialReads + 3);
