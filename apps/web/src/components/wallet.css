@@ -256,11 +256,31 @@
   transform: rotate(10deg);
   z-index: -1;
 }
+.wd-account-freshness {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 14px;
+  margin-top: 19px;
+  color: #596b50;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.wd-account-freshness strong {
+  font-weight: 550;
+}
+.wd-account-freshness > span {
+  color: #727469;
+}
+.wd-account-delayed {
+  color: #806c48;
+}
 .wd-metrics {
   display: grid;
   grid-template-columns: 1fr 1fr;
   border-left: 1px solid #c9c6bb;
-  margin-top: 19px;
+  margin-top: 8px;
 }
 .wd-metrics > div {
   padding: 16px 17px;

@@ -383,7 +383,7 @@ describe("wallet response margin-risk enrichment", () => {
           sourceAt: at,
         },
       });
-      expect(snapshotCall).toHaveBeenCalledExactlyOnceWith(address, false);
+      expect(snapshotCall).toHaveBeenCalledExactlyOnceWith(address, false, 1500);
       expect(fetcher).not.toHaveBeenCalled();
       expect(bulk).toHaveBeenCalledTimes(1);
       expect(bulk.mock.calls[0][0].some((key) => key.includes("wallet"))).toBe(

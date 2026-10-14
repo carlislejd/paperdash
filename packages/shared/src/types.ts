@@ -320,6 +320,13 @@ export interface PortfolioHistory {
 export interface WalletResponse {
   address: string;
   snapshot: WalletSnapshot | null;
+  /** Account check/source clocks in milliseconds; independent of retained history. */
+  accountFreshness?: {
+    receivedAt: number | null;
+    sourceAt: number | null;
+    stale: boolean;
+    refreshing: boolean;
+  };
   cashflows: HistoryPage<Cashflow>;
   trades: HistoryPage<ClosedTrade>;
   portfolio: PortfolioHistory | null;

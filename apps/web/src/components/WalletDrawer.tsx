@@ -48,9 +48,12 @@ interface WalletDrawerProps {
 
 type HistoryTab = "cashflows" | "trades";
 const walletCache = new Map<string, WalletResponse>();
+// Local delivery time only: history/source timestamps cannot throttle hovers.
+const walletCacheFetchedAt = new WeakMap<WalletResponse, number>();
 const FOCUSABLE =
   'button:not(:disabled), a[href], input:not(:disabled), [tabindex="0"]';
 const REFRESH_INTERVAL = 15_000;
+const ACCOUNT_RECHECK_INTERVAL = 2_000;
 let prefetch: {
   address: string;
   timer: number;
@@ -84,6 +87,7 @@ function cacheWallet(wallet: WalletResponse) {
   rememberTradePage(wallet.trades);
   walletCache.delete(key);
   walletCache.set(key, wallet);
+  walletCacheFetchedAt.set(wallet, Date.now());
   if (walletCache.size > 30)
     walletCache.delete(walletCache.keys().next().value!);
 }
@@ -94,7 +98,8 @@ export function prefetchWallet(address: string): () => void {
   const cached = walletCache.get(key);
   if (
     !/^0x[\da-f]{40}$/i.test(address) ||
-    (cached && Date.now() - cached.receivedAt < REFRESH_INTERVAL)
+    (cached &&
+      Date.now() - (walletCacheFetchedAt.get(cached) ?? 0) < REFRESH_INTERVAL)
   )
     return () => {};
   if (prefetch?.address === key) return () => {};
@@ -213,6 +218,51 @@ function paperAmount(raw: string | null | undefined): string {
   return amount === "Unavailable"
     ? "—"
     : amount.replace(/(\.\d{0,2})\d+$/, "$1").replace(/\.$/, "");
+}
+
+function totalPaper(wallet: WalletResponse | null): string | null {
+  const paper = wallet?.snapshot?.paper;
+  if (!paper || !/^\d+$/.test(paper.balance) || !/^\d+$/.test(paper.staked))
+    return null;
+  return (BigInt(paper.balance) + BigInt(paper.staked)).toString();
+}
+
+function accountClock(wallet: WalletResponse | null, refreshFailed = false) {
+  const sourceAt = wallet?.snapshot
+    ? wallet.snapshot.indexedThroughTimestamp * 1000
+    : null;
+  const now = Date.now();
+  const validSource =
+    sourceAt !== null &&
+    Number.isSafeInteger(sourceAt) &&
+    sourceAt > 0 &&
+    sourceAt <= now + 30_000
+      ? sourceAt
+      : null;
+  const freshness = wallet?.accountFreshness;
+  const receivedAt = freshness?.receivedAt;
+  const checkedAt =
+    receivedAt != null &&
+    Number.isSafeInteger(receivedAt) &&
+    receivedAt > 0 &&
+    receivedAt <= now + 30_000
+      ? receivedAt
+      : null;
+  return {
+    sourceAt: validSource,
+    checkedAt,
+    refreshing: !refreshFailed && freshness?.refreshing === true,
+    stale:
+      refreshFailed ||
+      !freshness ||
+      freshness.stale ||
+      freshness.sourceAt !== validSource ||
+      validSource === null ||
+      now - validSource > 30_000 ||
+      checkedAt === null ||
+      now - checkedAt > 30_000 ||
+      Boolean(wallet && sourceError(wallet, "snapshot")),
+  };
 }
 
 function dateLabel(time: number | null | undefined, withYear = false): string {
@@ -657,7 +707,13 @@ export function WalletDrawer({
     let controller: AbortController | null = null;
     let lastRequested = 0;
     let timeout: number | undefined;
-    async function refresh(background = false) {
+    let accountRecheck: number | undefined;
+    let accountRechecks = 0;
+    const clearAccountRecheck = () => {
+      window.clearTimeout(accountRecheck);
+      accountRecheck = undefined;
+    };
+    async function refresh(background = false, recheck = false) {
       if (
         !active ||
         controller ||
@@ -665,11 +721,14 @@ export function WalletDrawer({
           (document.visibilityState === "hidden" || paginationInFlight.current))
       )
         return;
+      clearAccountRecheck();
+      if (recheck) accountRechecks++;
       const request = new AbortController();
       controller = request;
       lastRequested = Date.now();
       timeout = window.setTimeout(() => request.abort("timeout"), 20_000);
       setLoading(true);
+      let accountRefreshPending = false;
       try {
         const response = await fetchJson<WalletResponse>(
           `/api/wallets/${address}`,
@@ -739,6 +798,14 @@ export function WalletDrawer({
                 response.snapshot.indexedThroughTimestamp)
           ) {
             next.snapshot = current.snapshot;
+            // Never attach a newer response's clock to an older saved payload.
+            next.accountFreshness = current.accountFreshness
+              ? {
+                  ...current.accountFreshness,
+                  stale: true,
+                  refreshing: response.accountFreshness?.refreshing === true,
+                }
+              : undefined;
             next.stale = true;
             // Derived bands must remain attached to the snapshot they describe.
             next.marginRisk = riskMatchesSnapshot(
@@ -757,6 +824,7 @@ export function WalletDrawer({
         cacheWallet({
           ...response,
           snapshot: next.snapshot,
+          accountFreshness: next.accountFreshness,
           marginRisk: next.marginRisk,
           stale: next.stale,
           // cacheWallet preserves failed bounded heads, never appended pages.
@@ -765,6 +833,7 @@ export function WalletDrawer({
         dataRef.current = next;
         setData(next);
         setError(null);
+        accountRefreshPending = next.accountFreshness?.refreshing === true;
       } catch {
         if (
           active &&
@@ -776,6 +845,19 @@ export function WalletDrawer({
         if (active && controller === request) {
           controller = null;
           setLoading(false);
+          // Deliver an already-running shared refresh promptly, then return to
+          // normal polling. No extra upstream request is forced by these reads.
+          if (
+            !request.signal.aborted &&
+            document.visibilityState !== "hidden" &&
+            accountRefreshPending &&
+            accountRechecks < 2
+          ) {
+            accountRecheck = window.setTimeout(() => {
+              accountRecheck = undefined;
+              void refresh(true, true);
+            }, ACCOUNT_RECHECK_INTERVAL);
+          }
         }
       }
     }
@@ -784,14 +866,17 @@ export function WalletDrawer({
       void refresh(true);
     }, REFRESH_INTERVAL);
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") controller?.abort();
-      else if (Date.now() - lastRequested >= REFRESH_INTERVAL)
+      if (document.visibilityState === "hidden") {
+        clearAccountRecheck();
+        controller?.abort();
+      } else if (Date.now() - lastRequested >= REFRESH_INTERVAL)
         void refresh(true);
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       active = false;
       window.clearTimeout(timeout);
+      clearAccountRecheck();
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
       controller?.abort();
@@ -901,6 +986,8 @@ export function WalletDrawer({
   const wallet =
     data?.address.toLowerCase() === address.toLowerCase() ? data : null;
   const snapshot = wallet?.snapshot;
+  const accountFreshness = accountClock(wallet, Boolean(error));
+  const paperOwned = totalPaper(wallet);
   const followed = following.some(
     (item) => item.address === address.toLowerCase(),
   );
@@ -1062,9 +1149,11 @@ export function WalletDrawer({
                       ? isCollecting(snapshotFailure)
                         ? "Account snapshot is being collected. Retained history is shown below."
                         : "Some sources are unavailable. Account snapshot unavailable; retained history is shown below."
-                      : wallet.stale
+                      : accountFreshness.stale
                         ? "Showing the latest saved snapshot. Some data may be delayed."
-                        : "Some sources are unavailable. Available records are shown below."}
+                        : wallet.stale
+                          ? "Account balances are current. Some history may be delayed."
+                          : "Some sources are unavailable. Available records are shown below."}
                   </div>
                 )}
                 <section
@@ -1084,6 +1173,31 @@ export function WalletDrawer({
                     ✳
                   </span>
                 </section>
+                <div
+                  className={`wd-account-freshness${accountFreshness.stale ? " wd-account-delayed" : ""}`}
+                  role="status"
+                  aria-label="Account snapshot freshness"
+                >
+                  <strong>
+                    {accountFreshness.refreshing
+                      ? "Updating account balances…"
+                      : !snapshot
+                        ? "Account snapshot unavailable"
+                        : accountFreshness.stale
+                          ? "Saved account snapshot"
+                          : "Account snapshot"}
+                  </strong>
+                  {snapshot && (
+                    <span>
+                      {accountFreshness.sourceAt === null
+                        ? "Snapshot time unavailable"
+                        : `As of ${relativeTime(accountFreshness.sourceAt)}`}
+                      {accountFreshness.checkedAt !== null
+                        ? ` · Checked ${relativeTime(accountFreshness.checkedAt)}`
+                        : " · Check time unavailable"}
+                    </span>
+                  )}
+                </div>
                 <dl className="wd-metrics">
                   <div>
                     <dt>Available balance</dt>
@@ -1101,13 +1215,13 @@ export function WalletDrawer({
                     <span>Awaiting settlement</span>
                   </div>
                   <div>
-                    <dt>PAPER balance</dt>
-                    <dd title={exactAmount(snapshot?.paper.balance)}>
-                      {paperAmount(snapshot?.paper.balance)}
+                    <dt>Total PAPER owned</dt>
+                    <dd title={`${exactAmount(paperOwned)} PAPER`}>
+                      {paperAmount(paperOwned)}
                     </dd>
                     <span>
                       {snapshot
-                        ? "Staked PAPER shown below"
+                        ? `Unstaked ${paperAmount(snapshot.paper.balance)} · Staked ${paperAmount(snapshot.paper.staked)}`
                         : "No snapshot available"}
                     </span>
                   </div>
@@ -1131,7 +1245,7 @@ export function WalletDrawer({
                     <span className="wd-tiny-note">
                       {!snapshot
                         ? "UNAVAILABLE"
-                        : wallet.stale
+                        : accountFreshness.stale
                           ? "LAST AVAILABLE"
                           : "WALLET SNAPSHOT"}
                     </span>
@@ -1348,13 +1462,13 @@ export function WalletDrawer({
                 <footer className="wd-footer">
                   <div>
                     <span
-                      className={`wd-freshness-dot ${wallet.stale ? "wd-stale-dot" : ""}`}
+                      className={`wd-freshness-dot ${accountFreshness.stale ? "wd-stale-dot" : ""}`}
                       aria-hidden="true"
                     />
                     <span>
                       {!snapshot
                         ? "Account snapshot unavailable"
-                        : wallet.stale
+                        : accountFreshness.stale
                           ? "Saved snapshot"
                           : "Snapshot"}
                       {snapshot

@@ -33,6 +33,16 @@ export class UpstreamError extends Error {
     super(message);
   }
 }
+class RefreshPendingError extends UpstreamError {
+  readonly refreshing = true;
+  constructor() {
+    super(
+      "Live account snapshot is being collected. Retained history remains available.",
+      503,
+      Date.now() + 5000,
+    );
+  }
+}
 export function canonicalPath(
   path: string,
   params: Record<string, string | number | undefined> = {},
@@ -133,6 +143,8 @@ export interface Cached<T> {
   receivedAt: number;
   stale: boolean;
   error?: string;
+  /** This response fell back while a shared refresh was still in flight. */
+  refreshing?: boolean;
 }
 export class Upstream {
   readonly gate: RequestGate;
@@ -253,9 +265,16 @@ export class Upstream {
       wait?: boolean;
       staleAfter?: number;
       waitForInitial?: boolean;
+      /** Bounded join of the shared refresh, capped at 1.5 seconds. */
+      waitMs?: number;
       isCurrent?: (value: T) => boolean;
     } = {},
   ): Promise<Cached<T>> {
+    if (
+      options.waitMs !== undefined &&
+      (!Number.isSafeInteger(options.waitMs) || options.waitMs < 0)
+    )
+      throw new Error("Invalid cache refresh wait budget");
     // Read the shared cache on every lookup. A local entry must not hide a newer
     // refresh performed by another API instance or by the collector.
     const row = await this.store.get<T>(`cache:${key}`);
@@ -364,6 +383,32 @@ export class Upstream {
         })
         .finally(() => this.inflight.delete(key));
       this.inflight.set(key, promise as Promise<Cached<unknown>>);
+    }
+    if (options.waitMs !== undefined) {
+      const timedOut = Symbol("cache refresh wait expired");
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const result = await Promise.race([
+          promise,
+          new Promise<typeof timedOut>((resolve) => {
+            timer = setTimeout(
+              () => resolve(timedOut),
+              Math.min(1500, options.waitMs!),
+            );
+          }),
+        ]);
+        if (result !== timedOut) return result;
+      } catch (error) {
+        if (saved) return { ...saved, stale: true, error: errorMessage(error) };
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+      // A visitor's wait budget never cancels the shared refresh or its durable
+      // write. Handle any later rejection, including when there is no saved row.
+      void promise.catch(() => {});
+      if (!saved) throw new RefreshPendingError();
+      return { ...saved, stale: true, refreshing: true };
     }
     if (!saved && options.waitForInitial === false) {
       void promise.catch(() => {});
@@ -723,6 +768,7 @@ export class Upstream {
   async snapshot(
     address: string,
     waitForInitial = true,
+    waitMs?: number,
   ): Promise<Cached<WalletSnapshot>> {
     address = addressSchema.parse(address);
     return this.cached(
@@ -774,14 +820,14 @@ export class Upstream {
             controller.abort();
           }
         }),
-      { waitForInitial },
+      { waitForInitial, waitMs },
     );
   }
   async wallet(address: string): Promise<WalletResponse> {
     address = addressSchema.parse(address);
     await this.store.history.ensureWallet(address, 10);
     const results = await Promise.allSettled([
-      this.snapshot(address, false),
+      this.snapshot(address, false, 1500),
       this.history<Cashflow>(address, "cashflows", undefined, false),
       this.history<ClosedTrade>(address, "trades", undefined, false),
       (async (): Promise<Cached<PortfolioHistory>> => {
@@ -804,6 +850,35 @@ export class Upstream {
       else if (r.value.error) errors.push(`${labels[i]}: ${r.value.error}`);
     }
     const [snapshot, cashflows, trades, portfolio] = results;
+    const accountNow = Date.now();
+    const validClock = (value: unknown): value is number =>
+      typeof value === "number" &&
+      Number.isSafeInteger(value) &&
+      value >= 0 &&
+      value <= 8.64e15 &&
+      value <= accountNow + 30000;
+    const sourceTime =
+      snapshot.status === "fulfilled"
+        ? snapshot.value.value.indexedThroughTimestamp * 1000
+        : null;
+    const accountSourceAt = validClock(sourceTime) ? sourceTime : null;
+    const receiptTime =
+      snapshot.status === "fulfilled" ? snapshot.value.receivedAt : null;
+    const accountReceivedAt = validClock(receiptTime) ? receiptTime : null;
+    const accountFreshness = {
+      receivedAt: accountReceivedAt,
+      sourceAt: accountSourceAt,
+      stale:
+        snapshot.status === "rejected" ||
+        snapshot.value.stale ||
+        accountReceivedAt === null ||
+        accountSourceAt === null ||
+        accountNow - accountSourceAt > 30000,
+      refreshing:
+        snapshot.status === "fulfilled"
+          ? snapshot.value.refreshing === true
+          : snapshot.reason instanceof RefreshPendingError,
+    };
     const times = results.flatMap((r) =>
       r.status === "fulfilled" ? [r.value.receivedAt] : [],
     );
@@ -818,6 +893,7 @@ export class Upstream {
     );
     return {
       address,
+      accountFreshness,
       marginRisk,
       snapshot: snapshot.status === "fulfilled" ? snapshot.value.value : null,
       cashflows:
@@ -835,9 +911,7 @@ export class Upstream {
       receivedAt: times.length ? Math.min(...times) : Date.now(),
       stale:
         results.some((r) => r.status === "rejected" || r.value.stale) ||
-        (snapshot.status === "fulfilled" &&
-          Date.now() - snapshot.value.value.indexedThroughTimestamp * 1000 >
-            30000),
+        accountFreshness.stale,
       errors,
     };
   }

@@ -83,6 +83,14 @@ Lifetime recorded-close coverage is per row: `historyCoverage.indexedAt`, `backf
 
 `paperOwnership.trackedTotalRaw` is the source account directory's tracked PAPER total. It is not independently verified full protocol supply. `pageTotalRaw` sums this page; `pageShareBps / 100` is its percentage of tracked PAPER, or null when unavailable. The first page's share describes its returned leading accounts, not an arbitrary top-10 cohort. `count` counts accounts, including zero balances, not nonzero holders. Use `q=ADDRESS` or a name to find an account without crawling; ranks in filtered results apply to that filtered set, not the unfiltered global list. Ownership and source-account statistics share `accountReceivedAt` / `accountStale`; retained history and observed 24-hour activity have separate freshness.
 
+### Wallet account freshness
+
+Wallet PAPER ownership is `snapshot.paper.balance + snapshot.paper.staked`, summed as raw integers before applying 18 decimals. The balance alone excludes staked tokens.
+
+`/api/wallets/ADDRESS` includes optional `accountFreshness` independently of retained history: `receivedAt` is when the account snapshot was fetched, `sourceAt` is its source indexing timestamp, `stale` marks delayed account data, and `refreshing` means a refresh is still running. A recently fetched snapshot can still have an older source timestamp. Do not use the whole response's `receivedAt` or `stale` as the account clock; those also include history. Older API responses can omit `accountFreshness`, so treat an absent clock as unknown.
+
+If `refreshing` is true, a saved or absent snapshot may be replaced shortly. A client may make at most two follow-up reads two seconds apart, then return to its normal polling cadence. Respect error/backoff responses; do not repeatedly force refreshes or crawl wallets to warm snapshots.
+
 ### Trade counts and supported time ranges
 
 ```sh
