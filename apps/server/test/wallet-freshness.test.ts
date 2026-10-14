@@ -3,6 +3,7 @@ import type { WalletSnapshot } from "../../../packages/shared/src/types.js";
 import { LocalCoordinator } from "../src/coordination.js";
 import { createStore, type Store } from "../src/store.js";
 import { RequestGate, Upstream } from "../src/upstream.js";
+import { accountKey } from "../src/following-store.js";
 
 const address = `0x${"1".repeat(40)}`;
 const now = 1800000000000,
@@ -88,6 +89,62 @@ function deferredFetch() {
 }
 
 describe("bounded wallet account freshness", () => {
+  it("reuses retained directory names independently of account/history clocks without another source request", async () => {
+    const store = await memory();
+    const fetcher = vi.fn(async () => event());
+    const client = api(store, fetcher as typeof fetch);
+    const baseline = await client.wallet(address);
+    expect(baseline.leaderboardName).toBeUndefined();
+    for (const [name, expected] of [
+      ["  Carlisle  ", "Carlisle"],
+      [null, null],
+      [" \t ", null],
+    ] as const) {
+      await store.put(
+        accountKey(address),
+        { address, leaderboardName: name },
+        oldAt,
+      );
+      const result = await client.wallet(address);
+      expect(result.leaderboardName).toBe(expected);
+      expect(result.accountFreshness).toEqual(baseline.accountFreshness);
+      expect(result.receivedAt).toBe(baseline.receivedAt);
+      expect(result.errors).toEqual(baseline.errors);
+    }
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores foreign or invalid saved identity and fails softly when its local read fails", async () => {
+    const store = await memory();
+    const fetcher = vi.fn(async () => event());
+    const client = api(store, fetcher as typeof fetch);
+    const baseline = await client.wallet(address);
+    for (const identity of [
+      { address: `0x${"2".repeat(40)}`, leaderboardName: "Another wallet" },
+      { address, leaderboardName: 123 },
+      { address, leaderboardName: "x".repeat(201) },
+      { leaderboardName: "No matching address" },
+      null,
+    ]) {
+      await store.put(accountKey(address), identity, now);
+      const result = await client.wallet(address);
+      expect(result.leaderboardName).toBeUndefined();
+      expect(result.accountFreshness).toEqual(baseline.accountFreshness);
+      expect(result.errors).toEqual(baseline.errors);
+    }
+    const get = store.get.bind(store);
+    vi.spyOn(store, "get").mockImplementation(<T>(key: string) =>
+      key === accountKey(address)
+        ? Promise.reject(new Error("Identity read unavailable"))
+        : get<T>(key),
+    );
+    const result = await client.wallet(address);
+    expect(result.leaderboardName).toBeUndefined();
+    expect(result.accountFreshness).toEqual(baseline.accountFreshness);
+    expect(result.errors).toEqual(baseline.errors);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it.each([false, true])(
     "persists a full snapshot after a revision reset (equal chain clocks: %s)",
     async (equalClocks) => {

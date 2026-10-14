@@ -181,16 +181,18 @@ describe("source-ranked PAPER ownership", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
-  it("does not schedule holders on empty pages or failed source reads, or expand PnL scope", async () => {
+  it("keeps holder enrollment restricted while retaining successful PnL-page identities", async () => {
     const { store, source, fetcher } = await fixture(accounts([]));
     const retain = vi.spyOn(store.following, "retainAccounts");
     const discover = vi.spyOn(store.history, "discoverWallets");
     await source.leaderboard("paper");
+    expect(retain).not.toHaveBeenCalled();
     fetcher.mockResolvedValueOnce(Response.json(accounts()));
     await source.leaderboard("pnl");
+    expect(retain).toHaveBeenCalledExactlyOnceWith(accounts().accounts, now);
     fetcher.mockResolvedValueOnce(new Response(null, { status: 503 }));
     await expect(source.leaderboard("paper", 1)).rejects.toThrow("HTTP 503");
-    expect(retain).not.toHaveBeenCalled();
+    expect(retain).toHaveBeenCalledTimes(1);
     expect(discover).not.toHaveBeenCalled();
     expect(fetcher).toHaveBeenCalledTimes(3);
   });

@@ -950,6 +950,10 @@ export function WalletDrawer({
   if (!address) return null;
   const wallet =
     data?.address.toLowerCase() === address.toLowerCase() ? data : null;
+  const walletName =
+    wallet?.leaderboardName !== undefined
+      ? wallet.leaderboardName?.trim() || null
+      : displayName?.trim() || null;
   const snapshot = wallet?.snapshot;
   const accountFreshness = accountClock(wallet, Boolean(error));
   const paperOwned = totalPaper(wallet);
@@ -971,7 +975,7 @@ export function WalletDrawer({
       clock > Date.now() + 30_000 ||
       Date.now() - clock > (position.status === "open" ? 30_000 : 60_000) ||
       sourceStale;
-    setReceipt(freezePositionReceipt(position, displayName ?? null, stale));
+    setReceipt(freezePositionReceipt(position, walletName, stale));
   };
   function capturePnlCard() {
     if (!wallet) return;
@@ -996,7 +1000,7 @@ export function WalletDrawer({
               stale: metrics.stale || Boolean(resource.error),
             }
           : null,
-        displayName: displayName ?? null,
+        displayName: walletName,
         capturedAt: Date.now(),
       }),
     );
@@ -1063,9 +1067,7 @@ export function WalletDrawer({
             </div>
             <div className="wd-identity-copy">
               <span className="wd-kicker">PUBLIC WALLET</span>
-              <h2 id={titleId}>
-                {displayName?.trim() || shortAddress(address)}
-              </h2>
+              <h2 id={titleId}>{walletName || shortAddress(address)}</h2>
               <button
                 type="button"
                 className="wd-address"
@@ -1088,14 +1090,14 @@ export function WalletDrawer({
                 type="button"
                 className="wd-follow"
                 aria-pressed={followed}
-                aria-label={`${followed ? "Unfollow" : "Follow"} ${displayName?.trim() || shortAddress(address)}`}
+                aria-label={`${followed ? "Unfollow" : "Follow"} ${walletName || shortAddress(address)}`}
                 disabled={followLimit}
                 title={
                   followLimit
                     ? "Following limit reached (100 wallets). Unfollow one to add another."
                     : "Saved on this browser"
                 }
-                onClick={() => toggleFollowing(address, displayName ?? null)}
+                onClick={() => toggleFollowing(address, walletName)}
               >
                 <span aria-hidden="true">{followed ? "★" : "☆"}</span>{" "}
                 {followed
@@ -1293,7 +1295,7 @@ export function WalletDrawer({
                 <WalletMarginRisk
                   key={`margin-${wallet.address}`}
                   wallet={wallet}
-                  displayName={displayName}
+                  displayName={walletName}
                   onPosition={selectPosition}
                   refreshError={Boolean(error)}
                 />

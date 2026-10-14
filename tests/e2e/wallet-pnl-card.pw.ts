@@ -25,7 +25,12 @@ type CardDiagnosticWindow = Window & {
 };
 async function setup(
   page: Page,
-  options: { missing?: boolean; large?: boolean } = {},
+  options: {
+    missing?: boolean;
+    large?: boolean;
+    direct?: boolean;
+    username?: string | null;
+  } = {},
 ) {
   const at = Math.floor(Date.now() / 1000) * 1000;
   await page.clock.install({ time: at });
@@ -100,6 +105,7 @@ async function setup(
   await page.route(`**/api/wallets/${WALLET}`, (route) => {
     state.walletReads++;
     const wallet = walletResponse(WALLET, at);
+    wallet.leaderboardName = options.username;
     wallet.snapshot!.indexedThroughTimestamp = at / 1000;
     wallet.accountFreshness = {
       sourceAt: at,
@@ -146,8 +152,11 @@ async function setup(
     }
     return route.fulfill({ json: metrics });
   });
-  await page.goto("/?view=wallets");
-  await page.getByRole("button", { name: /^Aoi / }).click();
+  if (options.direct) await page.goto(`/?wallet=${WALLET}`);
+  else {
+    await page.goto("/?view=wallets");
+    await page.getByRole("button", { name: /^Aoi / }).click();
+  }
   await expect(
     page.getByRole("region", { name: "Wallet position averages" }),
   ).toContainText(`Closed positions ${options.missing ? 0 : 40}`);
@@ -232,6 +241,47 @@ async function waitForSharePreview(page: Page, dialog: Locator) {
       )
       .toBe(true),
   );
+}
+
+for (const username of ["  moon trader  ", null]) {
+  test(`direct wallet cards use ${username ? "the saved username" : "the address fallback"} and keep hidden identity private`, async ({
+    page,
+  }) => {
+    const state = await setup(page, { direct: true, username });
+    const identity =
+      username?.trim() || `${WALLET.slice(0, 6)}…${WALLET.slice(-4)}`;
+    await expect(
+      page.getByRole("heading", { name: identity, exact: true }),
+    ).toBeVisible();
+    const before = { ...state };
+    const dialog = await openCard(page);
+    await waitForSharePreview(page, dialog);
+    await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
+      "alt",
+      /^WALLET HIDDEN ·/,
+    );
+    await dialog.getByRole("checkbox", { name: /Hide wallet/ }).uncheck();
+    await waitForSharePreview(page, dialog);
+    await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
+      "alt",
+      `${identity} · +$1,250.00 lifetime realized P&L · 6,154,000.00 PAPER owned`,
+    );
+    expect(
+      await page.evaluate(() => (window as CardDiagnosticWindow).cardText),
+    ).toContain(identity);
+    await page.evaluate(() => {
+      (window as CardDiagnosticWindow).cardText = [];
+    });
+    await dialog.getByRole("checkbox", { name: /Hide wallet/ }).check();
+    await waitForSharePreview(page, dialog);
+    const hiddenText = (
+      await page.evaluate(() => (window as CardDiagnosticWindow).cardText)
+    ).join(" ");
+    expect(hiddenText).not.toContain(identity);
+    expect(hiddenText).not.toContain(WALLET);
+    expect(state.walletReads).toBe(before.walletReads);
+    expect(state.metricReads).toBe(before.metricReads);
+  });
 }
 
 test("all three card layouts export exactly the preview with hidden identity and no extra data reads", async ({

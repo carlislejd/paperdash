@@ -319,6 +319,8 @@ export interface PortfolioHistory {
 }
 export interface WalletResponse {
   address: string;
+  /** Retained directory identity; absent when unavailable, null when unnamed. */
+  leaderboardName?: string | null;
   snapshot: WalletSnapshot | null;
   /** Successful check and last indexed account-change clocks in milliseconds.
    * An inactive account's sourceAt can stay old after a fresh successful check. */

@@ -11,8 +11,14 @@ import type {
 } from "../../../packages/shared/src/types.js";
 import { isOlderWalletSnapshot } from "../../../packages/shared/src/wallet-snapshot.js";
 import { config, errorMessage } from "./config.js";
-import { accountsSchema, addressSchema, walletSchema } from "./schemas.js";
+import {
+  accountSchema,
+  accountsSchema,
+  addressSchema,
+  walletSchema,
+} from "./schemas.js";
 import type { Store } from "./store.js";
+import { accountKey } from "./following-store.js";
 import { activityDelayed } from "./activity-health.js";
 import { readWalletMarginRisk } from "./wallet-risk.js";
 import {
@@ -24,6 +30,10 @@ import {
 } from "./coordination.js";
 
 const localCoordinators = new WeakMap<Store, RequestCoordinator>();
+const walletIdentitySchema = accountSchema.pick({
+  address: true,
+  leaderboardName: true,
+});
 
 export class UpstreamError extends Error {
   constructor(
@@ -533,21 +543,22 @@ export class Upstream {
       });
       const result = await this.cached(path, 20000, async () => {
         const value = await this.request(path, accountsSchema);
-        if (metric === "paper" && value.accounts.length) {
+        if (value.accounts.length) {
           // Reuse this already-requested page. Only the shared cache loader
-          // retains/promotes it; additional viewers and cache hits do no work.
-          const holders = [
+          // retains it; additional viewers and cache hits do no work.
+          const identities = [
             ...new Map(
               value.accounts
                 .slice(0, 25)
                 .map((account) => [account.address, account]),
             ).values(),
           ];
-          await this.store.following.retainAccounts(holders, Date.now());
-          await this.store.history.discoverWallets(
-            holders.map((account) => account.address),
-            10,
-          );
+          await this.store.following.retainAccounts(identities, Date.now());
+          if (metric === "paper")
+            await this.store.history.discoverWallets(
+              identities.map((account) => account.address),
+              10,
+            );
         }
         return value;
       });
@@ -820,6 +831,17 @@ export class Upstream {
   async wallet(address: string): Promise<WalletResponse> {
     address = addressSchema.parse(address);
     await this.store.history.ensureWallet(address, 30);
+    // Directory identity is independent from account/history freshness. Use only
+    // retained data; a missing name must never add a foreground source request.
+    const identity = this.store
+      .get<unknown>(accountKey(address))
+      .then((saved) => {
+        const parsed = walletIdentitySchema.safeParse(saved?.value);
+        return parsed.success && parsed.data.address === address
+          ? parsed.data.leaderboardName?.trim() || null
+          : undefined;
+      })
+      .catch(() => undefined);
     const results = await Promise.allSettled([
       this.snapshot(address, false, 1500),
       this.history<Cashflow>(address, "cashflows", undefined, false),
@@ -893,6 +915,7 @@ export class Upstream {
     );
     return {
       address,
+      leaderboardName: await identity,
       accountFreshness,
       marginRisk,
       snapshot: snapshot.status === "fulfilled" ? snapshot.value.value : null,

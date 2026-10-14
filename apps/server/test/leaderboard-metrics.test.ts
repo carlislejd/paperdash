@@ -7,6 +7,7 @@ import {
 } from "../src/analytics-store.js";
 import { createStore, type Store } from "../src/store.js";
 import { RequestGate, Upstream } from "../src/upstream.js";
+import { accountKey } from "../src/following-store.js";
 
 const now = 1_800_000_030_000,
   day = 86400000;
@@ -34,7 +35,7 @@ function trade(id: string, fields: Partial<TradeEvent> = {}): TradeEvent {
     ...fields,
   };
 }
-async function fixture() {
+async function fixture(name: string | null = null) {
   const store = await createStore({ memory: true, databaseUrl: "" });
   stores.push(store);
   await store.put("collector-heartbeat", { at: now, errors: {} });
@@ -53,7 +54,7 @@ async function fixture() {
       },
       accounts: [1, 2].map((n) => ({
         address: wallet(n),
-        leaderboardName: null,
+        leaderboardName: name,
         currentBalance: "1",
         currentQueued: "0",
         currentOpenNotional: "0",
@@ -78,6 +79,31 @@ async function fixture() {
 }
 
 describe("bounded leaderboard activity enrichment", () => {
+  it("retains visible PnL leaderboard names once for cached wallet identity without holder enrollment", async () => {
+    const { store, source, fetcher } = await fixture("Named trader");
+    const retain = vi.spyOn(store.following, "retainAccounts");
+    const discover = vi.spyOn(store.history, "discoverWallets");
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => source.leaderboard("pnl")),
+    );
+    expect(
+      results.every(
+        (result) => result.rows[0].leaderboardName === "Named trader",
+      ),
+    ).toBe(true);
+    expect(
+      (
+        await store.get<{ address: string; leaderboardName: string }>(
+          accountKey(wallet(1)),
+        )
+      )?.value,
+    ).toMatchObject({ address: wallet(1), leaderboardName: "Named trader" });
+    await source.leaderboard("pnl");
+    expect(retain).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(discover).not.toHaveBeenCalled();
+  });
+
   it("reconciles count, volume and asset sets at both exact 24h edges using source multiplicity", async () => {
     const { store } = await fixture();
     for (const value of [
