@@ -3,10 +3,14 @@ import type { PositionMetricsResponse } from "../../../../packages/shared/src/po
 import { formatHoldingTime, formatLeverage } from "./position-format";
 import { formatRawUsd, shortAddress } from "./format";
 import { walletAccountClock } from "./wallet-account-clock";
+import {
+  walletPerformance,
+  type WalletPerformance,
+} from "./wallet-performance";
 
 export const PNL_CARD_ART = "/art/paperclub-social-v4.png";
 export const PNL_CARD_PNL_LABEL = "Total P&L";
-export const PNL_CARD_PNL_NOTE = "Lifetime realized trading + rewards";
+export { WALLET_PERFORMANCE_NOTE as PNL_CARD_PNL_NOTE } from "./wallet-performance";
 export const PNL_CARD_LAYOUTS = [
   {
     id: "gallery",
@@ -43,19 +47,12 @@ export interface PnlCardOptions {
   layout: PnlCardLayout;
   hideWallet: boolean;
 }
-export interface PnlCardModel {
+export interface PnlCardModel extends WalletPerformance {
   layout: PnlCardLayout;
   width: number;
   height: number;
   identity: string;
   address: string | null;
-  pnl: string;
-  pnlTone: "positive" | "negative" | "neutral";
-  pnlNote: string;
-  tradingPnl: string;
-  tradingPnlTone: "positive" | "negative" | "neutral";
-  rewards: string;
-  rewardsNote: string;
   paper: string;
   stats: { label: string; value: string; detail?: string }[];
   accountNote: string;
@@ -76,21 +73,6 @@ function signedUsd(raw: string | null | undefined): string {
     ? `+${formatted}`
     : formatted;
 }
-function rawAmount(
-  raw: string | null | undefined,
-  signed = false,
-): bigint | null {
-  return raw != null && (signed ? /^-?\d+$/ : /^\d+$/).test(raw)
-    ? BigInt(raw)
-    : null;
-}
-function pnlTone(raw: bigint | null): PnlCardModel["pnlTone"] {
-  return raw === null || raw === 0n
-    ? "neutral"
-    : raw < 0n
-      ? "negative"
-      : "positive";
-}
 function stamp(at: number | null | undefined): string {
   return typeof at === "number" &&
     Number.isSafeInteger(at) &&
@@ -108,33 +90,8 @@ export function walletPnlCardModel(
   const { wallet, metrics, capturedAt } = snapshot;
   const account = wallet.snapshot;
   const layout = PNL_CARD_LAYOUTS.find((item) => item.id === options.layout)!;
-  const rawTradingPnl = rawAmount(account?.lifetime.realizedPnlRaw, true);
-  const claimed = rawAmount(account?.lifetime.paperRewardsClaimedRaw);
-  const pending = account ? rawAmount(wallet.stakingRewards?.pendingRaw) : null;
-  const rawRewards =
-    claimed !== null && pending !== null ? claimed + pending : null;
-  const rawPnl =
-    rawTradingPnl !== null && rawRewards !== null
-      ? rawTradingPnl + rawRewards
-      : null;
-  const rewardsDelayed =
-    wallet.stakingRewards?.stale ||
-    [wallet.stakingRewards?.receivedAt, wallet.stakingRewards?.sourceAt].some(
-      (at) =>
-        at == null ||
-        !Number.isSafeInteger(at) ||
-        at <= 0 ||
-        at > capturedAt + 30_000 ||
-        capturedAt - at > 30_000,
-    );
-  const rewardsNote =
-    pending === null
-      ? claimed === null
-        ? "Claimed + pending unavailable"
-        : `Claimed ${signedUsd(claimed.toString())} · pending unavailable`
-      : claimed === null
-        ? "Claimed rewards unavailable"
-        : `Claimed + pending · USDC${rewardsDelayed ? " · delayed" : ""}`;
+  const performance = walletPerformance(wallet, capturedAt);
+  const { pnl, tradingPnl, rewards, rewardsNote } = performance;
   const paper =
     account &&
     /^\d+$/.test(account.paper.balance) &&
@@ -158,9 +115,6 @@ export function walletPnlCardModel(
   const identity = options.hideWallet
     ? "WALLET HIDDEN"
     : snapshot.displayName?.trim().slice(0, 64) || shortAddress(wallet.address);
-  const pnl = signedUsd(rawPnl?.toString());
-  const tradingPnl = signedUsd(rawTradingPnl?.toString());
-  const rewards = signedUsd(rawRewards?.toString());
   const link = new URL("https://papertrade.club/");
   if (address) link.searchParams.set("wallet", address.toLowerCase());
   return {
@@ -169,19 +123,8 @@ export function walletPnlCardModel(
     height: layout.height,
     identity,
     address,
-    pnl,
-    pnlNote:
-      pending === null
-        ? "Pending rewards unavailable"
-        : claimed === null
-          ? "Claimed rewards unavailable"
-          : PNL_CARD_PNL_NOTE,
-    tradingPnl,
-    tradingPnlTone: pnlTone(rawTradingPnl),
-    rewards,
-    rewardsNote,
+    ...performance,
     paper,
-    pnlTone: pnlTone(rawPnl),
     stats: [
       {
         label: "Recorded closed trades",

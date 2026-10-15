@@ -35,7 +35,8 @@ import {
 } from "../lib/position-receipt";
 import { PositionReceiptDialog } from "./PositionReceiptDialog";
 import { WalletPnlCardDialog } from "./WalletPnlCardDialog";
-import type { PnlCardSnapshot } from "../lib/wallet-pnl-card";
+import { PNL_CARD_ART, type PnlCardSnapshot } from "../lib/wallet-pnl-card";
+import { walletPerformance } from "../lib/wallet-performance";
 import type { PositionMetricsResponse } from "../../../../packages/shared/src/position-metrics";
 import { analyticsResources } from "../lib/analytics-resource";
 import {
@@ -57,7 +58,7 @@ const walletCache = new Map<string, WalletResponse>();
 // Local delivery time only: history/source timestamps cannot throttle hovers.
 const walletCacheFetchedAt = new WeakMap<WalletResponse, number>();
 const FOCUSABLE =
-  'button:not(:disabled), a[href], input:not(:disabled), [tabindex="0"]';
+  'button:not(:disabled), a[href], input:not(:disabled), summary, [tabindex="0"]';
 const REFRESH_INTERVAL = 15_000;
 const ACCOUNT_RECHECK_INTERVAL = 2_000;
 let prefetch: {
@@ -276,7 +277,7 @@ function paperAmount(raw: string | null | undefined): string {
   const amount = exactAmount(raw);
   return amount === "Unavailable"
     ? "—"
-    : amount.replace(/(\.\d{0,2})\d+$/, "$1").replace(/\.$/, "");
+    : amount.replace(/(\.\d{2})\d+$/, "$1");
 }
 
 function totalPaper(wallet: WalletResponse | null): string | null {
@@ -1055,6 +1056,13 @@ export function WalletDrawer({
   const snapshot = wallet?.snapshot;
   const accountFreshness = accountClock(wallet, Boolean(error));
   const paperOwned = totalPaper(wallet);
+  const availableBalance = formatRawUsd(snapshot?.balance ?? null);
+  const paperOwnedDisplay = paperAmount(paperOwned);
+  const performance = wallet ? walletPerformance(wallet) : null;
+  const activeBalances = [
+    { label: "Locked margin", raw: snapshot?.locked },
+    { label: "Queued claims", raw: snapshot?.queued },
+  ].filter(({ raw }) => raw != null && /^\d+$/.test(raw) && BigInt(raw) > 0n);
   const pendingRewards =
     snapshot &&
     wallet?.stakingRewards?.pendingRaw != null &&
@@ -1190,6 +1198,8 @@ export function WalletDrawer({
                     : ""}
               </span>
               {copyError && <code className="wd-full-address">{address}</code>}
+            </div>
+            <div className="wd-identity-actions">
               <button
                 type="button"
                 className="wd-follow"
@@ -1249,10 +1259,53 @@ export function WalletDrawer({
               <p>Loading wallet…</p>
             </div>
           ) : (
-            wallet && (
+            wallet && performance && (
               <>
+                <section
+                  className="wd-performance"
+                  aria-label="Wallet performance"
+                >
+                  <div className="wd-performance-main">
+                    <div className="wd-performance-copy">
+                      <span className="wd-kicker">TOTAL P&amp;L</span>
+                      <div
+                        className={`wd-performance-value wd-tone-${performance.pnlTone}${performance.pnl.length > 15 ? " wd-performance-value-long" : ""}`}
+                      >
+                        {performance.pnl}
+                      </div>
+                      <p>{performance.pnlNote}</p>
+                    </div>
+                    <div className="wd-performance-art" aria-hidden="true">
+                      <img src={PNL_CARD_ART} alt="" decoding="async" />
+                    </div>
+                  </div>
+                  <dl
+                    className={`wd-performance-breakdown${Math.max(performance.tradingPnl.length, performance.rewards.length) > 14 ? " wd-breakdown-long" : ""}`}
+                  >
+                    <div>
+                      <dt>Trading P&amp;L</dt>
+                      <dd className={`wd-tone-${performance.tradingPnlTone}`}>
+                        {performance.tradingPnl}
+                      </dd>
+                      <span>Realized · lifetime</span>
+                    </div>
+                    <div>
+                      <dt>Rewards</dt>
+                      <dd
+                        className={
+                          performance.rewards.startsWith("+")
+                            ? "wd-tone-positive"
+                            : undefined
+                        }
+                      >
+                        {performance.rewards}
+                      </dd>
+                      <span>{performance.rewardsNote}</span>
+                    </div>
+                  </dl>
+                </section>
                 {partial && (
-                  <div className="wd-notice" role="status">
+                  <div className="wd-notice wd-source-notice" role="status">
                     {!snapshot
                       ? isCollecting(snapshotFailure)
                         ? "Account snapshot is being collected. Retained history is shown below."
@@ -1264,23 +1317,6 @@ export function WalletDrawer({
                           : "Some sources are unavailable. Available records are shown below."}
                   </div>
                 )}
-                <section
-                  className="wd-deposit-hero"
-                  aria-label="Lifetime credited deposits"
-                >
-                  <span className="wd-kicker">TOTAL CREDITED DEPOSITS</span>
-                  <div
-                    className="wd-hero-value"
-                    title={`${exactAmount(snapshot?.lifetime.depositedRaw)} USDC`}
-                  >
-                    {formatRawUsd(snapshot?.lifetime.depositedRaw ?? null)}
-                    <span>USDC</span>
-                  </div>
-                  <p>Lifetime credit reported by Papertrade.</p>
-                  <span className="wd-hero-star" aria-hidden="true">
-                    ✳
-                  </span>
-                </section>
                 <div
                   className={`wd-account-freshness${accountFreshness.stale ? " wd-account-delayed" : ""}`}
                   role="status"
@@ -1306,26 +1342,20 @@ export function WalletDrawer({
                     </span>
                   )}
                 </div>
-                <dl className="wd-metrics">
+                <dl
+                  className={`wd-metrics${Math.max(availableBalance.length, paperOwnedDisplay.length) > 14 ? " wd-metrics-long" : ""}`}
+                >
                   <div>
                     <dt>Available balance</dt>
                     <dd title={`${exactAmount(snapshot?.balance)} USDC`}>
-                      {formatRawUsd(snapshot?.balance ?? null)}
+                      {availableBalance}
                     </dd>
-                  </div>
-                  <div>
-                    <dt>Locked margin</dt>
-                    <dd>{formatRawUsd(snapshot?.locked ?? null)}</dd>
-                  </div>
-                  <div>
-                    <dt>Queued claims</dt>
-                    <dd>{formatRawUsd(snapshot?.queued ?? null)}</dd>
-                    <span>Awaiting settlement</span>
+                    <span>USDC · available to trade</span>
                   </div>
                   <div>
                     <dt>Total PAPER owned</dt>
                     <dd title={`${exactAmount(paperOwned)} PAPER`}>
-                      {paperAmount(paperOwned)}
+                      {paperOwnedDisplay}
                     </dd>
                     <span>
                       {snapshot
@@ -1334,19 +1364,58 @@ export function WalletDrawer({
                     </span>
                   </div>
                 </dl>
-                <div className="wd-position-note">
-                  <span>
-                    Realized trading P&amp;L{" "}
-                    <strong>
-                      {formatRawUsd(snapshot?.lifetime.realizedPnlRaw ?? null)}
+                {activeBalances.length > 0 && (
+                  <dl className="wd-active-balances">
+                    {activeBalances.map(({ label, raw }) => (
+                      <div key={label}>
+                        <dt>{label}</dt>
+                        <dd title={`${exactAmount(raw)} USDC`}>
+                          {formatRawUsd(raw)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                <div className="wd-account-context">
+                  <section aria-label="Lifetime credited deposits">
+                    <span>Total credited deposits</span>
+                    <strong
+                      title={`${exactAmount(snapshot?.lifetime.depositedRaw)} USDC`}
+                    >
+                      {formatRawUsd(snapshot?.lifetime.depositedRaw ?? null)}
                     </strong>
-                  </span>
+                  </section>
                   <span>
                     {snapshot
                       ? `${snapshot.openPositions.length} open position${snapshot.openPositions.length === 1 ? "" : "s"}`
                       : "Positions unavailable"}
                   </span>
                 </div>
+                <details className="wd-account-details" key={wallet.address}>
+                  <summary>
+                    Account details <span aria-hidden="true">+</span>
+                  </summary>
+                  <dl>
+                    <div>
+                      <dt>Locked margin</dt>
+                      <dd>{formatRawUsd(snapshot?.locked ?? null)}</dd>
+                    </div>
+                    <div>
+                      <dt>
+                        Queued claims <span>Awaiting settlement</span>
+                      </dt>
+                      <dd>{formatRawUsd(snapshot?.queued ?? null)}</dd>
+                    </div>
+                    <div>
+                      <dt>Lifetime withdrawals</dt>
+                      <dd>{formatRawUsd(snapshot?.lifetime.withdrawnRaw ?? null)}</dd>
+                    </div>
+                    <div>
+                      <dt>Lifetime trading fees</dt>
+                      <dd>{formatRawUsd(snapshot?.lifetime.feesPaidRaw ?? null)}</dd>
+                    </div>
+                  </dl>
+                </details>
                 <section className="wd-staking" aria-label="PAPER staking">
                   <div className="wd-section-heading">
                     <h3>PAPER staking</h3>

@@ -617,7 +617,9 @@ test("stalled artwork can retry without changing frozen data, privacy or layout"
   ).toBe(0);
   releaseArt!();
   await dialog.getByRole("button", { name: "Try again", exact: true }).click();
-  await expect.poll(() => artRequests).toBe(2);
+  // The drawer also displays this artwork, so its in-flight image request
+  // survives the card timeout and can satisfy the retry without another read.
+  expect(artRequests).toBe(1);
   await expectPreviewReady(
     page,
     dialog.getByRole("button", { name: "Download PNG" }),
