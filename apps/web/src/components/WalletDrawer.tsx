@@ -63,7 +63,11 @@ const ACCOUNT_RECHECK_INTERVAL = 2_000;
 let prefetch: {
   address: string;
   timer: number;
+  cancelTimer?: number;
   controller: AbortController;
+  claimed: boolean;
+  promise?: Promise<WalletResponse>;
+  start: () => Promise<WalletResponse>;
 } | null = null;
 
 function cacheWallet(wallet: WalletResponse) {
@@ -108,35 +112,84 @@ export function prefetchWallet(address: string): () => void {
       Date.now() - (walletCacheFetchedAt.get(cached) ?? 0) < REFRESH_INTERVAL)
   )
     return () => {};
-  if (prefetch?.address === key) return () => {};
+  if (prefetch?.address === key && !prefetch.controller.signal.aborted) {
+    const entry = prefetch;
+    window.clearTimeout(entry.cancelTimer);
+    return () => cancelWalletPrefetch(entry);
+  }
   if (prefetch) {
     window.clearTimeout(prefetch.timer);
+    window.clearTimeout(prefetch.cancelTimer);
     prefetch.controller.abort();
   }
   const controller = new AbortController();
-  const timer = window.setTimeout(() => {
-    const timeout = window.setTimeout(() => controller.abort(), 12_000);
-    fetchJson<WalletResponse>(`/api/wallets/${address}`, {
-      signal: controller.signal,
-    })
-      .then((wallet) => {
-        if (!controller.signal.aborted && wallet.address.toLowerCase() === key)
-          cacheWallet(wallet);
+  const entry: NonNullable<typeof prefetch> = {
+    address: key,
+    timer: 0,
+    controller,
+    claimed: false,
+    start() {
+      if (entry.promise) return entry.promise;
+      const timeout = window.setTimeout(
+        () => controller.abort("timeout"),
+        12_000,
+      );
+      entry.promise = fetchJson<WalletResponse>(`/api/wallets/${address}`, {
+        signal: controller.signal,
       })
-      .catch(() => {
-        /* Prefetch is optional; the drawer supplies visible error recovery. */
-      })
-      .finally(() => {
-        window.clearTimeout(timeout);
-        if (prefetch?.controller === controller) prefetch = null;
-      });
-  }, 70);
-  prefetch = { address: key, timer, controller };
-  return () => {
-    window.clearTimeout(timer);
-    controller.abort();
-    if (prefetch?.controller === controller) prefetch = null;
+        .then((wallet) => {
+          if (wallet.address.toLowerCase() !== key)
+            throw new Error(
+              "Wallet response did not match the requested address.",
+            );
+          if (!controller.signal.aborted) cacheWallet(wallet);
+          return wallet;
+        })
+        .finally(() => {
+          window.clearTimeout(timeout);
+          window.clearTimeout(entry.cancelTimer);
+          if (prefetch?.controller === controller) prefetch = null;
+        });
+      // An unclaimed prefetch has no visible error UI; an adopting drawer still
+      // receives the original rejection and uses its normal recovery behavior.
+      void entry.promise.catch(() => {});
+      return entry.promise;
+    },
   };
+  entry.timer = window.setTimeout(() => {
+    void entry.start();
+  }, 70);
+  prefetch = entry;
+  return () => cancelWalletPrefetch(entry);
+}
+
+function cancelWalletPrefetch(entry: NonNullable<typeof prefetch>) {
+  if (entry.claimed) return;
+  window.clearTimeout(entry.timer);
+  window.clearTimeout(entry.cancelTimer);
+  const cancel = () => {
+    if (entry.claimed) return;
+    entry.controller.abort();
+    if (prefetch === entry) prefetch = null;
+  };
+  // Opening the drawer moves focus away from its trigger. Give its effect a
+  // brief handoff window to adopt an already-started read before aborting it.
+  if (entry.promise) entry.cancelTimer = window.setTimeout(cancel, 100);
+  else cancel();
+}
+
+function takeWalletPrefetch(address: string) {
+  const entry = prefetch;
+  if (
+    entry?.address !== address.toLowerCase() ||
+    entry.controller.signal.aborted
+  )
+    return null;
+  entry.claimed = true;
+  window.clearTimeout(entry.timer);
+  window.clearTimeout(entry.cancelTimer);
+  prefetch = null;
+  return { promise: entry.start(), controller: entry.controller };
 }
 
 // Source clocks belong to the page that observed each row, even after pagination.
@@ -578,6 +631,7 @@ export function WalletDrawer({
   const pageController = useRef<AbortController | null>(null);
   const paginationInFlight = useRef(false);
   const loadedPages = useRef({ cashflows: false, trades: false });
+  const loadContext = useRef<{ address: string; attempt: number } | null>(null);
   const dataRef = useRef(data);
   dataRef.current = data;
   onCloseRef.current = onClose;
@@ -659,9 +713,18 @@ export function WalletDrawer({
   useEffect(() => {
     if (!address) {
       setData(null);
+      loadContext.current = null;
       return;
     }
-    const cached = walletCache.get(address.toLowerCase());
+    const key = address.toLowerCase();
+    const forced =
+      loadContext.current?.address === key &&
+      loadContext.current.attempt !== attempt;
+    loadContext.current = { address: key, attempt };
+    const cached = walletCache.get(key);
+    const fetchedAt = cached ? (walletCacheFetchedAt.get(cached) ?? 0) : 0;
+    const reuseCached =
+      !forced && cached && Date.now() - fetchedAt < REFRESH_INTERVAL;
     setData((current) =>
       current?.address.toLowerCase() === address.toLowerCase()
         ? current
@@ -701,11 +764,16 @@ export function WalletDrawer({
       timeout = window.setTimeout(() => request.abort("timeout"), 20_000);
       setLoading(true);
       let accountRefreshPending = false;
+      const adopted =
+        !background && !forced ? takeWalletPrefetch(address!) : null;
+      const abortAdopted = () =>
+        adopted?.controller.abort(request.signal.reason);
+      request.signal.addEventListener("abort", abortAdopted, { once: true });
       try {
-        const response = await fetchJson<WalletResponse>(
-          `/api/wallets/${address}`,
-          { signal: request.signal },
-        );
+        const response = await (adopted?.promise ??
+          fetchJson<WalletResponse>(`/api/wallets/${address}`, {
+            signal: request.signal,
+          }));
         if (!active || request.signal.aborted) return;
         if (response.address.toLowerCase() !== address!.toLowerCase())
           throw new Error(
@@ -808,6 +876,7 @@ export function WalletDrawer({
         )
           setError("This wallet could not be refreshed. Please try again.");
       } finally {
+        request.signal.removeEventListener("abort", abortAdopted);
         window.clearTimeout(timeout);
         if (active && controller === request) {
           controller = null;
@@ -828,10 +897,31 @@ export function WalletDrawer({
         }
       }
     }
-    void refresh();
-    const interval = window.setInterval(() => {
-      void refresh(true);
-    }, REFRESH_INTERVAL);
+    let interval: number | undefined;
+    let firstRefresh: number | undefined;
+    const startPolling = () => {
+      interval = window.setInterval(() => {
+        void refresh(true);
+      }, REFRESH_INTERVAL);
+    };
+    if (reuseCached) {
+      lastRequested = fetchedAt;
+      setLoading(false);
+      // A cache hit keeps its original expiry and source clocks. Opening the
+      // drawer must not grant a prefetched response another full fresh interval.
+      firstRefresh = window.setTimeout(() => {
+        void refresh(true);
+        startPolling();
+      }, Math.max(0, fetchedAt + REFRESH_INTERVAL - Date.now()));
+      if (cached.accountFreshness?.refreshing)
+        accountRecheck = window.setTimeout(() => {
+          accountRecheck = undefined;
+          void refresh(true, true);
+        }, ACCOUNT_RECHECK_INTERVAL);
+    } else {
+      void refresh();
+      startPolling();
+    }
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
         clearAccountRecheck();
@@ -843,6 +933,7 @@ export function WalletDrawer({
     return () => {
       active = false;
       window.clearTimeout(timeout);
+      window.clearTimeout(firstRefresh);
       clearAccountRecheck();
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);

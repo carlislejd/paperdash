@@ -397,7 +397,7 @@ export function AssetsView({
   onWallet: (address: string) => void;
 }) {
   const { data, error, loading, refresh } =
-    useAnalytics<AssetsResponse>("/api/assets");
+    useAnalytics<AssetsResponse>("/api/assets", { liveAsset: instrument });
   const selected = data?.assets.find(
     (asset) => asset.instrument === instrument,
   );

@@ -233,10 +233,18 @@ export class Collector {
   private streamSafetyBlocked = false;
   private lastSubscribedAt: number | null = null;
   private statusPersistence: Promise<void> = Promise.resolve();
+  private heartbeatAt = -Infinity;
+  private heartbeatSignature = "";
   private release: (() => Promise<void>) | null = null;
   private stream: Overview["status"]["stream"] = "connecting";
   private errors = new Map<string, string>();
   private chain: Promise<void> = Promise.resolve();
+  private publication: Promise<void> | null = null;
+  private publicationRequested = false;
+  private overviewSourcesDirty = true;
+  private overviewSnapshot: { overview: Overview; cursor: string } | null = null;
+  private overviewSignature = "";
+  private overviewSavedAt = -Infinity;
   private intake: TradeIntake;
   private intakeState: IntakeState | null = null;
   private intakePublication: Promise<void> | null = null;
@@ -262,6 +270,9 @@ export class Collector {
     this.intake = new TradeIntake(store, {
       change: (state) => {
         this.intakeState = state;
+        // A lost commit acknowledgement can report a retry after a trade was
+        // stored. Reconcile that uncertain write even without committed().
+        if (state.retrying) this.overviewSourcesDirty = true;
         if (state.error) this.errors.set("trade-ingestion", state.error);
         else this.errors.delete("trade-ingestion");
         if (state.gap)
@@ -271,7 +282,12 @@ export class Collector {
           );
         this.publishIntakeStatus();
       },
-      committed: () => this.bus.notify(),
+      committed: () => {
+        // Trade events are already committed and can be replayed immediately.
+        // The next intake status flush folds the whole batch into one snapshot.
+        this.overviewSourcesDirty = true;
+        this.bus.notify();
+      },
       overflow: () => {
         this.intakePausedSubscription = true;
         this.subscription?.unsubscribe();
@@ -341,61 +357,79 @@ export class Collector {
       const failed = results.find((result) => result.status === "rejected");
       if (failed?.status === "rejected") throw failed.reason;
     });
-    this.loop("summary", config.summaryInterval, async () => {
-      const summary = await this.upstream.request(
-        "/query/protocol/summary",
-        summarySchema,
-      );
-      await this.retainSummary(summary);
-    });
+    this.loop(
+      "summary",
+      config.summaryInterval,
+      async () => {
+        const summary = await this.upstream.request(
+          "/query/protocol/summary",
+          summarySchema,
+        );
+        await this.retainSummary(summary);
+      },
+      true,
+    );
     this.loop("wallet-summaries", 5000, () =>
       refreshWatchedWallet(this.store, this.upstream),
     );
-    this.loop("directory", config.directoryInterval, () =>
-      refreshDirectoryHead(this.store, this.upstream),
+    this.loop(
+      "directory",
+      config.directoryInterval,
+      () => refreshDirectoryHead(this.store, this.upstream),
+      true,
     );
-    this.loop("directory-sweep", config.directoryInterval, async () => {
-      const savedPage = await this.store.get<number>("directory-scan-page");
-      const page =
-        Number.isSafeInteger(savedPage?.value) && savedPage!.value >= 1
-          ? savedPage!.value
-          : 1;
-      const path = canonicalPath("/state/leaderboard/accounts", {
-        window: "all",
-        sortKey: "currentBalance",
-        sortDir: "desc",
-        page,
-        pageSize: 25,
-      });
-      const accounts = await this.upstream.request(path, accountsSchema);
-      await this.store.following.retainAccounts(
-        accounts.accounts,
-        Date.now(),
-        true,
-      );
-      await this.store.put("account-count", accounts.summary.uniqueAccounts);
-      await this.store.put(`cache:${path}`, accounts);
-      await this.store.history.discoverWallets(
-        accounts.accounts.map((account) => account.address),
-      );
-      // Directory ordering can move during a sweep; repeat bounded sweeps and
-      // also discover active wallets from the trade stream. This is not an
-      // assertion that a mutable paginated directory has perfect coverage.
-      await this.store.put(
-        "directory-scan-page",
-        page + 1 < accounts.pageInfo.totalPages ? page + 1 : 1,
-      );
-    });
-    this.loop("history", config.historyInterval, async () => {
-      const h = await this.upstream.request(
-        // Reconcile the whole visible daily window in one source generation.
-        // Live summary samples still preserve minute-resolution TVL, and older
-        // retained minute history is never deleted by this hourly upsert.
-        "/query/protocol/history?interval=1h",
-        protocolHistorySchema,
-      );
-      await retainProtocolHistory(this.store, h);
-    });
+    this.loop(
+      "directory-sweep",
+      config.directoryInterval,
+      async () => {
+        const savedPage = await this.store.get<number>("directory-scan-page");
+        const page =
+          Number.isSafeInteger(savedPage?.value) && savedPage!.value >= 1
+            ? savedPage!.value
+            : 1;
+        const path = canonicalPath("/state/leaderboard/accounts", {
+          window: "all",
+          sortKey: "currentBalance",
+          sortDir: "desc",
+          page,
+          pageSize: 25,
+        });
+        const accounts = await this.upstream.request(path, accountsSchema);
+        await this.store.following.retainAccounts(
+          accounts.accounts,
+          Date.now(),
+          true,
+        );
+        await this.store.put("account-count", accounts.summary.uniqueAccounts);
+        await this.store.put(`cache:${path}`, accounts);
+        await this.store.history.discoverWallets(
+          accounts.accounts.map((account) => account.address),
+        );
+        // Directory ordering can move during a sweep; repeat bounded sweeps and
+        // also discover active wallets from the trade stream. This is not an
+        // assertion that a mutable paginated directory has perfect coverage.
+        await this.store.put(
+          "directory-scan-page",
+          page + 1 < accounts.pageInfo.totalPages ? page + 1 : 1,
+        );
+      },
+      true,
+    );
+    this.loop(
+      "history",
+      config.historyInterval,
+      async () => {
+        const h = await this.upstream.request(
+          // Reconcile the whole visible daily window in one source generation.
+          // Live summary samples still preserve minute-resolution TVL, and older
+          // retained minute history is never deleted by this hourly upsert.
+          "/query/protocol/history?interval=1h",
+          protocolHistorySchema,
+        );
+        await retainProtocolHistory(this.store, h);
+      },
+      true,
+    );
     const historyIndexer = new HistoryIndexer(
       this.store.history,
       (path, schema) => this.upstream.request(path, schema),
@@ -545,7 +579,7 @@ export class Collector {
     // reconnection for temporary failures. Persist arrival order, not DB timing.
     this.track(
       this.persistStatus(diagnostic)
-        .then(() => this.publish())
+        .then(() => this.publish(false))
         .catch(() => {
           console.error("Trade stream status persistence failed.");
         }),
@@ -556,11 +590,30 @@ export class Collector {
     const run = this.statusPersistence.then(async () => {
       if (diagnostic)
         await this.store.put("stream-diagnostics", diagnostic, diagnostic.at);
-      await this.store.put("collector-heartbeat", {
-        at: Date.now(),
-        errors: Object.fromEntries(this.errors),
-        ...(this.intakeState ? { tradeIntake: this.intakeState } : {}),
+      const at = Date.now();
+      const errors = Object.fromEntries(this.errors);
+      // Persist health transitions immediately. Queue counters remain useful in
+      // the periodic heartbeat without rewriting it on every idle intake tick.
+      const signature = digest({
+        errors,
+        stream: this.stream,
+        retrying: this.intakeState?.retrying,
+        admissionPaused: this.intakeState?.admissionPaused,
+        gap: this.intakeState?.gap,
       });
+      if (signature === this.heartbeatSignature && at - this.heartbeatAt < 5000)
+        return;
+      await this.store.put(
+        "collector-heartbeat",
+        {
+          at,
+          errors,
+          ...(this.intakeState ? { tradeIntake: this.intakeState } : {}),
+        },
+        at,
+      );
+      this.heartbeatAt = at;
+      this.heartbeatSignature = signature;
     });
     this.statusPersistence = run.catch(() => {});
     return run;
@@ -575,7 +628,12 @@ export class Collector {
     this.panels.health(this.errors, this.stream === "connected");
     for (const publication of publications) this.panels.committed(publication);
   }
-  private loop(name: string, interval: number, work: () => Promise<void>) {
+  private loop(
+    name: string,
+    interval: number,
+    work: () => Promise<void>,
+    overviewSource = false,
+  ) {
     let retryAt = 0;
     const rememberDeadline = (error: unknown) => {
       if (
@@ -616,10 +674,14 @@ export class Collector {
         rememberDeadline(error);
         this.errors.set(name, errorMessage(error));
         console.error(`Collector ${name}:`, errorMessage(error));
+      } finally {
+        // Source work can commit partially before failing. Preserve its
+        // invalidation even if the following heartbeat write also fails.
+        if (overviewSource) this.overviewSourcesDirty = true;
       }
       try {
         await this.persistStatus();
-        await this.publish();
+        await this.publish(false);
       } catch (error) {
         failed = true;
         rememberDeadline(error);
@@ -645,7 +707,7 @@ export class Collector {
       do {
         this.intakeDirty = false;
         await this.persistStatus();
-        await this.publish();
+        await this.publish(false);
       } while (this.intakeDirty && !this.stopped);
     })()
       .catch(() => {
@@ -684,91 +746,156 @@ export class Collector {
     await run;
     if (!this.stopped) await retainProtocolChartSummary(this.store, summary);
   }
-  private publish(): Promise<void> {
+  private publish(refreshSources = true): Promise<void> {
+    if (refreshSources) this.overviewSourcesDirty = true;
+    this.publicationRequested = true;
+    if (this.publication) return this.publication;
     const run = this.chain.then(async () => {
-      if (this.stopped) return;
-      // Any financial notification at or below this cursor committed before all
-      // following reads, so a client can replay strictly after this watermark.
-      const eventCursor = (await this.store.eventBounds()).latest ?? "0";
-      const [summary, accountCount, upstreamPoints, observed, trades] =
-        await Promise.all([
-          this.store.get<ProtocolSummary>("summary"),
-          this.store.get<number>("account-count"),
-          this.store.history.protocolPoints(),
-          this.store.samples(),
-          this.store.trades(100),
-        ]);
-      const points = new Map(
-        upstreamPoints.map((point) => [point.time, point]),
-      );
-      const sourceTail = upstreamPoints.at(-1)?.time ?? 0;
-      // Keep the retained historical baseline while appending minute samples
-      // observed since it. Hourly reconciliation no longer erases the chart
-      // after a three-minute freshness timer.
-      for (const point of observed)
-        if (point.time >= sourceTail || !points.has(point.time))
-          points.set(point.time, point);
-      const history = [...points.values()]
-        .sort((a, b) => a.time - b.time)
-        .slice(-1440);
-      const overview: Overview = {
-        summary: summary?.value ?? null,
-        accountCount: accountCount?.value ?? null,
-        history: downsample(history),
-        historyCoverage: upstreamPoints.length
-          ? "upstream"
-          : observed.length
-            ? "observed"
-            : "unavailable",
-        trades: visibleTrades(trades),
-        status: {
-          receivedAt: summary?.receivedAt ?? null,
-          sourceAt: summary?.value.source.at ?? null,
-          indexedBlock: summary?.value.source.block ?? null,
-          stale:
-            !summary ||
-            Date.now() - summary.receivedAt > 15000 ||
-            Date.now() - summary.value.source.at > 30000,
-          persistence: this.store.kind,
-          stream: this.stream,
-          ...(this.errors.size
-            ? {
-                message: [...this.errors]
-                  .map(([name, error]) => `${name}: ${error}`)
-                  .join(" "),
-              }
-            : {}),
-        },
-      };
-      await this.store.put("overview", { ...overview, eventCursor });
-      const metrics = {
-        summary: overview.summary,
-        accountCount: overview.accountCount,
-        status: overview.status,
-      };
-      const metricsSignature = digest({
-        ...metrics,
-        status: { ...metrics.status, receivedAt: undefined },
-      });
-      if (metricsSignature !== this.metricsSignature) {
-        await this.emit({ type: "metrics", data: metrics });
-        this.metricsSignature = metricsSignature;
-      }
-      const historyData = {
-        history: overview.history,
-        historyCoverage: overview.historyCoverage,
-      };
-      const historySignature = protocolHistoryDigest(
-        historyData,
-        overview.summary,
-      );
-      if (historySignature !== this.historySignature) {
-        await this.emit({ type: "history", data: historyData });
-        this.historySignature = historySignature;
+      try {
+        do {
+          this.publicationRequested = false;
+          if (this.stopped) return;
+          await this.publishOverview();
+        } while (this.publicationRequested);
+      } finally {
+        // Clear in the same turn as the drain finishes. A request during promise
+        // settlement must enqueue a new run rather than join an exhausted one.
+        this.publication = null;
       }
     });
     this.chain = run.catch(() => {});
+    this.publication = run;
     return run;
+  }
+  private async readOverviewSources() {
+    // Any financial notification at or below this cursor committed before all
+    // following reads, so a client can replay strictly after this watermark.
+    const eventCursor = (await this.store.eventBounds()).latest ?? "0";
+    const [summary, accountCount, upstreamPoints, observed, trades] =
+      await Promise.all([
+        this.store.get<ProtocolSummary>("summary"),
+        this.store.get<number>("account-count"),
+        this.store.history.protocolPoints(),
+        this.store.samples(),
+        this.store.trades(100),
+      ]);
+    const points = new Map(
+      upstreamPoints.map((point) => [point.time, point]),
+    );
+    const sourceTail = upstreamPoints.at(-1)?.time ?? 0;
+    // Keep the retained historical baseline while appending minute samples
+    // observed since it. Hourly reconciliation no longer erases the chart
+    // after a three-minute freshness timer.
+    for (const point of observed)
+      if (point.time >= sourceTail || !points.has(point.time))
+        points.set(point.time, point);
+    const history = [...points.values()]
+      .sort((a, b) => a.time - b.time)
+      .slice(-1440);
+    const overview: Overview = {
+      summary: summary?.value ?? null,
+      accountCount: accountCount?.value ?? null,
+      history: downsample(history),
+      historyCoverage: upstreamPoints.length
+        ? "upstream"
+        : observed.length
+          ? "observed"
+          : "unavailable",
+      trades: visibleTrades(trades),
+      status: {
+        receivedAt: summary?.receivedAt ?? null,
+        sourceAt: summary?.value.source.at ?? null,
+        indexedBlock: summary?.value.source.block ?? null,
+        stale: true,
+        persistence: this.store.kind,
+        stream: this.stream,
+      },
+    };
+    return { overview, cursor: eventCursor };
+  }
+  private async publishOverview() {
+    let snapshot = this.overviewSnapshot;
+    if (this.overviewSourcesDirty || !snapshot) {
+      // Clear before reading so a commit during these reads requests another
+      // source refresh. A failed read/write must never consume that invalidation.
+      this.overviewSourcesDirty = false;
+      try {
+        snapshot = await this.readOverviewSources();
+      } catch (error) {
+        this.overviewSourcesDirty = true;
+        throw error;
+      }
+    }
+    const previousStatus = snapshot.overview.status;
+    const overview: Overview = {
+      ...snapshot.overview,
+      status: {
+        receivedAt: previousStatus.receivedAt,
+        sourceAt: previousStatus.sourceAt,
+        indexedBlock: previousStatus.indexedBlock,
+        stale:
+          previousStatus.receivedAt === null ||
+          Date.now() - previousStatus.receivedAt > 15000 ||
+          previousStatus.sourceAt === null ||
+          Date.now() - previousStatus.sourceAt > 30000,
+        persistence: this.store.kind,
+        stream: this.stream,
+        ...(this.errors.size
+          ? {
+              message: [...this.errors]
+                .map(([name, error]) => `${name}: ${error}`)
+                .join(" "),
+            }
+          : {}),
+      },
+    };
+    const signature = digest(overview);
+    if (
+      signature !== this.overviewSignature ||
+      (snapshot.cursor !== this.overviewSnapshot?.cursor &&
+        Date.now() - this.overviewSavedAt >= 10000)
+    ) {
+      try {
+        // Even an identical full source read can safely advance replay past old
+        // events. Bound those cursor-only writes; cached health saves keep their
+        // original watermark and cannot skip financial events not yet read.
+        await this.store.put("overview", {
+          ...overview,
+          eventCursor: snapshot.cursor,
+        });
+      } catch (error) {
+        this.overviewSourcesDirty = true;
+        throw error;
+      }
+      this.overviewSignature = signature;
+      this.overviewSavedAt = Date.now();
+      this.overviewSnapshot = { overview, cursor: snapshot.cursor };
+    }
+    const metrics = {
+      summary: overview.summary,
+      accountCount: overview.accountCount,
+      status: overview.status,
+    };
+    const metricsSignature = digest({
+      ...metrics,
+      status: { ...metrics.status, receivedAt: undefined },
+    });
+    if (metricsSignature !== this.metricsSignature) {
+      await this.emit({ type: "metrics", data: metrics });
+      this.metricsSignature = metricsSignature;
+    }
+    const historyData = {
+      history: overview.history,
+      historyCoverage: overview.historyCoverage,
+    };
+    const historySignature = protocolHistoryDigest(
+      historyData,
+      overview.summary,
+    );
+    if (historySignature !== this.historySignature) {
+      await this.emit({ type: "history", data: historyData });
+      this.historySignature = historySignature;
+    }
   }
   async stop() {
     this.stopped = true;

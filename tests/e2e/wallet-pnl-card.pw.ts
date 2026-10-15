@@ -349,6 +349,90 @@ test("all three card layouts export exactly the preview with hidden identity and
   await expect(page.locator(".wd-drawer")).toBeVisible();
 });
 
+test("card rendering preserves preview, dialog and action positions in every layout", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const target = window as Window & { releasePreview?: () => void };
+    const original = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
+      return original.call(
+        this,
+        (blob) => {
+          target.releasePreview = () => {
+            delete target.releasePreview;
+            callback(blob);
+          };
+        },
+        ...args,
+      );
+    };
+  });
+  const dialog = await openCard(page);
+  const bounds = () =>
+    dialog.evaluate((element) => {
+      const selectors = [".pnl-preview", ".pnl-dialog-footer"];
+      return [
+        element,
+        ...selectors.map((selector) => element.querySelector(selector)!),
+      ].map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { y: rect.y, height: rect.height };
+      });
+    });
+  const measurements = [];
+  for (const name of ["Spotlight", "Gallery", "Portrait"]) {
+    if (name !== "Spotlight")
+      await dialog
+        .getByRole("button", { name: new RegExp(`^${name}`) })
+        .click();
+    await expect(dialog.getByText("Preparing your card…")).toBeVisible();
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            Boolean(
+              (window as Window & { releasePreview?: () => void })
+                .releasePreview,
+            ),
+          ),
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+    const before = await bounds();
+    await page.evaluate(() =>
+      (window as Window & { releasePreview?: () => void }).releasePreview!(),
+    );
+    await waitForSharePreview(page, dialog);
+    await expect(dialog.locator(".pnl-preview img")).toBeVisible();
+    const after = await bounds();
+    measurements.push({ name, before, after });
+    for (let index = 0; index < before.length; index++) {
+      expect(
+        Math.abs(after[index].y - before[index].y),
+        `${name} element ${index} top`,
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(after[index].height - before[index].height),
+        `${name} element ${index} height`,
+      ).toBeLessThanOrEqual(1);
+    }
+    expect(
+      await dialog.evaluate(
+        (element) => element.scrollWidth - element.clientWidth,
+      ),
+    ).toBeLessThanOrEqual(1);
+  }
+  await testInfo.attach("card-layout-bounds", {
+    body: JSON.stringify(measurements, null, 2),
+    contentType: "application/json",
+  });
+  await dialog.screenshot({
+    path: `/tmp/paperclub-stable-card-${testInfo.project.name}.png`,
+  });
+});
+
 test("hiding a wallet invalidates an unredacted native-share retry and all share metadata", async ({
   page,
 }) => {

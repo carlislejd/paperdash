@@ -101,19 +101,34 @@
   margin: 0 28px;
   padding: 20px;
   background: #e9e5dd;
-  min-height: 280px;
   display: grid;
   place-items: center;
   border: 1px solid #ddd6cb;
 }
+.pnl-preview-frame {
+  /* The model's image ratio also sizes the loading and error states. */
+  position: relative;
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+.pnl-preview-portrait .pnl-preview-frame {
+  max-width: 520px;
+}
+.pnl-preview-frame > :not(img) {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 12px;
+  text-align: center;
+  overflow: auto;
+}
 .pnl-preview img {
   display: block;
-  max-width: 100%;
+  width: 100%;
   height: auto;
   box-shadow: 0 6px 20px #302a3217;
-}
-.pnl-preview-portrait img {
-  width: 520px;
 }
 .pnl-preview p {
   color: #81738d;
@@ -226,7 +241,6 @@
   .pnl-preview {
     margin: 0 12px;
     padding: 7px;
-    min-height: 150px;
   }
   .pnl-dialog-footer {
     padding: 17px 16px;

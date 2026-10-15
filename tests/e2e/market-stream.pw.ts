@@ -1,12 +1,14 @@
 import { expect, test } from "@playwright/test";
-import { marketResponse, mockSources, WALLET } from "./fixtures";
+import { assetResponse, marketResponse, mockSources, WALLET } from "./fixtures";
 
 test("asset charts share one stream, retain live arrivals across polls, and isolate asset changes", async ({
   page,
 }) => {
   const at = Date.now();
   await page.clock.install({ time: at });
+  await page.clock.pauseAt(new Date(at));
   await page.addInitScript(() => {
+    Math.random = () => 0;
     const sources: {
       closed: boolean;
       onmessage?: (event: { data: string }) => void;
@@ -37,6 +39,19 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
   });
   await mockSources(page);
   let marketReads = 0;
+  let assetReads = 0;
+  await page.route("**/api/assets", async (route) => {
+    assetReads++;
+    const receivedAt = await page.evaluate(() => Date.now());
+    await route.fulfill({
+      json: {
+        ...assetResponse(),
+        receivedAt,
+        sourceAt: receivedAt,
+        activityReceivedAt: receivedAt,
+      },
+    });
+  });
   await page.route("**/api/assets/*/market*", async (route) => {
     marketReads++;
     const instrument = Number(
@@ -96,8 +111,38 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
     graph.locator('[data-trade-id="stream-integration-trade"]'),
   ).toHaveCount(1);
   await expect(graph.locator(".trade-graph-price")).toHaveText("$82,345.67");
+  const initialMarketReads = marketReads;
+  const initialAssetReads = assetReads;
   await page.clock.fastForward(5_001);
-  await expect.poll(() => marketReads).toBeGreaterThan(1);
+  expect(marketReads).toBe(initialMarketReads);
+  expect(assetReads).toBe(initialAssetReads);
+  // Current prices/trades remain live while both full snapshots reconcile less often.
+  for (let i = 0; i < 2; i++) {
+    const now = await page.evaluate(() => Date.now());
+    await send({
+      ...quote,
+      data: {
+        ...quote.data,
+        point: { ...quote.data.point, time: now },
+        receivedAt: now,
+      },
+    });
+    await page.clock.fastForward(10_000);
+    expect(marketReads).toBe(initialMarketReads);
+    await expect.poll(() => assetReads).toBe(initialAssetReads + 1);
+  }
+  const now = await page.evaluate(() => Date.now());
+  await send({
+    ...quote,
+    data: {
+      ...quote.data,
+      point: { ...quote.data.point, time: now },
+      receivedAt: now,
+    },
+  });
+  await page.clock.fastForward(5_000);
+  await expect.poll(() => marketReads).toBe(initialMarketReads + 1);
+  await expect.poll(() => assetReads).toBe(initialAssetReads + 2);
   await expect(
     graph.locator('[data-trade-id="stream-integration-trade"]'),
   ).toHaveCount(1);

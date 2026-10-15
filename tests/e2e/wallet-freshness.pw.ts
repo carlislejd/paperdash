@@ -349,6 +349,101 @@ test("old history does not cause repeated hover fetches of a just-loaded account
   await expect.poll(() => reads).toBe(initialReads + 1);
 });
 
+test("opening a prefetched wallet reuses its response until the original expiry", async ({
+  page,
+}) => {
+  const at = Math.floor(Date.now() / 1000) * 1000;
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(at);
+  await mockSources(page);
+  let reads = 0;
+  await page.route(`**/api/wallets/${WALLET}`, (route) => {
+    reads++;
+    return route.fulfill({ json: accountWallet(at) });
+  });
+  await page.goto("/?view=wallets");
+  const row = page.getByRole("button", { name: /^Aoi / });
+  await row.hover();
+  await page.clock.runFor(100);
+  await expect.poll(() => reads).toBe(1);
+  await page.clock.runFor(5_000);
+  await row.click();
+  const clock = page.getByRole("status", {
+    name: "Account snapshot freshness",
+  });
+  await expect(clock).toContainText("Checked 5s ago");
+  expect(reads).toBe(1);
+  await page.clock.runFor(9_800);
+  expect(reads).toBe(1);
+  await page.clock.runFor(300);
+  await expect.poll(() => reads).toBe(2);
+});
+
+test("opening a wallet adopts an in-flight hover read through focus and pointer handoff", async ({
+  page,
+}) => {
+  const at = Math.floor(Date.now() / 1000) * 1000;
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(at);
+  await mockSources(page);
+  let reads = 0;
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  await page.route(`**/api/wallets/${WALLET}`, async (route) => {
+    reads++;
+    await pending;
+    await route.fulfill({ json: accountWallet(at) });
+  });
+  await page.goto("/?view=wallets");
+  const row = page.getByRole("button", { name: /^Aoi / });
+  await row.hover();
+  await page.clock.runFor(100);
+  await expect.poll(() => reads).toBe(1);
+  await row.click();
+  await expect(page.locator(".wd-drawer")).toBeVisible();
+  await page.clock.runFor(300);
+  expect(reads).toBe(1);
+  finish();
+  await expect(
+    page.getByRole("status", { name: "Account snapshot freshness" }),
+  ).toContainText("Checked Just now");
+  expect(reads).toBe(1);
+});
+
+test("a prefetched pending account retains bounded prompt rechecks", async ({
+  page,
+}) => {
+  const at = Math.floor(Date.now() / 1000) * 1000;
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(at);
+  await mockSources(page);
+  let reads = 0;
+  await page.route(`**/api/wallets/${WALLET}`, (route) => {
+    reads++;
+    return route.fulfill({ json: accountWallet(at, true) });
+  });
+  await page.goto("/?view=wallets");
+  const row = page.getByRole("button", { name: /^Aoi / });
+  await row.hover();
+  await page.clock.runFor(100);
+  await expect.poll(() => reads).toBe(1);
+  // Allow the fulfilled response to settle in the prefetch cache before opening.
+  await page.clock.runFor(100);
+  await row.click();
+  await expect(
+    page.getByRole("status", { name: "Account snapshot freshness" }),
+  ).toContainText("Updating account balances…");
+  expect(reads).toBe(1);
+  await page.clock.runFor(2_100);
+  await expect.poll(() => reads).toBe(2);
+  await page.clock.runFor(2_100);
+  await expect.poll(() => reads).toBe(3);
+  await page.clock.runFor(5_000);
+  expect(reads).toBe(3);
+});
+
 test("a failed account recheck returns to normal polling without masking the error", async ({
   page,
 }) => {

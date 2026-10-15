@@ -232,8 +232,16 @@
 * {
   box-sizing: border-box;
 }
+html {
+  scrollbar-gutter: stable;
+}
 body {
   margin: 0;
+}
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
 }
 button,
 input,
@@ -424,6 +432,12 @@ button svg {
   max-width: 1496px;
   padding: 0 52px;
   margin: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.page-shell > .site-footer {
+  margin-top: auto;
 }
 .overview-board {
   border-top: 1px solid var(--ink);
@@ -807,6 +821,27 @@ button svg {
   border-collapse: collapse;
   white-space: nowrap;
   font-size: 11px;
+}
+#wallets .wallet-table {
+  /* Loading cells and live values share the same column geometry. */
+  table-layout: fixed;
+  min-width: 1080px;
+}
+#wallets .wallet-table th:nth-child(2) {
+  width: 220px;
+}
+#wallets .wallet-table th:nth-last-child(-n + 2) {
+  width: 38px;
+}
+#wallets .wallet-identity {
+  width: 100%;
+}
+#wallets .wallet-identity > span:last-child {
+  min-width: 0;
+}
+#wallets .wallet-identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .wallet-table th {
   font-size: 8px;
@@ -1394,6 +1429,12 @@ button svg {
   }
   .wallet-table {
     min-width: 540px;
+  }
+  #wallets .wallet-table {
+    min-width: 730px;
+  }
+  #wallets .wallet-table th:nth-child(2) {
+    width: 180px;
   }
   .wallet-table .rank-cell {
     width: 35px;

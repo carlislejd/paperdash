@@ -240,6 +240,12 @@ test("missing and aging snapshots remain honest and wallet drawer follows share 
   await expect(page.locator(".following-observed")).toContainText(
     "Awaiting snapshot",
   );
+  // The same empty values appear during loading; let the initial read finish
+  // and schedule its next poll before advancing the browser clock.
+  await expect(page.locator(".following-view .table-scroll")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
   available = true;
   await page.clock.fastForward(12500);
   await expect(page.locator(".following-balance")).toHaveText("$0.00");

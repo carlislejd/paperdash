@@ -68,7 +68,7 @@ export function useOverview(topics: string) {
         if (source !== current) return;
         connected = true;
         setTransport(true);
-        publishLiveConnection(true);
+        publishLiveConnection(true, topics);
       };
       current.onerror = () => {
         if (source !== current) return;

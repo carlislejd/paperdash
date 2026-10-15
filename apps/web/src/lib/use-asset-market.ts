@@ -39,6 +39,7 @@ export function useAssetMarket(
 ) {
   const snapshot = useAnalytics<AssetMarketResponse>(
     `/api/assets/${instrument}/market?window=${window}`,
+    { liveAsset: instrument },
   );
   const [live, setLive] = useState<LiveMarket>(() => emptyLive(instrument));
 

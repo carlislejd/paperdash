@@ -409,6 +409,16 @@
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+.leaderboard-table {
+  table-layout: fixed;
+  min-width: 1080px;
+}
+.leaderboard-table th:nth-child(2) {
+  width: 200px;
+}
+.leaderboard-table .wallet-identity {
+  width: 100%;
+}
 .leaderboard-table .rank-cell {
   width: 55px;
 }

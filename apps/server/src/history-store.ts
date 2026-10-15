@@ -68,6 +68,8 @@ export interface JobState {
     repairFetchedAt?: number;
     range: string;
     source?: { asOfMs: number; revision: string; generation: string };
+    /** Last applied projection only; older retained batches may have been superseded. */
+    projectionDigest?: string;
   };
 }
 export interface HistoryJob {
@@ -848,6 +850,31 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
       // Old checkpoints did not distinguish a local gap from a partial source.
       // Keep an unlocated legacy gap conservative until a full reconciliation.
       const unlocatedGap = Boolean(prior?.gap && priorGaps.length === 0);
+      const gaps = new Set(value.gapIndices);
+      const groups = new Map<
+        number,
+        { equity: number; pnl: number; gap: boolean }[]
+      >();
+      value.timeOffsetsMs.forEach((offset, i) => {
+        const time = value.baseTimeMs + offset;
+        const samples = groups.get(time) ?? [];
+        samples.push({
+          equity: value.columns.equity[i],
+          pnl: value.columns.pnl[i],
+          gap: gaps.has(i),
+        });
+        groups.set(time, samples);
+      });
+      // Source clocks/revisions can advance without changing any projected
+      // points. Include all replacement semantics, not just the returned rows:
+      // an empty wider window or a generation change can retract old samples.
+      const projectionDigest = digest({
+        generation: source?.generation,
+        availableFrom,
+        availableTo,
+        inclusiveEnd: value.toMs === undefined,
+        points: [...groups],
+      });
       const state: JobState = {
         ...job.state,
         complete: full || (job.state.complete && !generationChanged),
@@ -879,9 +906,9 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
               : (prior?.repairFetchedAt ?? prior?.fullFetchedAt ?? 0),
           range,
           source,
+          projectionDigest,
         },
       };
-      const gaps = new Set(value.gapIndices);
       const statements: Statement[] = [
         ...(options.adaptive ? [activityLock(job.address)] : []),
         checkpoint(
@@ -902,42 +929,33 @@ export function createHistoryStore(db: HistoryDatabase): HistoryStore {
           at,
         ],
       });
-      // Projection replacement is safe because every source batch above remains
-      // durable, including removed/corrected points and repeated timestamps.
-      if (generationChanged)
-        statements.push({
-          sql: `DELETE FROM ${t("points")} WHERE scope=?`,
-          params: [job.address],
-        });
-      else if (
-        availableFrom !== null &&
-        availableTo !== null &&
-        availableFrom <= availableTo
-      )
-        statements.push({
-          // Explicit source windows are [fromMs,toMs). Legacy point-only batches
-          // still replace their final sample inclusively. A partial publication
-          // cannot retract previously retained samples outside its available
-          // interval; absent partial bounds permit only returned-sample upserts.
-          sql: `DELETE FROM ${t("points")} WHERE scope=? AND time>=? AND time${value.toMs === undefined ? "<=" : "<"}?`,
-          params: [job.address, availableFrom, availableTo],
-        });
-      const groups = new Map<
-        number,
-        { equity: number; pnl: number; gap: boolean }[]
-      >();
-      value.timeOffsetsMs.forEach((offset, i) => {
-        const time = value.baseTimeMs + offset;
-        const samples = groups.get(time) ?? [];
-        samples.push({
-          equity: value.columns.equity[i],
-          pnl: value.columns.pnl[i],
-          gap: gaps.has(i),
-        });
-        groups.set(time, samples);
-      });
-      for (const [time, samples] of groups)
-        statements.push(point(job.address, time, { samples }, at));
+      // The digest checkpoints atomically with the projection under the same
+      // job fence. Comparing only to the last applied batch also ensures an old
+      // response is reapplied after an intervening correction or window change.
+      if (generationChanged || prior?.projectionDigest !== projectionDigest) {
+        // Projection replacement is safe because every source batch above remains
+        // durable, including removed/corrected points and repeated timestamps.
+        if (generationChanged)
+          statements.push({
+            sql: `DELETE FROM ${t("points")} WHERE scope=?`,
+            params: [job.address],
+          });
+        else if (
+          availableFrom !== null &&
+          availableTo !== null &&
+          availableFrom <= availableTo
+        )
+          statements.push({
+            // Explicit source windows are [fromMs,toMs). Legacy point-only batches
+            // still replace their final sample inclusively. A partial publication
+            // cannot retract previously retained samples outside its available
+            // interval; absent partial bounds permit only returned-sample upserts.
+            sql: `DELETE FROM ${t("points")} WHERE scope=? AND time>=? AND time${value.toMs === undefined ? "<=" : "<"}?`,
+            params: [job.address, availableFrom, availableTo],
+          });
+        for (const [time, samples] of groups)
+          statements.push(point(job.address, time, { samples }, at));
+      }
       await db.batch(statements);
     },
     async failJob(job, error, at, retryAt, resetCursor = false) {

@@ -176,26 +176,31 @@ export function WalletPnlCardDialog({
         className={`pnl-preview pnl-preview-${layout}`}
         aria-busy={!ready && !previewError}
       >
-        {ready ? (
-          <img
-            src={ready.url}
-            width={model.width}
-            height={model.height}
-            alt={`${model.identity} · ${model.pnl} lifetime realized trading P&L · ${model.paper} PAPER owned`}
-          />
-        ) : previewError ? (
-          <div role="alert">
-            <p>{previewError}</p>
-            <button
-              type="button"
-              onClick={() => setRetry((value) => value + 1)}
-            >
-              Try again
-            </button>
-          </div>
-        ) : (
-          <p role="status">Preparing your card…</p>
-        )}
+        <div
+          className="pnl-preview-frame"
+          style={{ aspectRatio: `${model.width} / ${model.height}` }}
+        >
+          {ready ? (
+            <img
+              src={ready.url}
+              width={model.width}
+              height={model.height}
+              alt={`${model.identity} · ${model.pnl} lifetime realized trading P&L · ${model.paper} PAPER owned`}
+            />
+          ) : previewError ? (
+            <div role="alert">
+              <p>{previewError}</p>
+              <button
+                type="button"
+                onClick={() => setRetry((value) => value + 1)}
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <p role="status">Preparing your card…</p>
+          )}
+        </div>
       </div>
       <dl className="pnl-accessible-summary" aria-label="Card statistics">
         <dt>{PNL_CARD_PNL_LABEL}</dt>

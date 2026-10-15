@@ -708,13 +708,27 @@ function App() {
                       {loadingAccounts && !accounts
                         ? Array.from({ length: walletPageSize }, (_, i) => (
                             <tr key={i} className="skeleton-row">
-                              <td>{String(i + 1).padStart(2, "0")}</td>
+                              <td className="rank-cell">
+                                {String(i + 1).padStart(2, "0")}
+                              </td>
                               <td>
                                 <span className="skeleton-line" />
                               </td>
-                              <td colSpan={7}>
-                                <span className="skeleton-line short" />
-                              </td>
+                              {[
+                                "numeric",
+                                "numeric",
+                                "numeric trade-count-cell",
+                                "numeric volume-cell",
+                                "last-seen",
+                                "",
+                                "",
+                              ].map((className, column) => (
+                                <td key={column} className={className}>
+                                  {column < 5 && (
+                                    <span className="skeleton-line short" />
+                                  )}
+                                </td>
+                              ))}
                             </tr>
                           ))
                         : displayAccounts.map((account, i) => {

@@ -1,10 +1,13 @@
 import { fetchJson, pollDelay } from "./api";
 import {
   getPanelDelivery,
+  getAssetDelivery,
+  subscribeAssetDelivery,
   subscribeLiveEvents,
   subscribePanelDelivery,
   type PanelDelivery,
   type PanelKey,
+  type AssetDelivery,
 } from "./live-events";
 
 const paths: Readonly<Record<string, PanelKey>> = {
@@ -14,9 +17,14 @@ const paths: Readonly<Record<string, PanelKey>> = {
   "/api/liquidations/stats": "liquidation-stats",
 };
 const NORMAL = 5000,
+  ASSET_RECONCILE = 15000,
   RECOVERY = 30000,
   LEASE = 20000;
-type Options = { liveLiquidations?: boolean; instrument?: number };
+type Options = {
+  liveLiquidations?: boolean;
+  instrument?: number;
+  liveAsset?: number;
+};
 export type AnalyticsSnapshot = {
   data: unknown;
   error: string;
@@ -71,6 +79,11 @@ export class AnalyticsResources {
     connected: false,
     envelope: null,
     observedAt: 0,
+  };
+  private assetDelivery: AssetDelivery = {
+    connected: false,
+    topics: [],
+    quotes: {},
   };
   private counters = {
     requests: 0,
@@ -159,6 +172,62 @@ export class AnalyticsResources {
       this.acceptHint(entry);
       this.plan(entry);
     }
+  }
+  setAssetDelivery(delivery: AssetDelivery) {
+    this.assetDelivery = delivery;
+    for (const entry of this.entries.values()) {
+      if (
+        [...entry.listeners.values()].some(
+          (option) => option.liveAsset !== undefined,
+        )
+      )
+        this.plan(entry);
+    }
+  }
+  private assetLease(entry: Entry): number | null {
+    if (
+      !this.assetDelivery.connected ||
+      !entry.listeners.size ||
+      (entry.raw as { stale?: boolean } | null)?.stale ||
+      (entry.path === "/api/assets" &&
+        this.assetSnapshotExpiry(entry) < this.env.now())
+    )
+      return null;
+    let expiry = Infinity;
+    for (const { liveAsset } of entry.listeners.values()) {
+      if (
+        liveAsset === undefined ||
+        !this.assetDelivery.topics.includes(`asset:${liveAsset}`) ||
+        (entry.path !== "/api/assets" &&
+          entry.path.split("?")[0] !== `/api/assets/${liveAsset}/market`)
+      )
+        return null;
+      const quote = this.assetDelivery.quotes[liveAsset];
+      if (!quote) return null;
+      expiry = Math.min(
+        expiry,
+        quote.observedAt + LEASE + 1,
+        quote.sourceAt + LEASE + 1,
+        quote.receivedAt + LEASE + 1,
+      );
+    }
+    return expiry > this.env.now() ? expiry : null;
+  }
+  private assetSnapshotExpiry(entry: Entry) {
+    const data = entry.raw as Record<string, unknown> | null;
+    const now = this.env.now();
+    const expiry = (time: unknown, maxAge: number) =>
+      typeof time === "number" &&
+      Number.isFinite(time) &&
+      time >= 0 &&
+      time <= now + 30000
+        ? time + maxAge
+        : 0;
+    return Math.min(
+      expiry(data?.receivedAt, 20000),
+      expiry(data?.sourceAt, 30000),
+      expiry(data?.activityReceivedAt, 30000),
+    );
   }
   trade(instrument: number, kind: string) {
     if (kind !== "liq" || this.env.hidden()) return;
@@ -283,6 +352,20 @@ export class AnalyticsResources {
               stale,
               ...(houseStale === undefined ? {} : { houseStale }),
             };
+    } else if (data && typeof data === "object" && entry.path === "/api/assets") {
+      const record = data as Record<string, unknown>;
+      // Quotes are a different source: they cannot renew saved open-interest
+      // or activity clocks while the slower authoritative GET is pending.
+      const stale = Boolean(
+        record.stale ||
+          error ||
+          this.assetSnapshotExpiry(entry) < this.env.now(),
+      );
+      const prior = entry.snapshot.data as Record<string, unknown> | null;
+      data =
+        entry.emittedRaw === entry.raw && prior?.stale === stale
+          ? prior
+          : { ...record, stale };
     }
     if (
       entry.snapshot.data === data &&
@@ -300,7 +383,8 @@ export class AnalyticsResources {
     this.emit(entry);
     if (this.env.hidden() || entry.controller) return;
     const now = this.env.now(),
-      capable = this.capable(entry);
+      capable = this.capable(entry),
+      assetLease = this.assetLease(entry);
     let reason: Reason, at: number;
     if (entry.failures) {
       reason = "retry";
@@ -323,12 +407,26 @@ export class AnalyticsResources {
       reason = "revision";
       at = Math.max((entry.startedAt ?? 0) + NORMAL, entry.dirtyAt ?? now);
     } else {
-      reason = capable ? "recovery" : "poll";
-      const interval = capable ? RECOVERY : NORMAL;
+      // Live quotes/trades fill the current market. OI/activity need an earlier
+      // authoritative refresh than the market's history/coverage reconciliation.
+      const reconcile = capable || assetLease !== null;
+      reason = reconcile ? "recovery" : "poll";
+      const interval = reconcile
+        ? entry.path === "/api/assets"
+          ? ASSET_RECONCILE
+          : RECOVERY
+        : NORMAL;
       at =
         entry.checkedAt +
         interval +
         Math.min(interval * 0.2, 5000) * entry.jitter;
+      if (assetLease !== null && entry.path === "/api/assets")
+        // Keep a little network headroom before the saved source goes stale,
+        // without allowing old backend snapshots to create a tight request loop.
+        at = Math.max(
+          entry.checkedAt + NORMAL,
+          Math.min(at, this.assetSnapshotExpiry(entry) - 1000),
+        );
     }
     at = Math.max(at, entry.resumeAt);
     if (at <= now) {
@@ -343,7 +441,7 @@ export class AnalyticsResources {
         ) +
         LEASE +
         1
-      : Infinity;
+      : (assetLease ?? Infinity);
     entry.timer = setTimeout(
       () => this.plan(entry),
       Math.max(1, Math.min(at, now + NORMAL, leaseExpiry) - now),
@@ -439,7 +537,10 @@ export class AnalyticsResources {
         .filter((entry) => entry.listeners.size)
         .map((entry) => ({
           path: entry.path,
-          mode: this.capable(entry) ? "events" : "poll",
+          mode:
+            this.capable(entry) || this.assetLease(entry) !== null
+              ? "events"
+              : "poll",
           inFlight: Boolean(entry.controller),
           sourceAgeMs:
             entry.raw &&
@@ -471,6 +572,10 @@ export const analyticsResources = new AnalyticsResources({
 });
 analyticsResources.setDelivery(getPanelDelivery());
 subscribePanelDelivery((delivery) => analyticsResources.setDelivery(delivery));
+analyticsResources.setAssetDelivery(getAssetDelivery());
+subscribeAssetDelivery((delivery) =>
+  analyticsResources.setAssetDelivery(delivery),
+);
 subscribeLiveEvents((message) => {
   if (message.type === "trade")
     analyticsResources.trade(message.data.instrument, message.data.kind);

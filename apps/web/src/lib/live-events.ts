@@ -3,6 +3,7 @@ import type {
   PanelRevisions,
   StreamMessage,
 } from "../../../../packages/shared/src/types";
+import { validPricePoint } from "./market-data";
 export type {
   PanelKey,
   PanelRevisions,
@@ -12,9 +13,27 @@ export type PanelDelivery = {
   envelope: PanelRevisions | null;
   observedAt: number;
 };
+export type AssetDelivery = {
+  connected: boolean;
+  topics: readonly string[];
+  quotes: Readonly<
+    Partial<
+      Record<
+        number,
+        { observedAt: number; sourceAt: number; receivedAt: number }
+      >
+    >
+  >;
+};
 type Listener = (message: StreamMessage) => void;
 const listeners = new Set<Listener>();
 const deliveryListeners = new Set<(delivery: PanelDelivery) => void>();
+const assetListeners = new Set<(delivery: AssetDelivery) => void>();
+let assetDelivery: AssetDelivery = {
+  connected: false,
+  topics: [],
+  quotes: {},
+};
 let delivery: PanelDelivery = {
   connected: false,
   envelope: null,
@@ -67,10 +86,16 @@ export function decodePanelRevisions(value: unknown): PanelRevisions | null {
 const publishDelivery = () => {
   for (const listener of deliveryListeners) listener(delivery);
 };
-export function publishLiveConnection(connected: boolean) {
+export function publishLiveConnection(connected: boolean, topics = "") {
   // Capabilities belong to this connection, not a previous server/deployment.
   delivery = { connected, envelope: null, observedAt: 0 };
   publishDelivery();
+  assetDelivery = {
+    connected,
+    topics: connected ? topics.split(",").map((topic) => topic.trim()) : [],
+    quotes: {},
+  };
+  for (const listener of assetListeners) listener(assetDelivery);
 }
 export function getPanelDelivery() {
   return delivery;
@@ -83,10 +108,47 @@ export function subscribePanelDelivery(
     deliveryListeners.delete(listener);
   };
 }
+export function getAssetDelivery() {
+  return assetDelivery;
+}
+export function subscribeAssetDelivery(
+  listener: (delivery: AssetDelivery) => void,
+) {
+  assetListeners.add(listener);
+  return () => {
+    assetListeners.delete(listener);
+  };
+}
 
 // Panels share the dashboard's single EventSource; mounting a chart never
 // opens another stream or reconnects the existing one.
 export function publishLiveEvent(message: StreamMessage) {
+  if (message.type === "asset-price" && assetDelivery.connected) {
+    const quote = message.data;
+    const now = Date.now();
+    if (
+      quote &&
+      assetDelivery.topics.includes(`asset:${quote.instrument}`) &&
+      validPricePoint(quote.point, now) &&
+      timestamp(quote.receivedAt) &&
+      quote.receivedAt <= now + 30000 &&
+      quote.point.time >=
+        (assetDelivery.quotes[quote.instrument]?.sourceAt ?? 0)
+    ) {
+      assetDelivery = {
+        ...assetDelivery,
+        quotes: {
+          ...assetDelivery.quotes,
+          [quote.instrument]: {
+            observedAt: now,
+            sourceAt: quote.point.time,
+            receivedAt: quote.receivedAt,
+          },
+        },
+      };
+      for (const listener of assetListeners) listener(assetDelivery);
+    }
+  }
   const candidate = message as {
     type: string;
     data?: unknown;
