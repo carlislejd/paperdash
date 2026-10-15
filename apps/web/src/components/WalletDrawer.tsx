@@ -1391,7 +1391,7 @@ export function WalletDrawer({
                       : "Positions unavailable"}
                   </span>
                 </div>
-                <details className="wd-account-details" key={wallet.address}>
+                <details className="wd-account-details" key={`details-${wallet.address}`}>
                   <summary>
                     Account details <span aria-hidden="true">+</span>
                   </summary>
