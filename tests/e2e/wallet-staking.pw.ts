@@ -36,7 +36,7 @@ test("wallet staking shows PAPER and lifetime claimed USDC without treating pend
   await expect(staking).toContainText("USDC · lifetime");
   await expect(staking).toContainText("LAST AVAILABLE");
   await expect(staking).toContainText(
-    "Pending rewards aren't available in this view yet.",
+    "Pending rewards are unavailable for this snapshot.",
   );
   await expect(staking).not.toContainText("$99.00");
   expect(
@@ -71,4 +71,114 @@ test("wallet staking preserves missing snapshot values", async ({ page }) => {
   await expect(staking.locator("dd")).toHaveText(["—", "—", "—"]);
   await expect(staking).toContainText("UNAVAILABLE");
   await expect(staking).not.toContainText("$0.00");
+});
+
+test("wallet staking uses verified pending rewards and preserves their delayed status", async ({ page }) => {
+  await mockSources(page);
+  const wallet = walletResponse();
+  wallet.snapshot!.paper.pendingBase = "99000000000000000000";
+  wallet.stakingRewards = {
+    pendingRaw: "12345678901234567890",
+    receivedAt: Date.now() - 60000,
+    sourceAt: Date.now() - 60000,
+    stale: true,
+  };
+  await page.route(`**/api/wallets/${WALLET}`, route => route.fulfill({ json: wallet }));
+  await page.goto(`/?view=wallets&wallet=${WALLET}`);
+  const staking = page.getByRole("region", { name: "PAPER staking", exact: true });
+  await expect(staking.locator("dd")).toHaveText(["0", "$12.35", "$0.00"]);
+  await expect(staking.locator("dd").nth(1)).toHaveAttribute("title", "12.34567890123456789 USDC");
+  await expect(staking).toContainText("USDC · delayed");
+  await expect(staking).toContainText("Pending rewards have been distributed and are available to claim.");
+  await expect(staking).not.toContainText("$99.00");
+});
+
+test("an older refresh keeps claimed and pending rewards paired with the saved account and cached card", async ({
+  page,
+}) => {
+  const at = Math.floor(Date.now() / 1000) * 1000;
+  const raw = (value: number) => (BigInt(value) * 10n ** 18n).toString();
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(at);
+  await mockSources(page);
+  let older = false;
+  let reads = 0;
+  await page.route(`**/api/wallets/${WALLET}`, (route) => {
+    reads++;
+    const sourceAt = older ? at - 60_000 : at;
+    const wallet = walletResponse(WALLET, sourceAt);
+    wallet.snapshot!.accountRevision = older ? 2 : 3;
+    wallet.snapshot!.indexedThroughBlock = older ? 12344 : 12345;
+    wallet.snapshot!.indexedThroughTimestamp = sourceAt / 1000;
+    wallet.snapshot!.paper.staked = raw(older ? 20 : 10);
+    wallet.snapshot!.lifetime.realizedPnlRaw = raw(older ? -10_000 : -200_000);
+    wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(older ? 50_000 : 100_000);
+    wallet.accountFreshness = {
+      sourceAt,
+      receivedAt: older ? at + 15_000 : at,
+      stale: false,
+      refreshing: false,
+    };
+    wallet.stakingRewards = {
+      pendingRaw: raw(older ? 900_000 : 200_000),
+      receivedAt: older ? at + 15_000 : at,
+      sourceAt,
+      stale: false,
+    };
+    return route.fulfill({ json: wallet });
+  });
+  await page.goto("/?view=wallets");
+  await page.getByRole("button", { name: /^Aoi / }).click();
+  const drawer = page.locator(".wd-drawer");
+  const staking = page.getByRole("region", {
+    name: "PAPER staking",
+    exact: true,
+  });
+  await expect(staking.locator("dd")).toHaveText([
+    "10",
+    "$200,000.00",
+    "$100,000.00",
+  ]);
+  await expect(staking).toContainText("USDC · claimable");
+
+  const initialReads = reads;
+  older = true;
+  await page.clock.runFor(16_000);
+  await expect.poll(() => reads).toBeGreaterThan(initialReads);
+  await expect(staking.locator("dd")).toHaveText([
+    "10",
+    "$200,000.00",
+    "$100,000.00",
+  ]);
+  await expect(staking).toContainText("USDC · delayed");
+  await expect(staking).toContainText("LAST AVAILABLE");
+
+  // Reopening uses the retained cached account and its matching rewards.
+  const readsAfterRefresh = reads;
+  await drawer.getByRole("button", { name: "Close wallet details" }).click();
+  await page.getByRole("button", { name: /^Aoi / }).click();
+  await expect(staking.locator("dd")).toHaveText([
+    "10",
+    "$200,000.00",
+    "$100,000.00",
+  ]);
+  await expect(staking).toContainText("USDC · delayed");
+  expect(reads).toBe(readsAfterRefresh);
+
+  await drawer.getByRole("button", { name: "Share P&L card ↗" }).click();
+  const card = page.getByRole("dialog", { name: "Your P&L card" });
+  let advanced = 0;
+  await expect.poll(async () => {
+    if (advanced < 2000) {
+      await page.clock.runFor(50);
+      advanced += 50;
+    }
+    return card.getByRole("button", { name: "Download PNG" }).isEnabled();
+  }, { timeout: 15_000 }).toBe(true);
+  await expect(card.locator(".pnl-preview img")).toHaveAttribute(
+    "alt",
+    "WALLET HIDDEN · +$100,000.00 total P&L · −$200,000.00 realized trading P&L · +$300,000.00 rewards (Claimed + pending · USDC · delayed) · 10.00 PAPER owned",
+  );
+  await expect(card.locator(".pnl-accessible-summary")).not.toContainText("900,000");
+  expect(reads).toBe(readsAfterRefresh);
 });

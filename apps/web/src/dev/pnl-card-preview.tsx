@@ -5,7 +5,7 @@ import type { PnlCardSnapshot } from "../lib/wallet-pnl-card";
 import "../styles.css";
 
 // This standalone HTML entry is served by Vite dev only, not the production build.
-const now = Date.now(),
+const now = Math.floor(Date.now() / 1000) * 1000,
   address = `0x${"d".repeat(40)}`;
 const raw = (n: number) =>
   (BigInt(Math.round(n * 100)) * 10n ** 16n).toString();
@@ -43,6 +43,12 @@ const example: PnlCardSnapshot = {
       sourceAt: now,
       stale: false,
       refreshing: false,
+    },
+    stakingRewards: {
+      pendingRaw: raw(520),
+      receivedAt: now,
+      sourceAt: now,
+      stale: false,
     },
     cashflows: { items: [], nextCursor: null },
     trades: { items: [], nextCursor: null },
@@ -109,6 +115,19 @@ function Preview() {
           }}
         >
           Try loss example ↗
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const rewardsWin = structuredClone(example);
+            rewardsWin.wallet.snapshot!.lifetime.realizedPnlRaw = raw(-200000);
+            rewardsWin.wallet.snapshot!.lifetime.paperRewardsClaimedRaw =
+              raw(250000);
+            rewardsWin.wallet.stakingRewards!.pendingRaw = raw(50000);
+            setSnapshot(rewardsWin);
+          }}
+        >
+          Try rewards win ↗
         </button>
       </div>
       {snapshot && (

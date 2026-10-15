@@ -2,7 +2,6 @@ import { canvasPng, fittedText, imageCanvas } from "./image-export";
 import {
   PNL_CARD_ART,
   PNL_CARD_PNL_LABEL,
-  PNL_CARD_PNL_NOTE,
   type PnlCardModel,
 } from "./wallet-pnl-card";
 
@@ -189,7 +188,36 @@ async function renderCard(
           : C.ink,
       600,
     );
-    text(PNL_CARD_PNL_NOTE, x, y + size + 25, width, 13, C.muted);
+    text(m.pnlNote, x, y + size + 25, width, 13, C.muted);
+  };
+  const breakdown = (x: number, y: number, width: number, size = 32) => {
+    const cell = width / 2;
+    [
+      {
+        label: "TRADING P&L",
+        value: m.tradingPnl,
+        detail: "Realized · lifetime",
+        color:
+          m.tradingPnlTone === "negative"
+            ? C.red
+            : m.tradingPnlTone === "positive"
+              ? C.green
+              : C.ink,
+      },
+      {
+        label: "REWARDS",
+        value: m.rewards,
+        detail: m.rewardsNote,
+        color:
+          m.rewards === "—" || m.rewards === "$0.00" ? C.ink : C.green,
+      },
+    ].forEach((item, index) => {
+      const left = x + index * cell;
+      line(left, y - 16, cell - 24);
+      text(item.label, left, y + 8, cell - 24, 13, C.muted);
+      text(item.value, left, y + size + 17, cell - 24, size, item.color, 600);
+      text(item.detail, left, y + size + 40, cell - 24, 12, C.muted);
+    });
   };
   const paper = (x: number, y: number, width: number, size = 42) => {
     text("PAPER OWNED", x, y, width, 14, C.muted);
@@ -223,20 +251,23 @@ async function renderCard(
   };
   if (m.layout === "gallery") {
     brand(46, 62);
-    artRect(26, 90, w - 52, 305);
-    identity(48, 442, 360);
-    hero(48, 497, 720, 88);
-    paper(831, 497, 315, 36);
-    stats(48, 626, w - 70, 4, 120, 31, 4);
-    footer(48, 833, w - 96);
+    artRect(26, 90, w - 52, 280);
+    identity(48, 417, 720);
+    hero(48, 467, 720, 88);
+    paper(831, 467, 315, 36);
+    breakdown(48, 606, 720, 32);
+    stats(48, 704, w - 70, 4, 120, 31, 4);
+    footer(48, 843, w - 96);
   } else if (m.layout === "split") {
     artRect(565, 0, 635, 432, 0.83);
     ctx.fillStyle = C.lavender;
     ctx.fillRect(0, 0, 565, 432);
     brand(36, 55, 30);
     identity(38, 112, 482);
-    hero(38, 181, 492, 67);
-    paper(38, 306, 475, 39);
+    hero(38, 169, 492, 67);
+    breakdown(38, 293, 500, 29);
+    text("PAPER OWNED", 38, 401, 120, 12, C.muted);
+    text(m.paper, 174, 401, 346, 25, C.ink, 600);
     stats(38, 459, w - 50, 4, 108, 30, 4);
     footer(38, 617, w - 76);
   } else {
@@ -244,11 +275,12 @@ async function renderCard(
     artRect(24, 102, w - 48, 366, 0.72);
     identity(48, 518, w - 96);
     hero(48, 584, w - 96, 106);
+    breakdown(48, 757, w - 70, 42);
     ctx.fillStyle = C.lavender;
-    ctx.fillRect(32, 733, w - 64, 137);
-    paper(56, 769, w - 112, 48);
-    stats(48, 906, w - 70, 3, 136, 36);
-    footer(48, 1260, w - 96);
+    ctx.fillRect(32, 870, w - 64, 125);
+    paper(56, 900, w - 112, 42);
+    stats(48, 1020, w - 70, 3, 120, 36);
+    footer(48, 1300, w - 96);
   }
   check();
   const blob = await canvasPng(canvas);

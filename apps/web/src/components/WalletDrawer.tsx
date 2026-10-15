@@ -842,6 +842,10 @@ export function WalletDrawer({
                 }
               : undefined;
             next.stale = true;
+            // Rewards use this account's stake and debt, so keep them together.
+            next.stakingRewards = current.stakingRewards
+              ? { ...current.stakingRewards, stale: true }
+              : undefined;
             // Derived bands must remain attached to the snapshot they describe.
             next.marginRisk = riskMatchesSnapshot(
               current.marginRisk,
@@ -861,6 +865,7 @@ export function WalletDrawer({
           snapshot: next.snapshot,
           accountFreshness: next.accountFreshness,
           marginRisk: next.marginRisk,
+          stakingRewards: next.stakingRewards,
           stale: next.stale,
           // cacheWallet preserves failed bounded heads, never appended pages.
           portfolio: next.portfolio,
@@ -1050,6 +1055,12 @@ export function WalletDrawer({
   const snapshot = wallet?.snapshot;
   const accountFreshness = accountClock(wallet, Boolean(error));
   const paperOwned = totalPaper(wallet);
+  const pendingRewards =
+    snapshot &&
+    wallet?.stakingRewards?.pendingRaw != null &&
+    /^\d+$/.test(wallet.stakingRewards.pendingRaw)
+    ? wallet.stakingRewards.pendingRaw
+    : null;
   const followed = following.some(
     (item) => item.address === address.toLowerCase(),
   );
@@ -1359,8 +1370,27 @@ export function WalletDrawer({
                     </div>
                     <div>
                       <dt>Pending rewards</dt>
-                      <dd aria-label="Pending rewards unavailable">—</dd>
-                      <span>USDC · unavailable</span>
+                      <dd
+                        aria-label={
+                          pendingRewards === null
+                            ? "Pending rewards unavailable"
+                            : undefined
+                        }
+                        title={
+                          pendingRewards === null
+                            ? undefined
+                            : `${exactAmount(pendingRewards)} USDC`
+                        }
+                      >
+                        {formatRawUsd(pendingRewards)}
+                      </dd>
+                      <span>
+                        USDC · {pendingRewards === null
+                          ? "unavailable"
+                          : wallet.stakingRewards?.stale
+                            ? "delayed"
+                            : "claimable"}
+                      </span>
                     </div>
                     <div>
                       <dt>Claimed rewards</dt>
@@ -1375,8 +1405,10 @@ export function WalletDrawer({
                     </div>
                   </dl>
                   <p className="wd-staking-note">
-                    Rewards are paid in USDC. Pending rewards aren't available
-                    in this view yet.
+                    Rewards are paid in USDC.{" "}
+                    {pendingRewards === null
+                      ? "Pending rewards are unavailable for this snapshot."
+                      : "Pending rewards have been distributed and are available to claim."}
                   </p>
                 </section>
                 <PositionMetrics

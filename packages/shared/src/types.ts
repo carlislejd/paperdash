@@ -265,6 +265,8 @@ export interface WalletSnapshot {
   queued: Raw;
   locked: Raw;
   accountRevision: number;
+  /** Last block that changed the wallet; older source snapshots may omit it. */
+  walletRevision?: number;
   lifetime: {
     depositedRaw: Raw;
     withdrawnRaw: Raw;
@@ -273,7 +275,14 @@ export interface WalletSnapshot {
     tradedNotionalRaw: Raw;
     paperRewardsClaimedRaw: Raw;
   };
-  paper: { balance: Raw; staked: Raw; pendingBase?: Raw };
+  paper: {
+    balance: Raw;
+    staked: Raw;
+    /** Accrued reward component; not the complete claimable balance. */
+    pendingBase?: Raw;
+    /** Reward accumulator checkpoint for the account's current stake. */
+    rewardDebt?: Raw;
+  };
   openPositions: unknown[];
 }
 export interface Cashflow {
@@ -338,6 +347,14 @@ export interface WalletResponse {
   errors: string[];
   /** Additive scenario from this same snapshot and retained reference prices. */
   marginRisk?: WalletMarginRiskResponse;
+  /** Claimable USDC, in 18-decimal units, derived from retained staking state.
+   * Missing/null pendingRaw means unavailable; it must never become zero. */
+  stakingRewards?: {
+    pendingRaw: Raw | null;
+    receivedAt: number | null;
+    sourceAt: number | null;
+    stale: boolean;
+  };
 }
 export type PanelKey =
   "house" | "protocol-charts" | "paper-economics" | "liquidation-stats";

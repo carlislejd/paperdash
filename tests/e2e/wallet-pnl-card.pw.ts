@@ -9,6 +9,8 @@ import {
 } from "./fixtures";
 
 const raw = (value: number) => (BigInt(value) * 10n ** 18n).toString();
+const standardCardSummary =
+  "+$1,750.00 total P&L · +$1,250.00 realized trading P&L · +$500.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned";
 type CardCanvasDiagnostic = {
   id: number;
   width: number;
@@ -30,6 +32,8 @@ async function setup(
     large?: boolean;
     direct?: boolean;
     username?: string | null;
+    rewardsWin?: boolean;
+    missingPending?: boolean;
   } = {},
 ) {
   const at = Math.floor(Date.now() / 1000) * 1000;
@@ -114,15 +118,36 @@ async function setup(
       refreshing: false,
     };
     wallet.snapshot!.lifetime.realizedPnlRaw = raw(state.changed ? 9999 : 1250);
+    wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(300);
+    wallet.stakingRewards = {
+      pendingRaw: raw(200),
+      receivedAt: at,
+      sourceAt: at,
+      stale: false,
+    };
     wallet.snapshot!.paper = { balance: raw(154000), staked: raw(6000000) };
+    if (options.rewardsWin) {
+      wallet.snapshot!.lifetime.realizedPnlRaw = raw(-200_000);
+      wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(100_000);
+      wallet.stakingRewards.pendingRaw = raw(200_000);
+    }
+    if (options.missingPending) {
+      wallet.stakingRewards.pendingRaw = null;
+      wallet.snapshot!.paper.pendingBase = raw(99);
+    }
     if (options.large) {
       wallet.snapshot!.lifetime.realizedPnlRaw = raw(-10_000_000_000);
+      wallet.snapshot!.lifetime.paperRewardsClaimedRaw = "0";
+      wallet.stakingRewards.pendingRaw = "0";
       wallet.snapshot!.paper = {
         balance: raw(40_000_000_000),
         staked: raw(50_000_000_000),
       };
     }
-    if (options.missing) wallet.snapshot = null;
+    if (options.missing) {
+      wallet.snapshot = null;
+      delete wallet.stakingRewards;
+    }
     return route.fulfill({ json: wallet });
   });
   await page.route(`**/api/wallets/${WALLET}/position-metrics`, (route) => {
@@ -264,7 +289,7 @@ for (const username of ["  moon trader  ", null]) {
     await waitForSharePreview(page, dialog);
     await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
       "alt",
-      `${identity} · +$1,250.00 lifetime realized trading P&L · 6,154,000.00 PAPER owned`,
+      `${identity} · ${standardCardSummary}`,
     );
     expect(
       await page.evaluate(() => (window as CardDiagnosticWindow).cardText),
@@ -308,7 +333,7 @@ test("all three card layouts export exactly the preview with hidden identity and
     await expectPreviewReady(page, downloadButton);
     await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
       "alt",
-      "WALLET HIDDEN · +$1,250.00 lifetime realized trading P&L · 6,154,000.00 PAPER owned",
+      `WALLET HIDDEN · ${standardCardSummary}`,
     );
     const expectedHash = await previewHash(dialog);
     const event = page.waitForEvent("download");
@@ -334,8 +359,14 @@ test("all three card layouts export exactly the preview with hidden identity and
   );
   expect(labels.join(" ")).not.toContain("Aoi");
   expect(labels.join(" ")).not.toContain(WALLET);
-  expect(labels).toContain("LIFETIME REALIZED TRADING P&L");
-  expect(labels).toContain("Excludes staking rewards");
+  expect(labels).toContain("TOTAL P&L");
+  expect(labels).toContain("Lifetime realized trading + rewards");
+  expect(labels).toContain("TRADING P&L");
+  expect(labels).toContain("REWARDS");
+  expect(labels).toContain("Claimed + pending · USDC");
+  expect(labels).toContain("+$1,750.00");
+  expect(labels).toContain("+$1,250.00");
+  expect(labels).toContain("+$500.00");
   expect(labels).toContain("Recorded closed trades");
   expect(labels).toContain("42");
   expect(labels).toContain("1h 30m");
@@ -601,7 +632,7 @@ test("stalled artwork can retry without changing frozen data, privacy or layout"
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · +$1,250.00 lifetime realized trading P&L · 6,154,000.00 PAPER owned",
+    `WALLET HIDDEN · ${standardCardSummary}`,
   );
   await expect(dialog.locator(".pnl-accessible-summary")).toContainText(
     "+$3,200.00",
@@ -628,7 +659,7 @@ test("stalled artwork can retry without changing frozen data, privacy or layout"
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    /\+\$9,999\.00 lifetime/,
+    /\+\$10,499\.00 total P&L · \+\$9,999\.00 realized trading P&L/,
   );
   await expect(
     dialog.getByRole("button", { name: /^Portrait/ }),
@@ -704,7 +735,7 @@ test("stalled PNG encoding times out and a late callback cannot replace a retry"
   expect(await previewHash(dialog)).toBe(currentHash);
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · +$1,250.00 lifetime realized trading P&L · 6,154,000.00 PAPER owned",
+    `WALLET HIDDEN · ${standardCardSummary}`,
   );
   await expect(dialog.getByRole("alert")).toHaveCount(0);
 });
@@ -720,16 +751,73 @@ test("an unavailable account and legacy highlights stay unknown on the rendered 
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · — lifetime realized trading P&L · — PAPER owned",
+    "WALLET HIDDEN · — total P&L · — realized trading P&L · — rewards (Claimed + pending unavailable) · — PAPER owned",
   );
   await expect(dialog.locator(".pnl-accessible-summary dd")).toHaveText(
-    ["— · Excludes staking rewards", ...Array(7).fill("—")],
+    [
+      "— · Pending rewards unavailable",
+      "—",
+      "— · Claimed + pending unavailable",
+      ...Array(7).fill("—"),
+    ],
   );
   const labels = await page.evaluate(
     () => (window as unknown as { cardText: string[] }).cardText,
   );
   expect(labels).not.toContain("$0.00");
   expect(labels).not.toContain("0.00");
+});
+
+test("claimed and pending rewards turn a trading loss into positive total P&L", async ({
+  page,
+}) => {
+  await setup(page, { rewardsWin: true });
+  const dialog = await openCard(page);
+  await expectPreviewReady(
+    page,
+    dialog.getByRole("button", { name: "Download PNG" }),
+  );
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
+    "alt",
+    "WALLET HIDDEN · +$100,000.00 total P&L · −$200,000.00 realized trading P&L · +$300,000.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned",
+  );
+  await expect(dialog.locator(".pnl-accessible-summary dd").nth(0)).toHaveText(
+    "+$100,000.00 · Lifetime realized trading + rewards",
+  );
+  await expect(dialog.locator(".pnl-accessible-summary dd").nth(1)).toHaveText(
+    "−$200,000.00",
+  );
+  await expect(dialog.locator(".pnl-accessible-summary dd").nth(2)).toHaveText(
+    "+$300,000.00 · Claimed + pending · USDC",
+  );
+  const labels = await page.evaluate(
+    () => (window as CardDiagnosticWindow).cardText,
+  );
+  expect(labels).toContain("+$100,000.00");
+  expect(labels).toContain("−$200,000.00");
+  expect(labels).toContain("+$300,000.00");
+});
+
+test("unavailable pending rewards preserve the known trading and claimed amounts", async ({
+  page,
+}) => {
+  await setup(page, { missingPending: true });
+  const dialog = await openCard(page);
+  await expectPreviewReady(
+    page,
+    dialog.getByRole("button", { name: "Download PNG" }),
+  );
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
+    "alt",
+    "WALLET HIDDEN · — total P&L · +$1,250.00 realized trading P&L · — rewards (Claimed +$300.00 · pending unavailable) · 6,154,000.00 PAPER owned",
+  );
+  const labels = await page.evaluate(
+    () => (window as CardDiagnosticWindow).cardText,
+  );
+  expect(labels).toContain("Pending rewards unavailable");
+  expect(labels).toContain("Claimed +$300.00 · pending unavailable");
+  expect(labels).not.toContain("+$1,550.00");
+  expect(labels).not.toContain("+$99.00");
 });
 
 test("large negative P&L and PAPER totals remain exact in the compact export", async ({
@@ -744,7 +832,7 @@ test("large negative P&L and PAPER totals remain exact in the compact export", a
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · −$10,000,000,000.00 lifetime realized trading P&L · 90,000,000,000.00 PAPER owned",
+    "WALLET HIDDEN · −$10,000,000,000.00 total P&L · −$10,000,000,000.00 realized trading P&L · $0.00 rewards (Claimed + pending · USDC) · 90,000,000,000.00 PAPER owned",
   );
   const labels = await page.evaluate(
     () => (window as unknown as { cardText: string[] }).cardText,

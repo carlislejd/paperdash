@@ -96,7 +96,7 @@ describe("exact public account data", () => {
     expect(parsed.balance).toBe(raw);
     expect(parsed).not.toHaveProperty("sessionKeys");
     expect(parsed).not.toHaveProperty("operations");
-    expect(parsed.paper).not.toHaveProperty("rewardDebt");
+    expect(parsed.paper.rewardDebt).toBe("5");
     expect(
       cashflowSchema.parse({
         timestampMs: 100,

@@ -129,6 +129,7 @@ export const walletSchema = z.object({
   indexedThroughBlock: time,
   indexedThroughTimestamp: time,
   accountRevision: time,
+  walletRevision: time.optional(),
   balance: uint,
   queued: uint,
   locked: uint,
@@ -144,6 +145,7 @@ export const walletSchema = z.object({
     balance: uint,
     staked: uint,
     pendingBase: uint.optional(),
+    rewardDebt: uint.optional(),
   }),
   openPositions: z.array(positionSchema).max(10000),
 }); // Zod strips session keys, operations, and all other unexposed fields.

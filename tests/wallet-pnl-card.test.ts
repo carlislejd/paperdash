@@ -26,6 +26,12 @@ function snapshot(): PnlCardSnapshot {
     stale: false,
     refreshing: false,
   };
+  wallet.stakingRewards = {
+    pendingRaw: "0",
+    receivedAt: at,
+    sourceAt: at,
+    stale: false,
+  };
   const metrics = positionMetricsResponse();
   metrics.updatedAt = at;
   metrics.avgHoldMs = 5_400_000;
@@ -101,8 +107,12 @@ describe("wallet P&L card model", () => {
       layout: "gallery",
       hideWallet: true,
     });
-    expect(model.pnl).toBe("+$10,000,000,000.12");
+    expect(model.pnl).toBe("+$10,000,001,000.12");
+    expect(model.tradingPnl).toBe("+$10,000,000,000.12");
+    expect(model.rewards).toBe("+$1,000.00");
+    expect(model.shareText).toContain("total P&L");
     expect(model.shareText).toContain("realized trading P&L");
+    expect(model.shareText).toContain("+$1,000.00 rewards");
     expect(model.paper).toBe("6,154,000.12");
     expect(
       model.stats.find((item) => item.label === "Recorded closed trades")
@@ -115,11 +125,134 @@ describe("wallet P&L card model", () => {
       model.stats.find((item) => item.label === "Best recorded trade")?.value,
     ).toBe("+$1,250.00");
     source.wallet.snapshot!.lifetime.realizedPnlRaw = raw(-8);
+    source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(9999);
+    source.wallet.stakingRewards!.pendingRaw = raw(9999);
     source.metrics!.highlights!.bestTrade!.pnlRaw = raw(9999);
-    expect(model.pnl).toBe("+$10,000,000,000.12");
+    expect(model.pnl).toBe("+$10,000,001,000.12");
+    expect(model.tradingPnl).toBe("+$10,000,000,000.12");
+    expect(model.rewards).toBe("+$1,000.00");
     expect(
       model.stats.find((item) => item.label === "Best recorded trade")?.value,
     ).toBe("+$1,250.00");
+  });
+
+  it("counts claimed and pending rewards in the headline even when trading lost money", () => {
+    const source = snapshot();
+    source.wallet.snapshot!.lifetime.realizedPnlRaw = raw(-200_000);
+    source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(100_000);
+    source.wallet.stakingRewards!.pendingRaw = raw(200_000);
+    expect(
+      walletPnlCardModel(source, { layout: "split", hideWallet: true }),
+    ).toMatchObject({
+      pnl: "+$100,000.00",
+      pnlTone: "positive",
+      tradingPnl: "−$200,000.00",
+      tradingPnlTone: "negative",
+      rewards: "+$300,000.00",
+      rewardsNote: "Claimed + pending · USDC",
+    });
+  });
+
+  it("sums raw trading, claimed and pending amounts exactly before rounding", () => {
+    const source = snapshot();
+    const huge = 9_007_199_254_740_993n * 10n ** 18n;
+    source.wallet.snapshot!.lifetime.realizedPnlRaw = (-huge).toString();
+    source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = (
+      huge + 100_000_000_000_000_000n
+    ).toString();
+    source.wallet.stakingRewards!.pendingRaw = "200000000000000000";
+    const exact = walletPnlCardModel(source, {
+      layout: "split",
+      hideWallet: true,
+    });
+    expect(exact.pnl).toBe("+$0.30");
+    expect(exact.rewards).toBe("+$9,007,199,254,740,993.30");
+
+    source.wallet.snapshot!.lifetime.realizedPnlRaw = "4000000000000000";
+    source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = "4000000000000000";
+    source.wallet.stakingRewards!.pendingRaw = "4000000000000000";
+    const rounded = walletPnlCardModel(source, {
+      layout: "split",
+      hideWallet: true,
+    });
+    expect(rounded.pnl).toBe("+$0.01");
+    expect(rounded.rewards).toBe("+$0.01");
+  });
+
+  it("keeps unavailable pending rewards unknown even when pendingBase is present", () => {
+    const source = snapshot();
+    source.wallet.snapshot!.lifetime.realizedPnlRaw = raw(-200_000);
+    source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(300_000);
+    source.wallet.snapshot!.paper.pendingBase = raw(99);
+    delete source.wallet.stakingRewards;
+    expect(
+      walletPnlCardModel(source, { layout: "split", hideWallet: true }),
+    ).toMatchObject({
+      pnl: "—",
+      pnlTone: "neutral",
+      tradingPnl: "−$200,000.00",
+      rewards: "—",
+      pnlNote: "Pending rewards unavailable",
+      rewardsNote: "Claimed +$300,000.00 · pending unavailable",
+    });
+  });
+
+  it.each([null, "invalid", "-1"])(
+    "does not turn invalid pending rewards (%s) into zero",
+    (pendingRaw) => {
+      const source = snapshot();
+      source.wallet.stakingRewards!.pendingRaw = pendingRaw;
+      expect(
+        walletPnlCardModel(source, { layout: "split", hideWallet: true }),
+      ).toMatchObject({ pnl: "—", pnlTone: "neutral", rewards: "—" });
+    },
+  );
+
+  it("labels delayed pending rewards while preserving their last known total", () => {
+    const source = snapshot();
+    source.wallet.snapshot!.lifetime.realizedPnlRaw = raw(-200_000);
+    source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(100_000);
+    source.wallet.stakingRewards!.pendingRaw = raw(200_000);
+    source.wallet.stakingRewards!.stale = true;
+    source.wallet.stakingRewards!.receivedAt = at - 120_000;
+    const model = walletPnlCardModel(source, {
+      layout: "split",
+      hideWallet: true,
+    });
+    expect(model).toMatchObject({
+      pnl: "+$100,000.00",
+      rewards: "+$300,000.00",
+      rewardsNote: "Claimed + pending · USDC · delayed",
+    });
+    expect(model.shareText).toContain("USDC · delayed");
+  });
+
+  it("cannot form a headline from missing trading or claimed rewards", () => {
+    const source = snapshot();
+    source.wallet.snapshot!.lifetime.realizedPnlRaw = "invalid";
+    source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(100);
+    const missingTrading = walletPnlCardModel(source, {
+      layout: "split",
+      hideWallet: true,
+    });
+    expect(missingTrading).toMatchObject({
+      pnl: "—",
+      tradingPnl: "—",
+      rewards: "+$100.00",
+    });
+    source.wallet.snapshot!.lifetime.realizedPnlRaw = raw(100);
+    source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = "invalid";
+    expect(
+      walletPnlCardModel(source, { layout: "split", hideWallet: true }),
+    ).toMatchObject({ pnl: "—", tradingPnl: "+$100.00", rewards: "—" });
+  });
+
+  it("marks rewards delayed when a cached response ages before capture", () => {
+    const source = snapshot();
+    source.wallet.stakingRewards!.receivedAt = at - 30_001;
+    const model = walletPnlCardModel(source, { layout: "split", hideWallet: true });
+    expect(model.rewardsNote).toBe("Claimed + pending · USDC · delayed");
+    expect(model.rewards).toBe("$0.00");
   });
 
   it("keeps unavailable values distinct from zero and labels partial or delayed history", () => {
@@ -131,6 +264,8 @@ describe("wallet P&L card model", () => {
       hideWallet: true,
     });
     expect(missing.pnl).toBe("—");
+    expect(missing.tradingPnl).toBe("—");
+    expect(missing.rewards).toBe("—");
     expect(missing.paper).toBe("—");
     expect(missing.stats.every((item) => item.value === "—")).toBe(true);
     expect(missing.historyNote).toBe("Trade statistics unavailable");
@@ -146,7 +281,13 @@ describe("wallet P&L card model", () => {
     };
     expect(
       walletPnlCardModel(zero, { layout: "gallery", hideWallet: true }),
-    ).toMatchObject({ pnl: "$0.00", paper: "0.00", pnlTone: "neutral" });
+    ).toMatchObject({
+      pnl: "$0.00",
+      paper: "0.00",
+      pnlTone: "neutral",
+      tradingPnl: "$0.00",
+      rewards: "$0.00",
+    });
     zero.metrics!.stale = true;
     zero.metrics!.highlights.complete = false;
     expect(

@@ -1,0 +1,57 @@
+{
+  "verification": "Read-only eth_call at fixed block, three independent live wallet states",
+  "rpcUrl": "https://rpc.hyperliquid.xyz/evm",
+  "stakingContract": "0xaad6c7b0cc3014fc80ffedae0ed7ce5967b0f016",
+  "block": "48573349",
+  "formula": "pendingBase + floor(staked * accRewardPerShare / 10^27) - rewardDebt",
+  "accRewardPerShare": "11885583543202400471492696",
+  "summaryAccumulator": "11885515079928153804948000",
+  "note": "Summary API accumulator was slightly behind direct eth_call at same advertised block; source fields are eventually consistent. Lifetime leaderboard stakingRewards matched claimed only, not pending.",
+  "cases": [
+    {
+      "address": "0x35b29bdd690f95fe35c9645f21866b04616295a7",
+      "walletRevision": 48562247,
+      "indexedThroughBlock": 48567718,
+      "paper": {
+        "balance": "0",
+        "staked": "252057160476062350514411978",
+        "pendingBase": "0",
+        "rewardDebt": "2947212262480263776256006"
+      },
+      "claimedRaw": "1496249535578204858461877",
+      "expectedPendingRaw": "48634176020349430583451",
+      "contractPendingRaw": "48634176020349430583451",
+      "exactMatch": true
+    },
+    {
+      "address": "0x9b945d37dc0d1d79d029da50b8d8148fad24320a",
+      "walletRevision": 48572574,
+      "indexedThroughBlock": 48572574,
+      "paper": {
+        "balance": "0",
+        "staked": "138237495264834919200867130",
+        "pendingBase": "63306283403539070424335",
+        "rewardDebt": "1606042506311908985844751"
+      },
+      "claimedRaw": "466712652961322779656833",
+      "expectedPendingRaw": "100297075864871761064716",
+      "contractPendingRaw": "100297075864871761064716",
+      "exactMatch": true
+    },
+    {
+      "address": "0x26b61e7ec6ccd97df9836e3358c8c92d4fa79a13",
+      "walletRevision": 48476693,
+      "indexedThroughBlock": 48567718,
+      "paper": {
+        "balance": "0",
+        "staked": "135908219081747352598758886",
+        "pendingBase": "0",
+        "rewardDebt": "1488666989343915844059714"
+      },
+      "claimedRaw": "1111868966850300997705419",
+      "expectedPendingRaw": "126681502760046949293791",
+      "contractPendingRaw": "126681502760046949293791",
+      "exactMatch": true
+    }
+  ]
+}

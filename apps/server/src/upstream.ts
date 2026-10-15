@@ -22,6 +22,13 @@ import { accountKey } from "./following-store.js";
 import { activityDelayed } from "./activity-health.js";
 import { readWalletMarginRisk } from "./wallet-risk.js";
 import {
+  publicWalletSnapshot,
+  readStakingSummary,
+  readWalletStakingRewards,
+  walletStakingRewards,
+  type RetainedWalletSnapshot,
+} from "./wallet-staking.js";
+import {
   CoordinationError,
   LocalCoordinator,
   RedisCoordinator,
@@ -781,13 +788,16 @@ export class Upstream {
     address: string,
     waitForInitial = true,
     waitMs?: number,
-  ): Promise<Cached<WalletSnapshot>> {
+  ): Promise<Cached<RetainedWalletSnapshot>> {
     address = addressSchema.parse(address);
     return this.cached(
       `wallet:${address}`,
       config.walletSnapshotTtl,
       () =>
         this.limited(async () => {
+          // Pair an existing accumulator observation with the account read that
+          // follows it; the same cache write retains both across later claims.
+          const summary = await readStakingSummary(this.store);
           const controller = new AbortController();
           try {
             const response = await this.fetcher(
@@ -820,7 +830,15 @@ export class Upstream {
               throw new UpstreamError(
                 "Papertrade returned older indexed account state; retaining the saved snapshot.",
               );
-            return value;
+            const receivedAt = Date.now();
+            return {
+              ...value,
+              stakingRewards: walletStakingRewards(
+                { value, receivedAt, stale: false },
+                summary,
+                receivedAt,
+              ),
+            };
           } finally {
             controller.abort();
           }
@@ -904,21 +922,31 @@ export class Upstream {
     const times = results.flatMap((r) =>
       r.status === "fulfilled" ? [r.value.receivedAt] : [],
     );
-    const marginRisk = await readWalletMarginRisk(
-      this.store,
-      address,
-      snapshot.status === "fulfilled" ? snapshot.value : null,
-      Date.now(),
-      snapshot.status === "rejected"
-        ? errorMessage(snapshot.reason)
-        : undefined,
-    );
+    const [marginRisk, stakingRewards] = await Promise.all([
+      readWalletMarginRisk(
+        this.store,
+        address,
+        snapshot.status === "fulfilled" ? snapshot.value : null,
+        Date.now(),
+        snapshot.status === "rejected"
+          ? errorMessage(snapshot.reason)
+          : undefined,
+      ),
+      readWalletStakingRewards(
+        snapshot.status === "fulfilled" ? snapshot.value : null,
+        Date.now(),
+      ),
+    ]);
     return {
       address,
       leaderboardName: await identity,
       accountFreshness,
       marginRisk,
-      snapshot: snapshot.status === "fulfilled" ? snapshot.value.value : null,
+      stakingRewards,
+      snapshot:
+        snapshot.status === "fulfilled"
+          ? publicWalletSnapshot(snapshot.value.value)
+          : null,
       cashflows:
         cashflows.status === "fulfilled"
           ? cashflows.value.value

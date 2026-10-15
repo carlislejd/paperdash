@@ -176,7 +176,7 @@ describe("bounded wallet account freshness", () => {
       expect(response.errors.join(" ")).not.toContain(
         "older indexed account state",
       );
-      expect(await store.get(`cache:wallet:${address}`)).toEqual({
+      expect(await store.get(`cache:wallet:${address}`)).toMatchObject({
         value: candidate,
         receivedAt: now,
       });
@@ -253,7 +253,7 @@ describe("bounded wallet account freshness", () => {
       result.accountFreshness,
     );
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(await store.get(`cache:wallet:${address}`)).toEqual({
+    expect(await store.get(`cache:wallet:${address}`)).toMatchObject({
       value,
       receivedAt: now,
     });
