@@ -10,6 +10,11 @@ import type {
   ProtocolSummary,
 } from "../../../packages/shared/src/types.js";
 import type { Store } from "./store.js";
+import {
+  annualizedStakerYield,
+  VERIFIED_PROTOCOL_GENESIS,
+} from "../../../packages/shared/src/staking-yield.js";
+import { readStakerYield } from "./staking-yield.js";
 import type { ProtocolChartObservation } from "./history-store.js";
 import { protocolHistorySchema } from "./schemas.js";
 import {
@@ -25,7 +30,7 @@ const DAY_BOUNDARY_TOLERANCE = 60000;
 const YEAR = 365 * 86400000;
 // Official production deployment genesisMs, also returned by summary.source.genesis.
 // An unknown deployment must not annualize from an assumed first chart sample.
-export const VERIFIED_PROTOCOL_GENESIS = 1791326520000;
+export { VERIFIED_PROTOCOL_GENESIS };
 const METRICS: ProtocolChartMetric[] = [
   "tvl",
   "openPositions",
@@ -200,6 +205,7 @@ function emptyEconomics(): PaperEconomicsResponse {
     pendingRewardsRaw: null,
     stakeRatioBps: null,
     annualized: annualizedStakingRevenue(null),
+    stakingYield: annualizedStakerYield(null, null),
     series: {
       supply: emptySeries("paperSupply"),
       staked: emptySeries("paperStaked"),
@@ -533,6 +539,7 @@ export async function refreshProtocolCharts(
     pendingRewardsRaw: current?.paper.pendingRewards ?? null,
     stakeRatioBps: stakeRatioBps(current),
     annualized: annualizedStakingRevenue(current, now),
+    stakingYield: await readStakerYield(store, current, now),
     series: {
       supply: data.series.paperSupply,
       staked: data.series.paperStaked,

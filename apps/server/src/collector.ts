@@ -31,6 +31,7 @@ import { refreshLiquidations } from "./liquidations.js";
 import { readLiveTvl } from "../../../packages/shared/src/live-tvl.js";
 import { TradeIntake, type IntakeState } from "./trade-intake.js";
 import { PanelPublisher, type PanelPublication } from "./panel-revisions.js";
+import { refreshStakerYield } from "./staking-yield.js";
 import {
   retainProtocolChartHistory,
   retainProtocolChartSummary,
@@ -734,6 +735,9 @@ export class Collector {
         throw new Error(
           "Upstream protocol summary moved backward; retaining the newer observation.",
         );
+      // Observe every accepted accumulator, including resets that recover
+      // between slower chart publications. Publish only after this is saved.
+      await refreshStakerYield(this.store, summary);
       await this.store.put("summary", summary);
       await this.store.sample(
         Math.floor(summary.source.at / 60000) * 60000,

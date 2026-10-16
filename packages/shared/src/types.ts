@@ -451,6 +451,21 @@ export interface AnnualizedStakingRevenue {
   yearDays: 365;
   reason?: string;
 }
+/** Historical distributed USDC earned per continuously staked PAPER. This is
+ * a simple annual reward rate; a purchase price is required for percent APR. */
+export interface AnnualizedStakerYield {
+  /** 18-decimal USDC per one PAPER per 365-day year. */
+  usdPerPaperPerYearRaw: Raw | null;
+  /** 18-decimal USDC per one PAPER over the measured observation window. */
+  earnedUsdPerPaperRaw: Raw | null;
+  fromMs: number | null;
+  toMs: number | null;
+  /** Exact source elapsed time, including partial hours. */
+  elapsedMs: number | null;
+  basis: "observed-accumulator";
+  yearDays: 365;
+  reason?: string;
+}
 export type ProtocolChartMetric =
   | "tvl"
   | "openPositions"
@@ -529,6 +544,8 @@ export interface PaperEconomicsResponse {
   /** Same-summary staked/supply ratio, truncated to integer basis points. */
   stakeRatioBps: number | null;
   annualized: AnnualizedStakingRevenue;
+  /** Additive rollout field, independent of allocated protocol revenue. */
+  stakingYield?: AnnualizedStakerYield;
   series: {
     supply: ProtocolChartSeries;
     staked: ProtocolChartSeries;

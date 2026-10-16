@@ -1,0 +1,38 @@
+{
+  "checkedAt": "2026-10-16T03:36:05.954434+00:00",
+  "rpc": "https://rpc.hyperliquid.xyz/evm",
+  "staking": "0xaad6c7b0cc3014fc80ffedae0ed7ce5967b0f016",
+  "selector": "0x939d6237",
+  "expectedGenesisMs": 1791326520000,
+  "genesisBlock": 47854413,
+  "genesisBlockTimestampMs": 1791326520000,
+  "calls": [
+    {
+      "blockTag": "0x0",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": "0x0000000000000000000000000000000000000000000a6dcc291c0518d1b9cf7d"
+      }
+    },
+    {
+      "blockTag": "0x2da334d",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": "0x0000000000000000000000000000000000000000000a6dcc291c0518d1b9cf7d"
+      }
+    },
+    {
+      "blockTag": "latest",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": "0x0000000000000000000000000000000000000000000a6dcc291c0518d1b9cf7d"
+      }
+    }
+  ],
+  "conclusion": "Historical eth_call results for block 0, genesis, and latest are identical nonzero values. This RPC does not provide usable historical accumulator evidence. Zero initialization remains unverified.",
+  "explorer": "https://hyperevmscan.io/address/0xaad6c7b0cc3014fc80ffedae0ed7ce5967b0f016#code",
+  "explorerContractVerification": "Unverified"
+}

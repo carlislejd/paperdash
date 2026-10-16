@@ -8,6 +8,8 @@ import {
   type ChartRange,
 } from "../lib/chart-data";
 import { ChartCard } from "./ChartCard";
+import { StakerYield } from "./StakerYield";
+import { stakerYieldDelayed } from "../lib/staker-yield";
 import "./paper-economics.css";
 import { hourlyChartRangeLabel } from "../lib/chart-summary";
 
@@ -85,6 +87,10 @@ export function PaperEconomics({
                 : "PROTOCOL SUMMARY"}
           </span>
         </div>
+        <StakerYield
+          data={data?.stakingYield}
+          stale={Boolean(data && (stale || stakerYieldDelayed(data)))}
+        />
         <div className="paper-details">
           <ChartCard
             {...common}

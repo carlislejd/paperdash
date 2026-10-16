@@ -19,7 +19,28 @@ These are exact representations of the supplied decimal integer strings, with 18
 
 `pendingRewardsRaw` must not be relabeled as wallet claimable rewards or as a verified amount awaiting a particular distribution stage. It is distinct from `fees.pending`, the global accumulator and a wallet's `pendingBase`.
 
-The annualized figure is lifetime allocated USDC divided by the verified protocol lifetime, multiplied by 365 days. It is a historical protocol-wide USDC/year run rate, not APY, a forecast, a token price or a per-token return. Unknown genesis or invalid clocks leave it unavailable.
+The annualized allocation figure is lifetime allocated USDC divided by the verified protocol lifetime, multiplied by 365 days. It is a historical protocol-wide USDC/year run rate, not APY, a forecast, a token price or a per-token return. Unknown genesis or invalid clocks leave it unavailable.
+
+## Annualized staker yield
+
+The overview headline and PAPER panel show historical USDC/year per **1,000 staked PAPER**. This measures changes in `paper.accumulator`, the 1e27-scaled reward-per-share accumulator used for wallet rewards. It accounts for stake at each actual distribution, including changes between hourly observations. Lifetime allocations divided by today's stake would not measure this return.
+
+The additive `stakingYield` response contains `usdPerPaperPerYearRaw` and `earnedUsdPerPaperRaw` (18-decimal USDC per one PAPER), `fromMs`, `toMs`, `elapsedMs`, `basis: "observed-accumulator"`, and `yearDays: 365`. For accumulator endpoints A and B:
+
+```text
+annual USDC raw per PAPER = (B − A) × (365 × 24 × 60 × 60 × 1000)
+                           ÷ (10^9 × elapsedMs)
+```
+
+Integer arithmetic preserves the full accumulator delta through annualization, truncating only the final raw result. The denominator uses exact source timestamps: every elapsed hour, partial hour and zero-reward interval counts. Reopening the page or serving a cached response does not advance the measured interval. The displayed hourly duration is rounded only for presentation.
+
+The collector saves the first and latest comparable accumulator observations in the existing snapshot store for every accepted summary, including observations between slower chart publications. The first observation survives restarts and seven-day chart eviction, so the rate uses all measured time. Missing intervening polls need no interpolation: a cumulative endpoint delta captures rewards across the entire elapsed interval. A known accumulator decrease, timestamp rollback or conflicting value at the same source timestamp starts a new window. Missing or invalid source values remain unavailable, while a measured zero reward rate displays zero. Chart publication only reads this window and requires its endpoint to match the summary; a concurrent update can temporarily leave the yield unavailable until the next refresh, but cannot roll back the window.
+
+At least one elapsed hour is required before publishing an annualized number. On rollout, the UI shows that it is collecting the first hour. Older API responses can omit `stakingYield`. This read uses one bounded retained snapshot during normal collector publication, with no new upstream requests, per-viewer history reads, database migrations or RPC dependency. The headline and detail share the existing economics browser resource.
+
+No zero accumulator at launch is assumed. A read-only check on October 15, 2026 (Pacific) returned identical current, nonzero `eth_call` values for block zero, the genesis block and latest, so that RPC cannot establish the historical baseline. [Captured evidence](evidence/2026-10-15-staking-genesis-verification.json) records the check. The existing protocol allocation run rate retains its separate lifetime definition.
+
+The optional price input is a hypothetical USDC purchase price per PAPER, left blank by default. Simple APR = annual USDC per PAPER ÷ entered price × 100. It is not a live token quote or compounded APY. Staking is required to earn rewards; holding unstaked PAPER does not earn this rate. The observed average can change with revenue and staking participation, and does not include token price gains/losses, purchase fees or taxes.
 
 ## Retained charts
 
@@ -47,7 +68,7 @@ Source timestamps, receipt timestamps and freshness are preserved separately. Re
 
 Official [staking mechanics](https://docs.papertrade.xyz/#/paper/staking) distinguish fees accrued at the Exchange, funds received by PaperStaking, distribution through its accumulator, and later user claims. Each distribution uses stake at that moment. The [dividend documentation](https://docs.papertrade.xyz/#/learn/staking-dividends) describes trading-fee allocation and LP excess as reward sources. An allocation total is therefore not proof that the same amount has been distributed or claimed.
 
-This release excludes global distributed USDC, global claimed USDC and realized distributions per staked token. Current reserve, unallocated balances and current stake do not establish those historical cash flows. No reserve arithmetic is used to manufacture them. The source history's `paperRevenue` name alone does not establish its accounting stage, so it is not treated as a distribution ledger.
+This release excludes global distributed USDC and global claimed USDC. The accumulator delta measures per-token rewards over its explicit observed interval, not a complete lifetime distribution ledger. Current reserve, unallocated balances and current stake do not establish historical global cash flows. No reserve arithmetic is used to manufacture them. The source history's `paperRevenue` name alone does not establish its accounting stage, so it is not treated as a distribution ledger.
 
 A wallet's `lifetime.paperRewardsClaimedRaw` is its reported lifetime claimed USDC, not a timestamped claim history. Wallet claimable rewards now use the verified accumulator calculation and an account/summary pair retained during the existing wallet refresh; `pendingBase` alone remains insufficient. The P&L card combines realized trading results with claimed and pending rewards. See [wallet rewards](WALLET_REWARDS.md) for the formula, contract verification, freshness, and missing-data behavior. Protocol-wide totals in this panel retain the definitions above.
 

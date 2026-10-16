@@ -29,6 +29,7 @@ import { useOverview } from "./lib/use-overview";
 import { useFollowing } from "./lib/use-following";
 import { FOLLOWING_LIMIT } from "./lib/following-storage";
 import { FollowingView } from "./components/FollowingView";
+import { StakerYieldMetric } from "./components/StakerYield";
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
@@ -512,18 +513,7 @@ function App() {
                 </strong>
                 <span className="metric-note">USDC · protocol-reported</span>
               </div>
-              <div className="metric">
-                <span
-                  className="metric-label"
-                  title="Lifetime USDC allocated to PAPER stakers, including unclaimed rewards"
-                >
-                  Staking revenue
-                </span>
-                <strong title={formatRawUsd(summary?.fees.lifetime)}>
-                  {formatRawUsd(summary?.fees.lifetime, true)}
-                </strong>
-                <span className="metric-note">USDC · lifetime allocated</span>
-              </div>
+              <StakerYieldMetric />
               <div className="metric">
                 <span className="metric-label">Trading volume</span>
                 <strong>{formatRawUsd(summary?.activity.volume, true)}</strong>
