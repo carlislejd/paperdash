@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { mockSources, paperEconomicsResponse } from "./fixtures";
+import { mockSources, paperEconomicsResponse, protocolChartsResponse } from "./fixtures";
 
 test("PAPER uses its own coherent totals and clock, shares daily changes and preserves range without wallet reads", async ({
   page,
 }) => {
-  const at = Date.UTC(2026, 9, 10, 12, 25);
+  const at = Date.UTC(2026, 9, 11, 12, 25);
   await page.clock.install({ time: at });
   await mockSources(page);
   let reads = 0;
@@ -39,6 +39,11 @@ test("PAPER uses its own coherent totals and clock, shares daily changes and pre
   await expect(paper).toContainText("Pending rewards source-reported");
   await expect(paper.locator(".paper-pending")).toContainText("$324");
   await expect(paper).not.toContainText("LAST AVAILABLE");
+  await expect(paper).toContainText("Annualized reward allocations");
+  await expect(paper).toContainText("Average daily reward allocations");
+  await expect(paper).toContainText("Oct 10, 2026, 14:00 UTC");
+  await expect(paper).toContainText("$0.00 prelaunch baseline");
+  await expect(paper).not.toContainText("protocol age");
   await expect(paper).toContainText(
     "Historical run rate, not APY or a forecast",
   );
@@ -190,6 +195,73 @@ test("an older API rollout leaves PAPER unavailable rather than borrowing House 
   await expect(
     paper.locator(".paper-details .pc-chart-headline > strong"),
   ).toHaveText(["—", "—", "—"]);
+});
+
+test("legacy or incomplete allocation metadata never receives a trading-launch rate label", async ({ page }) => {
+  const at = Date.UTC(2026, 9, 13, 12, 25);
+  await page.clock.install({ time: at });
+  await mockSources(page);
+  let mode: "legacy" | "missing-baseline" | "corrected" = "legacy";
+  await page.route("**/api/paper/economics", (route) => {
+    const data = paperEconomicsResponse(at);
+    if (mode === "legacy") {
+      data.annualized.basis = "protocol-lifetime";
+      data.annualized.fromMs = Date.UTC(2026, 9, 6);
+      delete data.annualized.cutoffBasis;
+      delete data.annualized.baselineRewardsRaw;
+      delete data.annualized.allocatedSinceStartRaw;
+      delete data.annualized.usdPerDayRaw;
+    } else if (mode === "missing-baseline") {
+      delete data.annualized.baselineRewardsRaw;
+    }
+    return route.fulfill({ json: data });
+  });
+  await page.goto("/");
+  const paper = page.getByRole("region", { name: "PAPER economics", exact: true });
+  const rates = paper.locator(".annualized-revenue");
+  for (const next of ["legacy", "missing-baseline"] as const) {
+    if (mode !== next) {
+      mode = next;
+      await page.reload();
+    }
+    await expect(rates.locator("strong")).toHaveText(["—", "—"]);
+    await expect(rates).toContainText("Waiting for verified trading-window allocation totals");
+    await expect(rates).not.toContainText("Since trading launch");
+    await expect(paper.locator(".paper-details")).toContainText("$16.27K");
+  }
+  mode = "corrected";
+  await page.reload();
+  await expect(rates).toContainText("Since trading launch on Oct 10, 2026, 14:00 UTC");
+  await expect(rates.locator("strong").first()).not.toHaveText("—");
+});
+
+test("the trading launch allocation window preserves October 8 deposit volume and first depositors", async ({ page }) => {
+  const at = Date.UTC(2026, 9, 13, 12, 25);
+  await page.clock.install({ time: at });
+  await mockSources(page);
+  await page.route("**/api/protocol/charts", (route) =>
+    route.fulfill({ json: protocolChartsResponse(at) }),
+  );
+  await page.route("**/api/paper/economics", (route) =>
+    route.fulfill({ json: paperEconomicsResponse(at) }),
+  );
+  await page.goto("/");
+  const paper = page.getByRole("region", { name: "PAPER economics", exact: true });
+  await expect(paper).toContainText("Since trading launch on Oct 10, 2026, 14:00 UTC");
+  for (const [name, amount] of [
+    ["Deposit volume / day chart card", "2,000 USDC"],
+    ["First-time depositors chart card", "2 wallets"],
+  ]) {
+    const chart = page.getByRole("region", { name, exact: true });
+    await chart.getByRole("img").focus();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowRight");
+    await expect(chart.locator(".pc-chart-inspect")).toContainText("8 Oct 2026, 00:00 UTC");
+    await expect(chart.locator(".pc-chart-inspect")).toContainText(amount);
+  }
+  await paper.locator(".annualized-revenue").screenshot({
+    path: `/tmp/paperclub-trading-launch-${test.info().project.name}.png`,
+  });
 });
 
 test("daily rewards grow inside a full UTC-day slot while missing days, zero and signed supply stay distinct", async ({

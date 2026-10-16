@@ -1,0 +1,60 @@
+{
+  "verifiedAt": "2026-10-16",
+  "scope": "Public trading start and cumulative allocation baseline; no account actions",
+  "officialAnnouncement": {
+    "url": "https://x.com/papertrade_xyz/status/2108852108766437759",
+    "account": "@papertrade_xyz",
+    "method": "Official X profile and pinned post inspected in a browser",
+    "scheduledTradingStart": "2026-10-10T14:00:00Z",
+    "scheduledDepositPause": "2026-10-10T13:45:00Z",
+    "qualification": "The post says trading was expected to open at 14:00 UTC after a scheduled HyperEVM upgrade. It does not prove the exact millisecond of frontend enablement or the first executed trade."
+  },
+  "protocolHistory": {
+    "sourceUrl": "https://exchange.papertrade.xyz/query/protocol/history?interval=1h",
+    "archivedAs": "2026-10-16-trading-launch-protocol-history.json",
+    "temporaryCaptureSha256": "a854270ff7da0915540286013c7241289da33752d647a93d2c1a72b887deb219",
+    "startMs": 1791392400000,
+    "intervalMs": 3600000,
+    "source": {
+      "asOfMs": 1792169511000,
+      "revision": "358458",
+      "generation": "0xffedb3d623cd531a1c11d83140a4691494dfcb70e441e9e080cfc28a0574ea1a:34"
+    },
+    "bucketSemantics": "Each time is the start of an hourly bucket; its cumulative value is measured at the bucket end.",
+    "preLaunchCoverage": "All 69 available hourly buckets from 2026-10-07T17:00:00Z through 2026-10-10T13:00:00Z contain numeric zero for stakingRewards, volume, trades, and paperSupply; none is null.",
+    "selectedBuckets": [
+      {
+        "time": "2026-10-10T13:00:00Z",
+        "index": 68,
+        "stakingRewards": 0,
+        "volume": 0,
+        "trades": 0,
+        "paperSupply": 0,
+        "interpretation": "Complete hour through 13:59:59.999 UTC immediately before the scheduled trading start."
+      },
+      {
+        "time": "2026-10-10T14:00:00Z",
+        "index": 69,
+        "stakingRewards": 200382.57760834665,
+        "volume": 77924986406.83809,
+        "trades": 3574,
+        "paperSupply": 1188002466.6627831,
+        "interpretation": "First nonzero bucket; activity occurred by 14:59:59.999 UTC, but the bucket does not identify its first minute."
+      }
+    ]
+  },
+  "allocationCrossCheck": {
+    "source": "Saved live /api/paper/economics response at /tmp/paper-launch-economics.json",
+    "temporaryCaptureSha256": "c8e581aa3622af9620d8836a25357c3b7a8e25ee574b1c828486364ce7e5836d",
+    "series": "series.allocated (cumulative fees.lifetime presentation)",
+    "at13Utc": 0,
+    "at14Utc": 200382.57760834665,
+    "match": "The economics allocated series has the same two hourly values as the upstream protocol-history stakingRewards column. The current exact allocatedRewardsRaw is 49654789594140031871040939 at sourceAt 1792169483000; the later upstream history totals.rewardsRaw is 49656141908329503520555911 at source.asOfMs 1792169511000."
+  },
+  "conclusion": {
+    "recommendedTradingStartMs": 1791640800000,
+    "recommendedLabel": "Since the scheduled public trading start, October 10, 2026 at 14:00 UTC",
+    "allocationBaseline": "The complete prior hour and all earlier inspected trading metrics report zero; use zero as the observed cumulative allocation baseline at the scheduled start.",
+    "precisionLimit": "The source exposes hourly numeric history, not an exact raw fees.lifetime value sampled at 14:00:00.000 UTC or the first trade timestamp. Describe the cutoff as scheduled launch / first active hour, not a proven execution instant."
+  }
+}

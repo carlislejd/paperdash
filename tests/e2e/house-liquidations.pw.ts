@@ -1,13 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { account, mockSources, WALLET, SECOND_WALLET } from "./fixtures";
+import { account, allocationRateResponse, mockSources, paperEconomicsResponse, WALLET, SECOND_WALLET } from "./fixtures";
 import type {
   HouseResponse,
   LiquidationsResponse,
 } from "../../packages/shared/src/types";
 const raw = (n: number) => (BigInt(n) * 10n ** 18n).toString();
-function house(): HouseResponse {
-  const at = Date.now();
+function house(at = Date.now()): HouseResponse {
   return {
     sourceAt: at,
     receivedAt: at,
@@ -27,14 +26,7 @@ function house(): HouseResponse {
     },
     sourceBlock: "12345",
     summarySourceAt: at,
-    annualizedStakingRevenue: {
-      usdPerYearRaw: raw(1484728),
-      lifetimeRewardsRaw: raw(16271),
-      fromMs: at - 4 * 86400000,
-      toMs: at,
-      basis: "protocol-lifetime",
-      yearDays: 365,
-    },
+    annualizedStakingRevenue: allocationRateResponse(at),
     history: [
       {
         time: at - 600000,
@@ -175,7 +167,13 @@ async function sources(page: Parameters<typeof mockSources>[0]) {
 test("house funds show signed billion values, retained gaps and PAPER independently", async ({
   page,
 }) => {
+  const at = Date.UTC(2026, 9, 14, 14);
+  await page.clock.install({ time: at });
   await sources(page);
+  await page.route("**/api/house", (route) => route.fulfill({ json: house(at) }));
+  await page.route("**/api/paper/economics", (route) =>
+    route.fulfill({ json: paperEconomicsResponse(at) }),
+  );
   await page.goto("/");
   const panel = page.getByRole("region", {
     name: "House and PAPER statistics",

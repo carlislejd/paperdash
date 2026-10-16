@@ -7,6 +7,7 @@ import type {
 import { buildApi } from "../src/api.js";
 import { createStore, type Store } from "../src/store.js";
 import { Upstream } from "../src/upstream.js";
+import { VERIFIED_TRADING_WINDOW } from "../../../packages/shared/src/trading-launch.js";
 import type { ProtocolChartObservation } from "../src/history-store.js";
 import {
   readPaperEconomics,
@@ -88,14 +89,21 @@ describe("saved PAPER economics", () => {
       coverage: { partial: true, historyApproximate: true },
       annualized: {
         lifetimeRewardsRaw: source.fees.lifetime,
-        basis: "protocol-lifetime",
+        baselineRewardsRaw: "0",
+        allocatedSinceStartRaw: source.fees.lifetime,
+        fromMs: VERIFIED_TRADING_WINDOW.fromMs,
+        basis: "observed-trading-window",
+        cutoffBasis: "announced-trading-start",
       },
     });
     expect(data.annualized.usdPerYearRaw).toBe(
       (
         (BigInt(source.fees.lifetime) * BigInt(365 * 86400000)) /
-        BigInt(now - VERIFIED_PROTOCOL_GENESIS)
+        BigInt(now - VERIFIED_TRADING_WINDOW.fromMs)
       ).toString(),
+    );
+    expect(data.annualized.usdPerDayRaw).toBe(
+      ((BigInt(source.fees.lifetime) * 86400000n) / BigInt(now - VERIFIED_TRADING_WINDOW.fromMs)).toString(),
     );
     expect(data).not.toHaveProperty("distributedRaw");
     expect(data).not.toHaveProperty("claimedRaw");

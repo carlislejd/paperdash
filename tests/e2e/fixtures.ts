@@ -1,7 +1,9 @@
 import type { Page } from "@playwright/test";
 import type { PositionMetricsResponse } from "../../packages/shared/src/position-metrics";
+import { VERIFIED_TRADING_WINDOW } from "../../packages/shared/src/trading-launch";
 import type {
   Account,
+  AnnualizedStakingRevenue,
   AccountsResponse,
   AssetsResponse,
   AssetMarketResponse,
@@ -430,6 +432,27 @@ export function protocolChartsResponse(
   };
 }
 
+export function allocationRateResponse(at = Date.now()): AnnualizedStakingRevenue {
+  const elapsed = at - VERIFIED_TRADING_WINDOW.fromMs;
+  const allocations = BigInt(usd(16271));
+  return {
+    usdPerYearRaw: elapsed > 0
+      ? (allocations * 86_400_000n * 365n / BigInt(elapsed)).toString()
+      : null,
+    usdPerDayRaw: elapsed > 0
+      ? (allocations * 86_400_000n / BigInt(elapsed)).toString()
+      : null,
+    lifetimeRewardsRaw: allocations.toString(),
+    allocatedSinceStartRaw: allocations.toString(),
+    baselineRewardsRaw: VERIFIED_TRADING_WINDOW.baselineRewardsRaw,
+    fromMs: VERIFIED_TRADING_WINDOW.fromMs,
+    toMs: at,
+    basis: "observed-trading-window",
+    cutoffBasis: VERIFIED_TRADING_WINDOW.cutoffBasis,
+    yearDays: 365,
+  };
+}
+
 export function paperEconomicsResponse(
   at = Date.now(),
 ): PaperEconomicsResponse {
@@ -476,14 +499,7 @@ export function paperEconomicsResponse(
     allocatedRewardsRaw: usd(16271),
     pendingRewardsRaw: usd(324),
     stakeRatioBps: 0,
-    annualized: {
-      usdPerYearRaw: usd(1484728),
-      lifetimeRewardsRaw: usd(16271),
-      fromMs: at - 4 * 86400000,
-      toMs: at,
-      basis: "protocol-lifetime",
-      yearDays: 365,
-    },
+    annualized: allocationRateResponse(at),
     series: {
       supply: series("supply"),
       allocated: series("allocated"),

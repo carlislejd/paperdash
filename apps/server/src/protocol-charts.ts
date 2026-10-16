@@ -15,6 +15,7 @@ import {
   VERIFIED_PROTOCOL_GENESIS,
 } from "../../../packages/shared/src/staking-yield.js";
 import { readStakerYield } from "./staking-yield.js";
+import { VERIFIED_TRADING_WINDOW } from "../../../packages/shared/src/trading-launch.js";
 import type { ProtocolChartObservation } from "./history-store.js";
 import { protocolHistorySchema } from "./schemas.js";
 import {
@@ -29,7 +30,7 @@ const DAY = 86400000;
 const DAY_BOUNDARY_TOLERANCE = 60000;
 const YEAR = 365 * 86400000;
 // Official production deployment genesisMs, also returned by summary.source.genesis.
-// An unknown deployment must not annualize from an assumed first chart sample.
+// Keep this identity separate from the public trading cutoff used by rates.
 export { VERIFIED_PROTOCOL_GENESIS };
 const METRICS: ProtocolChartMetric[] = [
   "tvl",
@@ -46,34 +47,49 @@ export function annualizedStakingRevenue(
   summary: ProtocolSummary | null,
   now = Date.now(),
 ): AnnualizedStakingRevenue {
+  const verified = summary?.ok === true &&
+    summary.source.genesis === VERIFIED_TRADING_WINDOW.genesis;
   const base: AnnualizedStakingRevenue = {
     usdPerYearRaw: null,
+    usdPerDayRaw: null,
     lifetimeRewardsRaw: summary?.fees.lifetime ?? null,
-    fromMs: summary?.source.genesis ?? null,
+    baselineRewardsRaw: verified ? VERIFIED_TRADING_WINDOW.baselineRewardsRaw : null,
+    allocatedSinceStartRaw: null,
+    fromMs: verified ? VERIFIED_TRADING_WINDOW.fromMs : null,
     toMs: summary?.source.at ?? null,
-    basis: "protocol-lifetime",
+    basis: "observed-trading-window",
+    cutoffBasis: VERIFIED_TRADING_WINDOW.cutoffBasis,
     yearDays: 365,
   };
-  if (!summary || summary.source.genesis !== VERIFIED_PROTOCOL_GENESIS)
-    return { ...base, reason: "Verified protocol lifetime is unavailable." };
-  const elapsed = summary.source.at - summary.source.genesis;
+  if (!summary || !verified)
+    return { ...base, reason: "Verified trading cutoff and allocation baseline are unavailable." };
+  const elapsed = summary.source.at - VERIFIED_TRADING_WINDOW.fromMs;
   if (
+    !Number.isSafeInteger(summary.source.at) ||
     !Number.isSafeInteger(elapsed) ||
     elapsed <= 0 ||
     !Number.isSafeInteger(now) ||
+    now < 0 || now > 8.64e15 ||
+    summary.source.at > 8.64e15 ||
     summary.source.at > now + 30000 ||
-    !/^(0|[1-9]\d*)$/.test(summary.fees.lifetime)
+    typeof summary.fees.lifetime !== "string" ||
+    !/^(0|[1-9]\d{0,77})$/.test(summary.fees.lifetime)
   )
     return {
       ...base,
-      reason: "Protocol lifetime or cumulative rewards are invalid.",
+      reason: "Trading interval or cumulative allocations are invalid.",
     };
+  // Subtract the verified baseline explicitly, even though this deployment's
+  // observed prelaunch counter is zero. Never shorten only the denominator.
+  const allocated = BigInt(summary.fees.lifetime) -
+    BigInt(VERIFIED_TRADING_WINDOW.baselineRewardsRaw);
+  if (allocated < 0n)
+    return { ...base, reason: "Allocations are below the verified trading baseline." };
   return {
     ...base,
-    usdPerYearRaw: (
-      (BigInt(summary.fees.lifetime) * BigInt(YEAR)) /
-      BigInt(elapsed)
-    ).toString(),
+    allocatedSinceStartRaw: allocated.toString(),
+    usdPerDayRaw: ((allocated * BigInt(DAY)) / BigInt(elapsed)).toString(),
+    usdPerYearRaw: ((allocated * BigInt(YEAR)) / BigInt(elapsed)).toString(),
   };
 }
 

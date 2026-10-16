@@ -19,7 +19,17 @@ These are exact representations of the supplied decimal integer strings, with 18
 
 `pendingRewardsRaw` must not be relabeled as wallet claimable rewards or as a verified amount awaiting a particular distribution stage. It is distinct from `fees.pending`, the global accumulator and a wallet's `pendingBase`.
 
-The annualized allocation figure is lifetime allocated USDC divided by the verified protocol lifetime, multiplied by 365 days. It is a historical protocol-wide USDC/year run rate, not APY, a forecast, a token price or a per-token return. Unknown genesis or invalid clocks leave it unavailable.
+The PAPER panel's **Average daily reward allocations** and **Annualized reward allocations** use the same historical trading window. The cutoff is the announced public trading start, **October 10, 2026 at 14:00 UTC** (`fromMs: 1791640800000`, `cutoffBasis: "announced-trading-start"`). The official hourly protocol history reports zero cumulative staking allocations in every available preceding hour, including the complete 13:00–14:00 UTC hour, and its first nonzero allocation appears in the 14:00–15:00 UTC hour. This supports a zero allocation baseline at the cutoff; it does not identify the exact first execution time. [Trading-start evidence](evidence/2026-10-16-trading-launch-verification.json) records the announcement, source history and precision limit.
+
+`annualized.basis: "observed-trading-window"` identifies this calculation. Its raw 18-decimal fields are `lifetimeRewardsRaw` (the unchanged `fees.lifetime` total), `baselineRewardsRaw` (`"0"` for this verified deployment), `allocatedSinceStartRaw` (lifetime total minus baseline), `usdPerDayRaw`, and `usdPerYearRaw`. With source summary time `toMs`, the formulas use exact elapsed milliseconds and integer arithmetic:
+
+```text
+allocated since start = lifetime allocations − cutoff baseline
+daily allocations    = allocated since start × 86,400,000 ÷ (toMs − fromMs)
+annual allocations   = allocated since start × 365 × 86,400,000 ÷ (toMs − fromMs)
+```
+
+The rate is unavailable for an unverified deployment, an invalid or pre-cutoff source clock, or a cumulative counter below the baseline. It is a protocol-wide retrospective allocation rate, not APY, a forecast, a token price, a per-token return, or proof of USDC already distributed or claimed. The October 6 protocol genesis remains the deployment identity; it is not the start of public trading. Deposits opened October 8 and remain in their actual deposit history. This calculation uses the already collected summary and a verified fixed baseline, with no extra RPC, upstream polling or history scan. Older `basis: "protocol-lifetime"` responses describe a different denominator and must not be presented as this trading-window rate.
 
 ## Annualized staker yield
 
@@ -38,7 +48,7 @@ The collector saves the first and latest comparable accumulator observations in 
 
 At least one elapsed hour is required before publishing an annualized number. On rollout, the UI shows that it is collecting the first hour. Older API responses can omit `stakingYield`. This read uses one bounded retained snapshot during normal collector publication, with no new upstream requests, per-viewer history reads, database migrations or RPC dependency. The headline and detail share the existing economics browser resource.
 
-No zero accumulator at launch is assumed. A read-only check on October 15, 2026 (Pacific) returned identical current, nonzero `eth_call` values for block zero, the genesis block and latest, so that RPC cannot establish the historical baseline. [Captured evidence](evidence/2026-10-15-staking-genesis-verification.json) records the check. The existing protocol allocation run rate retains its separate lifetime definition.
+No zero **reward-per-share accumulator** at launch is assumed for this separate per-PAPER staking yield. A read-only check on October 15, 2026 (Pacific) returned identical current, nonzero `eth_call` values for block zero, the genesis block and latest, so that RPC cannot establish its historical accumulator baseline. [Captured evidence](evidence/2026-10-15-staking-genesis-verification.json) records the check. The verified zero **cumulative allocation** baseline above is a different counter; it does not imply a zero accumulator.
 
 The optional price input is a hypothetical USDC purchase price per PAPER, left blank by default. Simple APR = annual USDC per PAPER ÷ entered price × 100. It is not a live token quote or compounded APY. Staking is required to earn rewards; holding unstaked PAPER does not earn this rate. The observed average can change with revenue and staking participation, and does not include token price gains/losses, purchase fees or taxes.
 

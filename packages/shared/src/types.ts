@@ -444,10 +444,19 @@ export interface HouseResponse {
 
 export interface AnnualizedStakingRevenue {
   usdPerYearRaw: Raw | null;
+  /** Direct daily run rate; absent in older deployment-lifetime responses. */
+  usdPerDayRaw?: Raw | null;
+  /** Source lifetime counter, preserved independently of the rate's window. */
   lifetimeRewardsRaw: Raw | null;
+  /** Verified cumulative allocations immediately before the trading cutoff. */
+  baselineRewardsRaw?: Raw | null;
+  /** Lifetime counter minus the cutoff baseline; the rate's numerator. */
+  allocatedSinceStartRaw?: Raw | null;
   fromMs: number | null;
   toMs: number | null;
-  basis: "protocol-lifetime";
+  /** Legacy cached responses must not be presented as trading-window rates. */
+  basis: "protocol-lifetime" | "observed-trading-window";
+  cutoffBasis?: "announced-trading-start";
   yearDays: 365;
   reason?: string;
 }

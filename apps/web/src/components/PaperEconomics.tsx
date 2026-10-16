@@ -10,6 +10,7 @@ import {
 import { ChartCard } from "./ChartCard";
 import { StakerYield } from "./StakerYield";
 import { stakerYieldDelayed } from "../lib/staker-yield";
+import { allocationRateForDisplay, allocationWindowTime } from "../lib/allocation-rate";
 import "./paper-economics.css";
 import { hourlyChartRangeLabel } from "../lib/chart-summary";
 
@@ -53,16 +54,7 @@ export function PaperEconomics({
   };
   const stale = Boolean(error || data?.error || data?.stale);
   const common = { range, sourceAt, stale, loading };
-  const annualized = data?.annualized;
-  const dailyAverageRaw =
-    annualized?.usdPerYearRaw != null &&
-    /^\d+$/.test(annualized.usdPerYearRaw) &&
-    Number.isSafeInteger(annualized.yearDays) &&
-    annualized.yearDays > 0
-      ? (
-          BigInt(annualized.usdPerYearRaw) / BigInt(annualized.yearDays)
-        ).toString()
-      : null;
+  const annualized = allocationRateForDisplay(data);
   const stakeRatio =
     data?.stakeRatioBps != null &&
     Number.isSafeInteger(data.stakeRatioBps) &&
@@ -151,7 +143,7 @@ export function PaperEconomics({
         <div className="annualized-revenue">
           <dl>
             <div>
-              <dt>Annualized allocation rate</dt>
+              <dt>Annualized reward allocations</dt>
               <dd>
                 <strong title={formatRawUsd(annualized?.usdPerYearRaw)}>
                   {formatRawUsd(annualized?.usdPerYearRaw, true)}
@@ -160,20 +152,19 @@ export function PaperEconomics({
               </dd>
             </div>
             <div>
-              <dt>Average daily staking revenue</dt>
+              <dt>Average daily reward allocations</dt>
               <dd>
-                <strong title={formatRawUsd(dailyAverageRaw)}>
-                  {formatRawUsd(dailyAverageRaw, true)}
+                <strong title={formatRawUsd(annualized?.usdPerDayRaw)}>
+                  {formatRawUsd(annualized?.usdPerDayRaw, true)}
                 </strong>
                 <small>USDC / day</small>
               </dd>
             </div>
           </dl>
           <p>
-            {annualized?.usdPerYearRaw != null &&
-            validChartTime(annualized.fromMs)
-              ? `Daily average = lifetime allocations since ${new Date(annualized.fromMs).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })} ÷ protocol age. Annualized = daily average × 365. Historical run rate, not APY or a forecast.`
-              : "Waiting for protocol lifetime and allocation totals. This is not APY."}
+            {annualized
+              ? `Since trading launch on ${allocationWindowTime(annualized.fromMs)} (announced start), through ${allocationWindowTime(annualized.toMs)}. Daily average = (lifetime allocations − ${formatRawUsd(annualized.baselineRewardsRaw)} prelaunch baseline) ÷ elapsed days. Annualized = daily average × 365. Historical run rate, not APY or a forecast.`
+              : "Waiting for verified trading-window allocation totals. Historical run rate, not APY or a forecast."}
           </p>
         </div>
         {(error || data?.error) && (

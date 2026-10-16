@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type {
   ProtocolSummary,
@@ -19,6 +21,7 @@ import { Upstream, RequestGate } from "../src/upstream.js";
 import { ChangeBus } from "../src/bus.js";
 import { refreshHouse } from "../src/house.js";
 import { retainProtocolHistory } from "../src/collector.js";
+import { VERIFIED_TRADING_WINDOW } from "../../../packages/shared/src/trading-launch.js";
 
 const HOUR = 3600000,
   DAY = 86400000;
@@ -72,17 +75,46 @@ async function memory(value: ProtocolSummary | null = summary()) {
   return store;
 }
 
-describe("protocol lifetime annualized staking revenue", () => {
-  it("annualizes all lifetime allocated USDC with exact raw arithmetic and a 365-day year", () => {
-    const value = summary(VERIFIED_PROTOCOL_GENESIS + DAY);
+describe("allocation rates since public trading launch", () => {
+  it("ties the cutoff and zero baseline to the announcement and archived prelaunch history", () => {
+    const evidence = JSON.parse(readFileSync(new URL(
+      "../../../docs/evidence/2026-10-16-trading-launch-verification.json", import.meta.url,
+    ), "utf8"));
+    const bytes = readFileSync(new URL(
+      "../../../docs/evidence/2026-10-16-trading-launch-protocol-history.json", import.meta.url,
+    ));
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(
+      evidence.protocolHistory.temporaryCaptureSha256,
+    );
+    const history = JSON.parse(bytes.toString());
+    const cutoff = VERIFIED_TRADING_WINDOW.fromMs;
+    expect(cutoff).toBe(Date.parse(evidence.officialAnnouncement.scheduledTradingStart));
+    expect(VERIFIED_TRADING_WINDOW.genesis).toBe(VERIFIED_PROTOCOL_GENESIS);
+    expect(cutoff).toBeGreaterThan(VERIFIED_PROTOCOL_GENESIS);
+    expect(VERIFIED_TRADING_WINDOW.baselineRewardsRaw).toBe("0");
+    const first = (cutoff - history.startMs) / history.intervalMs;
+    expect(Number.isInteger(first)).toBe(true);
+    expect(history.intervalMs).toBe(HOUR);
+    expect(history.source.asOfMs).toBeGreaterThan(cutoff + HOUR);
+    for (const column of ["stakingRewards", "volume", "trades", "paperSupply"]) {
+      expect(history.columns[column].slice(0, first).every((v: unknown) => v === 0)).toBe(true);
+      expect(history.columns[column][first]).toBeGreaterThan(0);
+    }
+  });
+  it("annualizes allocations after the verified baseline using exact days, excluding deployment and deposit days", () => {
+    const value = summary(VERIFIED_TRADING_WINDOW.fromMs + DAY);
     value.fees.lifetime = "12345678901234567890123456789";
     const result = annualizedStakingRevenue(value, value.source.at);
     expect(result).toEqual({
       usdPerYearRaw: (BigInt(value.fees.lifetime) * 365n).toString(),
+      usdPerDayRaw: value.fees.lifetime,
       lifetimeRewardsRaw: value.fees.lifetime,
-      fromMs: VERIFIED_PROTOCOL_GENESIS,
+      baselineRewardsRaw: "0",
+      allocatedSinceStartRaw: value.fees.lifetime,
+      fromMs: VERIFIED_TRADING_WINDOW.fromMs,
       toMs: value.source.at,
-      basis: "protocol-lifetime",
+      basis: "observed-trading-window",
+      cutoffBasis: "announced-trading-start",
       yearDays: 365,
     });
     value.fees.lifetime = "0";
@@ -90,15 +122,37 @@ describe("protocol lifetime annualized staking revenue", () => {
       "0",
     );
   });
-  it("never substitutes first observation time or an unverified/invalid lifetime", () => {
+  it("uses the source clock and preserves partial days without rounding the daily rate first", () => {
+    const value = summary(VERIFIED_TRADING_WINDOW.fromMs + DAY + DAY / 2);
+    value.fees.lifetime = "1";
+    const result = annualizedStakingRevenue(value, value.source.at + HOUR);
+    expect(result).toMatchObject({ usdPerDayRaw: "0", usdPerYearRaw: "243", toMs: value.source.at });
+    expect(annualizedStakingRevenue(value, value.source.at + 2 * HOUR)).toEqual(result);
+  });
+  it("never annualizes prelaunch activity, unknown deployments, failed summaries or invalid clocks", () => {
     for (const value of [
       null,
       { ...summary(), source: { block: "1", at: now } },
       { ...summary(), source: { block: "1", at: now, genesis: now - HOUR } },
+      { ...summary(), ok: false },
       summary(VERIFIED_PROTOCOL_GENESIS),
+      summary(Date.UTC(2026, 9, 8, 14)),
+      summary(VERIFIED_TRADING_WINDOW.fromMs - 1),
+      summary(VERIFIED_TRADING_WINDOW.fromMs),
+      summary(NaN),
+      summary(now + 0.5),
       summary(now + 30001),
-    ])
+    ]) {
+      const result = annualizedStakingRevenue(value, now);
+      expect(result.usdPerYearRaw).toBeNull();
+      expect(result.usdPerDayRaw).toBeNull();
+      expect(result.allocatedSinceStartRaw).toBeNull();
+    }
+    for (const invalid of ["-1", "01", "1.5", "1e18", "9".repeat(79)]) {
+      const value = summary();
+      value.fees.lifetime = invalid;
       expect(annualizedStakingRevenue(value, now).usdPerYearRaw).toBeNull();
+    }
   });
   it("is included in the worker-saved house payload without pending reward inflation", async () => {
     const store = await memory();

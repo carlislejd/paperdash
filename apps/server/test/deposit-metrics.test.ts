@@ -85,6 +85,22 @@ afterEach(async () => {
 });
 
 describe("incremental credited deposits", () => {
+  it("preserves October 8 deposits and the first-depositor date across the October 10 trading launch", async () => {
+    const { db, metrics } = fixture();
+    const depositsOpenDay = Date.UTC(2026, 9, 8);
+    const tradingDay = Date.UTC(2026, 9, 10);
+    retain(db, "prelaunch", deposit(depositsOpenDay + 14 * 3600000, "1000"));
+    retain(db, "after-launch", deposit(tradingDay + 15 * 3600000, "250"));
+    await metrics.tick();
+    expect(await metrics.read(depositsOpenDay, tradingDay + DAY)).toMatchObject({
+      observedFrom: depositsOpenDay + 14 * 3600000,
+      days: [
+        { time: depositsOpenDay, depositVolumeRaw: "1000", depositCount: 1, firstDepositors: 1 },
+        { time: tradingDay, depositVolumeRaw: "250", depositCount: 1, firstDepositors: 0 },
+      ],
+    });
+  });
+
   it("keeps exact daily amounts, counts ambiguous retained deposits, and credits one first day per wallet", async () => {
     const { db, metrics } = fixture();
     retain(db, "one", deposit(start + 1000, String(huge)));
