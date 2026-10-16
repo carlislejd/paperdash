@@ -1,0 +1,219 @@
+{
+  "verifiedAt": "2026-10-16T17:59:46.451Z",
+  "releaseCommit": "ff164883fa3c2e34593a7625e678aba8c373a380",
+  "site": "https://papertrade.club",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/38937675814",
+    "conclusion": "success"
+  },
+  "deployments": {
+    "api": {
+      "id": "dep-db95o8mq1p3s73cue7kg",
+      "status": "live",
+      "instances": 3
+    },
+    "collector": {
+      "id": "dep-db95p5fbtjjs7398v74g",
+      "status": "live"
+    },
+    "frontend": {
+      "id": "dep-db95pjmk1f9s73fmueng",
+      "status": "live"
+    }
+  },
+  "rates": {
+    "verifiedAt": "2026-10-16T17:57:58.848Z",
+    "results": [
+      {
+        "endpoint": "economics",
+        "sourceAt": "2026-10-16T17:57:38.000Z",
+        "annualizedUsd": 2976984474.063529,
+        "dailyUsd": 8156121.846749394,
+        "stale": false,
+        "annualized": {
+          "toMs": 1792173458000,
+          "basis": "observed-trading-window",
+          "fromMs": 1791640800000,
+          "yearDays": 365,
+          "cutoffBasis": "announced-trading-start",
+          "usdPerDayRaw": "8156121846749394458810512",
+          "usdPerYearRaw": "2976984474063528977465836999",
+          "baselineRewardsRaw": "0",
+          "lifetimeRewardsRaw": "50282679984326839741216318",
+          "allocatedSinceStartRaw": "50282679984326839741216318"
+        }
+      },
+      {
+        "endpoint": "house",
+        "sourceAt": "2026-10-16T17:57:41.000Z",
+        "annualizedUsd": 2976971882.744602,
+        "dailyUsd": 8156087.349985211,
+        "stale": false,
+        "annualized": {
+          "toMs": 1792173461000,
+          "basis": "observed-trading-window",
+          "fromMs": 1791640800000,
+          "yearDays": 365,
+          "cutoffBasis": "announced-trading-start",
+          "usdPerDayRaw": "8156087349985210779938574",
+          "usdPerYearRaw": "2976971882744601934677579755",
+          "baselineRewardsRaw": "0",
+          "lifetimeRewardsRaw": "50282750508454541195056263",
+          "allocatedSinceStartRaw": "50282750508454541195056263"
+        }
+      }
+    ]
+  },
+  "deposits": {
+    "verifiedAt": "2026-10-16T17:58:35.254020+00:00",
+    "releaseCommit": "ff164883fa3c2e34593a7625e678aba8c373a380",
+    "endpoint": "https://paperdash-api.onrender.com/api/wallets/0xf3dcaeb909d3d17318c0908a1ec0ca31321e1672/cashflows",
+    "beforeSha256": "28d074662363eec27207782282b647edd1ea1008c4c7ccc7a252e069309e4f0c",
+    "afterSha256": "ae82107e4f17b3e3873bb3fe003382e105bec68a5509bdaa633e0a871f8e51eb",
+    "oct8DepositsIdentical": true,
+    "oct8Deposits": [
+      {
+        "kind": "Deposit",
+        "route": "hypercore",
+        "txHash": "0x68109d32d020e313d940ea8642d5bc7d9a266170141188dd735f41b3deaa46fd",
+        "amountRaw": "600000000000000000000000",
+        "timestampMs": 1791482718000,
+        "withdrawalStatus": null,
+        "recipientAmountRaw": null,
+        "id": "f0d0e6384adaa3cfc48f52610f3529424a469730cc8d678930b887bdebc896ba:1"
+      },
+      {
+        "kind": "Deposit",
+        "route": "hypercore",
+        "txHash": "0x6987fb9b076a4cf628f82f93ec08943c434ccfba6fe93e62576c230ee28fa4b9",
+        "amountRaw": "1000000000000000000000",
+        "timestampMs": 1791481726000,
+        "withdrawalStatus": null,
+        "recipientAmountRaw": null,
+        "id": "46fbb41d265e45fca008f1695c8b649185cfbc59479c31591ab4a859f61bd0af:1"
+      }
+    ],
+    "allBeforeRecordsRetainedExactly": true,
+    "beforeItemCount": 20,
+    "afterItemCount": 20,
+    "newRecordIds": [],
+    "missingRecordIds": [],
+    "changedRecordIds": [],
+    "beforeNextCursor": null,
+    "afterNextCursor": null,
+    "beforeCoverage": {
+      "backfillComplete": true,
+      "sourceComplete": null,
+      "identity": "source-fields-and-occurrence",
+      "identityAmbiguous": true,
+      "retainedCount": 20,
+      "indexing": false,
+      "lastIndexedAt": 1792169681379,
+      "retainedCountCapped": false
+    },
+    "afterCoverage": {
+      "backfillComplete": true,
+      "sourceComplete": null,
+      "identity": "source-fields-and-occurrence",
+      "identityAmbiguous": true,
+      "retainedCount": 20,
+      "indexing": false,
+      "lastIndexedAt": 1792172656872,
+      "retainedCountCapped": false
+    },
+    "beforeStale": true,
+    "afterStale": true
+  },
+  "health": {
+    "ready": true,
+    "degraded": false,
+    "status": {
+      "stale": false,
+      "stream": "connected",
+      "sourceAt": 1792173546000,
+      "receivedAt": 1792173547647,
+      "persistence": "postgres",
+      "indexedBlock": "48715488"
+    }
+  },
+  "indexing": {
+    "indexing": {
+      "jobs": 63376,
+      "failed": 0,
+      "pending": 52384,
+      "wallets": 21039,
+      "activeDue": 2459,
+      "backfillDue": 0,
+      "oldestDueAt": 1791983949686,
+      "correctionsDue": 251,
+      "maintenanceDue": 49674,
+      "activeFreshness": {
+        "asOf": 1792173548449,
+        "byKind": [
+          {
+            "jobs": 849,
+            "kind": "cashflows",
+            "never": 0,
+            "oneTo5m": 68,
+            "over60m": 310,
+            "within1m": 16,
+            "fiveTo15m": 152,
+            "futureClock": 0,
+            "fifteenTo60m": 303,
+            "invalidClock": 0,
+            "oldestSuccessAt": 1792127979979
+          },
+          {
+            "jobs": 849,
+            "kind": "portfolio",
+            "never": 0,
+            "oneTo5m": 44,
+            "over60m": 349,
+            "within1m": 17,
+            "fiveTo15m": 111,
+            "futureClock": 0,
+            "fifteenTo60m": 328,
+            "invalidClock": 0,
+            "oldestSuccessAt": 1792094637667
+          },
+          {
+            "jobs": 849,
+            "kind": "trades",
+            "never": 0,
+            "oneTo5m": 64,
+            "over60m": 307,
+            "within1m": 18,
+            "fiveTo15m": 153,
+            "futureClock": 0,
+            "fifteenTo60m": 307,
+            "invalidClock": 0,
+            "oldestSuccessAt": 1792127986797
+          }
+        ]
+      },
+      "backfillComplete": 63117,
+      "oldestActiveDueAt": 1792165469152,
+      "pendingCorrections": 259,
+      "oldestBackfillDueAt": null
+    },
+    "receivedAt": 1792173548792,
+    "collectorAt": 1792173549457,
+    "stale": false,
+    "coverage": "available-source-history-and-retained-observations"
+  },
+  "collectorShell": {
+    "command": "npm run ingest:status",
+    "instance": "d8srt",
+    "collectorHealthy": true,
+    "heartbeatAt": 1792173504196,
+    "errors": {},
+    "marketsStale": false
+  },
+  "browser": {
+    "cutoffText": "Since trading launch on Oct 10, 2026, 14:00 UTC (announced start)",
+    "annualizedDisplayed": "$2.98B",
+    "dailyDisplayed": "$8.16M",
+    "rateScreenshot": "../previews/production-oct10-allocation-rates.jpg",
+    "depositScreenshot": "../previews/production-oct8-deposit-history.jpg"
+  }
+}
