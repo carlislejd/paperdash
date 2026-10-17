@@ -177,7 +177,7 @@ test("an older refresh keeps claimed and pending rewards paired with the saved a
   }, { timeout: 15_000 }).toBe(true);
   await expect(card.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · +$100,000.00 total P&L · −$200,000.00 realized trading P&L · +$300,000.00 rewards (Claimed + pending · USDC · delayed) · 10.00 PAPER owned",
+    "WALLET HIDDEN · +$100,000.00 total P&L · −$200,000.00 realized trading P&L · +$300,000.00 rewards (Claimed + pending · USDC · delayed) · 10.00 PAPER owned · Cost recovered PAPER break-even (USDC per PAPER · last available)",
   );
   await expect(card.locator(".pnl-accessible-summary")).not.toContainText("900,000");
   expect(reads).toBe(readsAfterRefresh);
