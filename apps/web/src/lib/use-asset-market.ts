@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   AssetMarketResponse,
   AssetPricePoint,
+  MarketSegment,
   MarketWindow,
   TradeEvent,
 } from "../../../../packages/shared/src/types";
@@ -12,6 +13,7 @@ import {
   validPricePoint,
 } from "./market-data";
 import { useAnalytics } from "./use-analytics";
+import { acceptsMarketSegment } from "./market-segment";
 import {
   MARKET_WINDOWS,
   selectMarketSample,
@@ -36,12 +38,31 @@ const emptyLive = (instrument: number): LiveMarket => ({
 export function useAssetMarket(
   instrument: number,
   window: MarketWindow = "15m",
+  segment: MarketSegment = "all",
 ) {
   const snapshot = useAnalytics<AssetMarketResponse>(
-    `/api/assets/${instrument}/market?window=${window}`,
+    `/api/assets/${instrument}/market?window=${window}${segment === "profitable" ? "&segment=profitable" : ""}`,
     { liveAsset: instrument },
   );
   const [live, setLive] = useState<LiveMarket>(() => emptyLive(instrument));
+  const [classificationNow, setClassificationNow] = useState(Date.now());
+  const classifiedAt = snapshot.data?.segmentCoverage?.classifiedAt;
+
+  useEffect(() => {
+    if (segment !== "profitable") return;
+    const update = () => {
+      if (!document.hidden) setClassificationNow(Date.now());
+    };
+    update();
+    const timer = Number.isSafeInteger(classifiedAt)
+      ? setTimeout(update, Math.max(0, classifiedAt! + 60_001 - Date.now()))
+      : undefined;
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [segment, classifiedAt]);
 
   useEffect(() => {
     setLive(emptyLive(instrument));
@@ -111,14 +132,31 @@ export function useAssetMarket(
   }, [instrument]);
 
   const current = live.instrument === instrument ? live : emptyLive(instrument);
-  const data = snapshot.data?.instrument === instrument ? snapshot.data : null;
+  const market = snapshot.data?.instrument === instrument ? snapshot.data : null;
+  const data = acceptsMarketSegment(
+    market,
+    instrument,
+    segment,
+    Math.max(classificationNow, Date.now()),
+    Boolean(snapshot.error),
+  )
+    ? market
+    : null;
+  const profitable = segment === "profitable";
   const points = useMemo(
-    () => mergeMarketPoints(data?.points ?? [], current.points),
-    [data, current.points],
+    () => mergeMarketPoints(market?.points ?? [], current.points),
+    [market, current.points],
   );
   const trades = useMemo(
-    () => mergeMarketTrades(data?.trades ?? [], current.trades, instrument),
-    [data, current.trades, instrument],
+    () =>
+      mergeMarketTrades(
+        profitable
+          ? (data?.trades ?? []).filter((trade) => trade.kind === "open")
+          : (data?.trades ?? []),
+        profitable ? [] : current.trades,
+        instrument,
+      ),
+    [data, current.trades, instrument, profitable],
   );
   const chartSample = useMemo(() => {
     const sample = data?.chartSample;
@@ -126,15 +164,17 @@ export function useAssetMarket(
       ? {
           ...sample,
           trades: selectMarketSample(
-            sample.trades,
-            current.samples[window],
+            profitable
+              ? sample.trades.filter((trade) => trade.kind === "open")
+              : sample.trades,
+            profitable ? [] : current.samples[window],
             instrument,
             window,
           ),
         }
       : undefined;
-  }, [data, current.samples, instrument, window]);
-  const savedPrice = data?.price ?? null;
+  }, [data, current.samples, instrument, window, profitable]);
+  const savedPrice = market?.price ?? null;
   const price =
     current.price &&
     (!savedPrice ||
@@ -149,7 +189,9 @@ export function useAssetMarket(
     points,
     trades,
     chartSample,
+    segmentCoverage: data?.segmentCoverage,
+    segmentUnavailable: profitable && !data,
     price,
-    stale: Boolean(snapshot.error) || (data?.stale ?? true),
+    stale: Boolean(snapshot.error) || (market?.stale ?? true),
   };
 }

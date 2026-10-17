@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { PAPER_BREAK_EVEN_NOTE } from "../../apps/web/src/lib/wallet-performance";
 import {
   mockSources,
   positionMetricsResponse,
@@ -10,7 +11,7 @@ import {
 
 const raw = (value: number) => (BigInt(value) * 10n ** 18n).toString();
 const standardCardSummary =
-  "+$1,750.00 total P&L · +$1,250.00 realized trading P&L · +$500.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned";
+  "+$1,750.00 total P&L · +$1,250.00 realized trading P&L · +$500.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned · Cost recovered PAPER break-even (USDC per PAPER)";
 type CardCanvasDiagnostic = {
   id: number;
   width: number;
@@ -34,6 +35,7 @@ async function setup(
     username?: string | null;
     rewardsWin?: boolean;
     missingPending?: boolean;
+    losses?: boolean;
   } = {},
 ) {
   const at = Math.floor(Date.now() / 1000) * 1000;
@@ -126,6 +128,12 @@ async function setup(
       stale: false,
     };
     wallet.snapshot!.paper = { balance: raw(154000), staked: raw(6000000) };
+    if (options.losses) {
+      wallet.snapshot!.lifetime.realizedPnlRaw = raw(state.changed ? 0 : -1000);
+      wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(250);
+      wallet.stakingRewards.pendingRaw = raw(150);
+      wallet.snapshot!.paper = { balance: raw(40_000), staked: raw(60_000) };
+    }
     if (options.rewardsWin) {
       wallet.snapshot!.lifetime.realizedPnlRaw = raw(-200_000);
       wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(100_000);
@@ -361,6 +369,10 @@ test("all three card layouts export exactly the preview with hidden identity and
   expect(labels.join(" ")).not.toContain(WALLET);
   expect(labels).toContain("TOTAL P&L");
   expect(labels).toContain("Lifetime realized trading + rewards");
+  expect(labels).toContain("PAPER BREAK-EVEN");
+  expect(labels).toContain("Cost recovered");
+  expect(labels).toContain("USDC per PAPER");
+  expect(labels).toContain(PAPER_BREAK_EVEN_NOTE);
   expect(labels).toContain("TRADING P&L");
   expect(labels).toContain("REWARDS");
   expect(labels).toContain("Claimed + pending · USDC");
@@ -753,14 +765,16 @@ test("an unavailable account and legacy highlights stay unknown on the rendered 
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · — total P&L · — realized trading P&L · — rewards (Claimed + pending unavailable) · — PAPER owned",
+    "WALLET HIDDEN · — total P&L · — realized trading P&L · — rewards (Claimed + pending unavailable) · — PAPER owned · — PAPER break-even (Account snapshot unavailable)",
   );
   await expect(dialog.locator(".pnl-accessible-summary dd")).toHaveText(
     [
       "— · Pending rewards unavailable",
       "—",
       "— · Claimed + pending unavailable",
-      ...Array(7).fill("—"),
+      "—",
+      `— · Account snapshot unavailable. ${PAPER_BREAK_EVEN_NOTE}`,
+      ...Array(6).fill("—"),
     ],
   );
   const labels = await page.evaluate(
@@ -781,7 +795,7 @@ test("claimed and pending rewards turn a trading loss into positive total P&L", 
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · +$100,000.00 total P&L · −$200,000.00 realized trading P&L · +$300,000.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned",
+    "WALLET HIDDEN · +$100,000.00 total P&L · −$200,000.00 realized trading P&L · +$300,000.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned · Cost recovered PAPER break-even (USDC per PAPER)",
   );
   await expect(dialog.locator(".pnl-accessible-summary dd").nth(0)).toHaveText(
     "+$100,000.00 · Lifetime realized trading + rewards",
@@ -811,7 +825,7 @@ test("unavailable pending rewards preserve the known trading and claimed amounts
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · — total P&L · +$1,250.00 realized trading P&L · — rewards (Claimed +$300.00 · pending unavailable) · 6,154,000.00 PAPER owned",
+    "WALLET HIDDEN · — total P&L · +$1,250.00 realized trading P&L · — rewards (Claimed +$300.00 · pending unavailable) · 6,154,000.00 PAPER owned · — PAPER break-even (Pending rewards unavailable)",
   );
   const labels = await page.evaluate(
     () => (window as CardDiagnosticWindow).cardText,
@@ -834,7 +848,7 @@ test("large negative P&L and PAPER totals remain exact in the compact export", a
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · −$10,000,000,000.00 total P&L · −$10,000,000,000.00 realized trading P&L · $0.00 rewards (Claimed + pending · USDC) · 90,000,000,000.00 PAPER owned",
+    "WALLET HIDDEN · −$10,000,000,000.00 total P&L · −$10,000,000,000.00 realized trading P&L · $0.00 rewards (Claimed + pending · USDC) · 90,000,000,000.00 PAPER owned · $0.111111 PAPER break-even (USDC per PAPER)",
   );
   const labels = await page.evaluate(
     () => (window as unknown as { cardText: string[] }).cardText,
@@ -851,4 +865,52 @@ test("large negative P&L and PAPER totals remain exact in the compact export", a
   await (
     await event
   ).saveAs(`/tmp/paperclub-pnl-test-large-${test.info().project.name}.png`);
+});
+
+test("the drawer and each frozen card show the same reward-adjusted PAPER break-even", async ({ page }, testInfo) => {
+  const state = await setup(page, { losses: true });
+  const breakEven = page.getByRole("region", { name: "PAPER break-even", exact: true });
+  await expect(breakEven.locator("dd")).toHaveText("$0.006000");
+  await expect(breakEven).toContainText("USDC per PAPER");
+  await expect(breakEven).toContainText(PAPER_BREAK_EVEN_NOTE);
+  await breakEven.scrollIntoViewIfNeeded();
+  await page.locator(".wd-drawer").screenshot({ path: `/tmp/paperclub-break-even-wallet-${testInfo.project.name}.png` });
+  const dialog = await openCard(page);
+  for (const layout of ["Gallery", "Spotlight", "Portrait"]) {
+    await dialog.getByRole("button", { name: new RegExp(`^${layout}`) }).click();
+    await waitForSharePreview(page, dialog);
+    await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$0\.006000 PAPER break-even \(USDC per PAPER\)/);
+    await expect(dialog.locator(".pnl-accessible-summary")).toContainText("$0.006000 · USDC per PAPER");
+    const event = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: "Download PNG" }).click();
+    await (await event).saveAs(`/tmp/paperclub-break-even-${layout.toLowerCase()}-${testInfo.project.name}.png`);
+  }
+  const readsBefore = state.walletReads;
+  state.changed = true;
+  await page.clock.runFor(16_100);
+  await expect.poll(() => state.walletReads).toBeGreaterThan(readsBefore);
+  await expect(breakEven.locator("dd")).toHaveText("Cost recovered");
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$0\.006000 PAPER break-even/);
+  await dialog.getByRole("button", { name: "Update card" }).click();
+  await waitForSharePreview(page, dialog);
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /Cost recovered PAPER break-even/);
+});
+
+test("a failed live refresh stays last available when captured on the card", async ({ page }) => {
+  await setup(page, { losses: true });
+  await page.route(`**/api/wallets/${WALLET}`, (route) =>
+    route.fulfill({ status: 503, json: { error: "Unavailable" } }),
+  );
+  // The reward and account clocks remain less than 30 seconds old. The
+  // failed refresh itself must mark both presentations as last available.
+  await page.clock.runFor(15_100);
+  await expect(page.locator(".wd-error")).toContainText("This wallet could not be refreshed");
+  const breakEven = page.getByRole("region", { name: "PAPER break-even", exact: true });
+  await expect(breakEven.locator("dd")).toHaveText("$0.006000");
+  await expect(breakEven).toContainText("USDC per PAPER · last available");
+  const dialog = await openCard(page);
+  await waitForSharePreview(page, dialog);
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$0\.006000 PAPER break-even \(USDC per PAPER · last available\)/);
+  const labels = await page.evaluate(() => (window as CardDiagnosticWindow).cardText);
+  expect(labels).toContain("USDC per PAPER · last available");
 });

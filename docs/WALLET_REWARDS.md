@@ -29,3 +29,18 @@ The computed pending amount and its clocks are stored atomically inside the same
 The public `WalletResponse.stakingRewards` block contains `pendingRaw`, `receivedAt`, `sourceAt`, and `stale`. Its receipt clock is the older receipt of the paired account and summary; its source clock is the accumulator observation. Saved pairs age after 30 seconds and retain their original clocks. An old cache entry without a pair remains unavailable until its normal account refresh. Missing pending is not interpreted as zero or as claimed-only total P&L. The card shows the available trading and claimed values with an explicit pending-unavailable note.
 
 The wallet's last account-change timestamp may remain old for an inactive account after a successful fresh check. That timestamp alone does not make the account stale. Future or inconsistent timestamps are rejected; summary age and successful observation receipts determine reward freshness.
+
+## PAPER break-even price
+
+The wallet sidepanel and all three P&L card layouts use the same reward-adjusted break-even calculation:
+
+```text
+rewards = lifetime claimed USDC + verified pending USDC
+remaining loss = max(0, -(lifetime realized trading P&L + rewards))
+PAPER owned = staked PAPER + unstaked PAPER
+PAPER break-even = remaining loss / PAPER owned
+```
+
+The result is USDC per PAPER: the price at which the currently owned PAPER would cover the remaining realized trading loss after rewards. It excludes open-position P&L and is neither a market quote nor an acquisition cost basis. A positive PAPER balance with a known nonnegative combined result displays **Cost recovered**, including when rewards exactly cover the trading loss. Zero PAPER or missing/invalid trading, claimed, pending or ownership data leaves the value unavailable. Missing pending is never treated as zero.
+
+Arithmetic uses raw integers until formatting. Positive prices show six decimal places; a smaller positive price shows `<$0.000001`, never a rounded zero. Retained but stale inputs show a Last available note. P&L cards freeze the same calculation and source freshness at creation; preview, exported PNG and accessible/share text use the frozen value.

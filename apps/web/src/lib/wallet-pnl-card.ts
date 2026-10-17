@@ -167,6 +167,6 @@ export function walletPnlCardModel(
     captured: stamp(capturedAt),
     link: link.toString(),
     filename: `paperclub-pnl-${options.layout}.png`,
-    shareText: `${pnl} total P&L · ${tradingPnl} realized trading P&L · ${rewards} rewards (${rewardsNote}) · ${paper} PAPER owned · paperclub`,
+    shareText: `${pnl} total P&L · ${tradingPnl} realized trading P&L · ${rewards} rewards (${rewardsNote}) · ${paper} PAPER owned · ${performance.paperBreakEven} PAPER break-even (${performance.paperBreakEvenNote}) · paperclub`,
   };
 }

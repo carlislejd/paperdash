@@ -1,7 +1,10 @@
 import type { WalletResponse } from "../../../../packages/shared/src/types";
 import { formatRawUsd } from "./format";
+import { walletAccountClock } from "./wallet-account-clock";
 
 export const WALLET_PERFORMANCE_NOTE = "Lifetime realized trading + rewards";
+export const PAPER_BREAK_EVEN_NOTE =
+  "Remaining realized trading losses after claimed + pending rewards ÷ PAPER owned (staked + unstaked). Excludes open P&L and token price; not an acquisition cost.";
 
 export interface WalletPerformance {
   pnl: string;
@@ -11,6 +14,9 @@ export interface WalletPerformance {
   tradingPnlTone: "positive" | "negative" | "neutral";
   rewards: string;
   rewardsNote: string;
+  paperBreakEven: string;
+  paperBreakEvenNote: string;
+  paperBreakEvenStatus: "price" | "recovered" | "unavailable";
 }
 
 function signedUsd(raw: bigint | null): string {
@@ -39,6 +45,7 @@ function pnlTone(raw: bigint | null): WalletPerformance["pnlTone"] {
 export function walletPerformance(
   wallet: WalletResponse,
   at = Date.now(),
+  refreshFailed = false,
 ): WalletPerformance {
   const account = wallet.snapshot;
   const rawTradingPnl = rawAmount(account?.lifetime.realizedPnlRaw, true);
@@ -61,6 +68,43 @@ export function walletPerformance(
         observedAt > at + 30_000 ||
         at - observedAt > 30_000,
     );
+  const balance = rawAmount(account?.paper.balance);
+  const staked = rawAmount(account?.paper.staked);
+  const paper = balance !== null && staked !== null ? balance + staked : null;
+  const unavailable = !account
+    ? "Account snapshot unavailable"
+    : rawTradingPnl === null
+      ? "Trading P&L unavailable"
+      : claimed === null
+        ? "Claimed rewards unavailable"
+        : pending === null
+          ? "Pending rewards unavailable"
+          : paper === null
+            ? "PAPER balance unavailable"
+            : paper === 0n
+              ? "No PAPER owned"
+              : null;
+  const delayed =
+    rewardsDelayed || walletAccountClock(wallet, refreshFailed, at).stale;
+  let paperBreakEven = "—";
+  let paperBreakEvenStatus: WalletPerformance["paperBreakEvenStatus"] =
+    "unavailable";
+  if (unavailable === null && rawPnl !== null && paper !== null && paper > 0n) {
+    if (rawPnl >= 0n) {
+      paperBreakEven = "Cost recovered";
+      paperBreakEvenStatus = "recovered";
+    } else {
+      // Both amounts have 18 decimals. Keep their ratio exact until display;
+      // a positive amount below the display precision must not look recovered.
+      const micros = (-rawPnl * 1_000_000n) / paper;
+      const rounded = (-rawPnl * 1_000_000n + paper / 2n) / paper;
+      paperBreakEven =
+        micros === 0n
+          ? "<$0.000001"
+          : `$${(rounded / 1_000_000n).toLocaleString("en-US")}.${(rounded % 1_000_000n).toString().padStart(6, "0")}`;
+      paperBreakEvenStatus = "price";
+    }
+  }
 
   return {
     pnl: signedUsd(rawPnl),
@@ -82,5 +126,9 @@ export function walletPerformance(
         : claimed === null
           ? "Claimed rewards unavailable"
           : `Claimed + pending · USDC${rewardsDelayed ? " · delayed" : ""}`,
+    paperBreakEven,
+    paperBreakEvenStatus,
+    paperBreakEvenNote:
+      unavailable ?? `USDC per PAPER${delayed ? " · last available" : ""}`,
   };
 }

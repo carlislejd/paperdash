@@ -5,6 +5,8 @@ import { appendStreamEventPg } from "./stream-event-store.js";
 import type {
   AssetPricePoint,
   MarketTradeSample,
+  MarketSegment,
+  MarketSegmentCoverage,
   MarketWindow,
   TradeEvent,
 } from "../../../packages/shared/src/types.js";
@@ -23,6 +25,12 @@ export interface MarketData {
   observedFrom: number | null;
   tradesCapped: boolean;
   chartSamples: Record<MarketWindow, MarketTradeSample>;
+  profitable: {
+    rawTrades: TradeEvent[];
+    chartSamples: Record<MarketWindow, MarketTradeSample>;
+    coverage: MarketSegmentCoverage;
+    tradesCapped: boolean;
+  };
 }
 export interface MarketStore {
   /** Saves the latest genuine quote per five-second bucket and its SSE notification atomically. */
@@ -115,6 +123,9 @@ export const marketWindows = {
   "1h": { durationMs: 3600000, bucketMs: 120000 },
 } as const;
 
+export const PROFITABLE_ACCOUNT_MAX_AGE_MS = 300000;
+export const PROFITABLE_SNAPSHOT_MAX_AGE_MS = 60000;
+
 async function chartSamples(db: Reader, instrument: number, now: number) {
   const rawInstrument = db.postgres
     ? "(payload->>'instrument')"
@@ -135,10 +146,56 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
   // bounded selected payloads leave the query; API viewers read the saved result.
   // Price is excluded from economic identity. Count only genuinely priced
   // observations per source so unpriced REST rows cannot hide priced stream rows.
-  const rows = await db.rows<{ window_name: MarketWindow; payload: unknown }>(
+  const wallet = db.postgres
+    ? "r.payload->>'wallet'"
+    : "json_extract(r.payload,'$.wallet')";
+  const kind = db.postgres
+    ? "r.payload->>'kind'"
+    : "json_extract(r.payload,'$.kind')";
+  const accountPnl = db.postgres
+    ? "s.payload->>'realizedPnl'"
+    : "json_extract(s.payload,'$.realizedPnl')";
+  const accountAddress = db.postgres
+    ? "s.payload->>'address'"
+    : "json_extract(s.payload,'$.address')";
+  const pnlIsString = db.postgres
+    ? "jsonb_typeof(s.payload->'realizedPnl')='string'"
+    : "json_type(s.payload,'$.realizedPnl')='text'";
+  // Check canonical signed raw integers as text: casting enormous 18-decimal
+  // values to a SQL number would overflow or lose the sign near zero.
+  const validPnl = db.postgres
+    ? "pnl ~ '^(0|[1-9][0-9]*|-[1-9][0-9]*)$'"
+    : "(pnl='0' OR (substr(pnl,1,1) BETWEEN '1' AND '9' AND pnl NOT GLOB '*[^0-9]*') OR (substr(pnl,1,1)='-' AND substr(pnl,2,1) BETWEEN '1' AND '9' AND substr(pnl,2) NOT GLOB '*[^0-9]*'))";
+  // The distinct one-hour wallet cohort drives indexed primary-key lookups;
+  // never scan every retained account or query an upstream source for viewers.
+  const accountJoin = db.postgres
+    ? `LEFT JOIN LATERAL (SELECT payload,received_at FROM ${db.prefix}snapshots WHERE key='account-summary:'||w.wallet OFFSET 0) s ON true`
+    : `LEFT JOIN ${db.prefix}snapshots s ON s.key='account-summary:'||w.wallet`;
+  const rows = await db.rows<{
+    row_kind: "chart" | "feed" | "coverage";
+    segment: MarketSegment;
+    window_name: MarketWindow | null;
+    payload: unknown;
+    observed_wallets: number | string | null;
+    classified_wallets: number | string | null;
+    profitable_wallets: number | string | null;
+    oldest_received_at: number | string | null;
+    newest_received_at: number | string | null;
+  }>(
     `WITH recent AS MATERIALIZED (
-      SELECT id,payload FROM ${db.prefix}trade_observations
+      SELECT id,payload,source_at FROM ${db.prefix}trade_observations
       WHERE ${rawInstrument}=? AND source_at>=? AND source_at<=?
+    ), wallets AS MATERIALIZED (
+      SELECT DISTINCT ${wallet} AS wallet FROM recent r WHERE ${kind}='open'
+    ), accounts AS MATERIALIZED (
+      SELECT w.wallet,${accountPnl} AS pnl,${accountAddress} AS account_address,
+        s.received_at,CASE WHEN ${pnlIsString} THEN 1 ELSE 0 END AS pnl_is_string
+      FROM wallets w ${accountJoin}
+    ), classified AS MATERIALIZED (
+      SELECT wallet,pnl,received_at,
+        CASE WHEN account_address=wallet AND pnl_is_string=1 AND length(pnl)<=79 AND ${validPnl}
+          AND received_at>=? AND received_at<=? THEN 1 ELSE 0 END AS known
+      FROM accounts
     ), eligible AS (
       SELECT f.fingerprint,f.source_at,f.notional,m.provenance,r.id,r.payload
       ${identityJoins}
@@ -154,14 +211,32 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
     ), candidates AS (
       SELECT p.* FROM priced p JOIN source_choice c ON c.fingerprint=p.fingerprint
       WHERE source_rank<=2 AND p.provenance=CASE WHEN c.recent_count>=c.stream_count THEN 'recent-api' ELSE 'public-stream' END
+    ), segment_candidates AS (
+      SELECT 'all' AS segment,c.* FROM candidates c
+      UNION ALL
+      SELECT 'profitable' AS segment,r.* FROM candidates r JOIN classified a ON a.wallet=${wallet}
+      WHERE ${kind}='open' AND a.known=1 AND a.pnl<>'0' AND substr(a.pnl,1,1)<>'-'
     ), windows(window_name,window_from,bucket_ms) AS (VALUES ('5m',CAST(? AS BIGINT),10000),('15m',CAST(? AS BIGINT),30000),('1h',CAST(? AS BIGINT),120000)), ranked AS (
-      SELECT w.window_name,c.payload,c.source_at,c.id,
-      row_number() OVER(PARTITION BY w.window_name,c.source_at-(c.source_at%w.bucket_ms) ORDER BY c.notional DESC,c.source_at DESC,c.id DESC) AS bucket_rank
-      FROM candidates c JOIN windows w ON c.source_at>=w.window_from
-    ) SELECT window_name,payload FROM ranked WHERE bucket_rank<=2 ORDER BY window_name,source_at DESC,id DESC LIMIT 186`,
+      SELECT c.segment,w.window_name,c.payload,c.source_at,c.id,
+      row_number() OVER(PARTITION BY c.segment,w.window_name,c.source_at-(c.source_at%w.bucket_ms) ORDER BY c.notional DESC,c.source_at DESC,c.id DESC) AS bucket_rank
+      FROM segment_candidates c JOIN windows w ON c.source_at>=w.window_from
+    ), profitable_feed AS (
+      SELECT r.id,r.payload,r.source_at FROM recent r JOIN classified a ON a.wallet=${wallet}
+      WHERE ${kind}='open' AND a.known=1 AND a.pnl<>'0' AND substr(a.pnl,1,1)<>'-'
+      ORDER BY r.source_at DESC,r.id DESC LIMIT 400
+    ) SELECT 'chart' AS row_kind,segment,window_name,payload,source_at,id,
+        CAST(NULL AS BIGINT) AS observed_wallets,CAST(NULL AS BIGINT) AS classified_wallets,CAST(NULL AS BIGINT) AS profitable_wallets,CAST(NULL AS BIGINT) AS oldest_received_at,CAST(NULL AS BIGINT) AS newest_received_at
+      FROM ranked WHERE bucket_rank<=2
+    UNION ALL SELECT 'feed','profitable',NULL,payload,source_at,id,NULL,NULL,NULL,NULL,NULL FROM profitable_feed
+    UNION ALL SELECT 'coverage','profitable',NULL,NULL,NULL,NULL,count(*),coalesce(sum(known),0),
+      coalesce(sum(CASE WHEN known=1 AND pnl<>'0' AND substr(pnl,1,1)<>'-' THEN 1 ELSE 0 END),0),
+      min(CASE WHEN known=1 THEN received_at END),max(CASE WHEN known=1 THEN received_at END) FROM classified
+    ORDER BY row_kind,segment,window_name,source_at DESC,id DESC`,
     [
       db.postgres ? String(instrument) : instrument,
       Math.max(0, now - 3600000),
+      now,
+      Math.max(0, now - PROFITABLE_ACCOUNT_MAX_AGE_MS),
       now,
       instrument,
       Math.max(0, now - 3600000),
@@ -180,16 +255,50 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
     selection: "largest-notional-per-time-bucket",
     partial: true,
   });
-  const result: Record<MarketWindow, MarketTradeSample> = {
+  const samples = (): Record<MarketWindow, MarketTradeSample> => ({
     "5m": sampleFor("5m"),
     "15m": sampleFor("15m"),
     "1h": sampleFor("1h"),
+  });
+  const result = { all: samples(), profitable: samples() };
+  const rawTrades: TradeEvent[] = [];
+  let coverage: MarketSegmentCoverage = {
+    basis: "positive-lifetime-realized-trading-pnl",
+    classifiedAt: now,
+    maxAccountAgeMs: PROFITABLE_ACCOUNT_MAX_AGE_MS,
+    observedWallets: 0,
+    classifiedWallets: 0,
+    profitableWallets: 0,
+    unknownWallets: 0,
+    oldestAccountReceivedAt: null,
+    newestAccountReceivedAt: null,
   };
   for (const row of rows) {
+    if (row.row_kind === "coverage") {
+      coverage = {
+        ...coverage,
+        observedWallets: Number(row.observed_wallets),
+        classifiedWallets: Number(row.classified_wallets),
+        profitableWallets: Number(row.profitable_wallets),
+        unknownWallets:
+          Number(row.observed_wallets) - Number(row.classified_wallets),
+        oldestAccountReceivedAt:
+          row.oldest_received_at === null ? null : Number(row.oldest_received_at),
+        newestAccountReceivedAt:
+          row.newest_received_at === null ? null : Number(row.newest_received_at),
+      };
+      continue;
+    }
     const trade = (
       typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload
     ) as TradeEvent;
-    const sample = result[row.window_name];
+    if (row.row_kind === "feed") {
+      rawTrades.push(trade);
+      continue;
+    }
+    const sample = row.window_name
+      ? result[row.segment][row.window_name]
+      : undefined;
     if (
       sample &&
       trade.instrument === instrument &&
@@ -204,7 +313,15 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
     )
       sample.trades.push(trade);
   }
-  return result;
+  return {
+    chartSamples: result.all,
+    profitable: {
+      rawTrades,
+      chartSamples: result.profitable,
+      coverage,
+      tradesCapped: rawTrades.length === 400,
+    },
+  };
 }
 function reader(db: Reader): MarketStore["read"] {
   return async (instrument, now = Date.now()) => {
@@ -259,7 +376,7 @@ function reader(db: Reader): MarketStore["read"] {
       ),
       observedFrom: first[0] ? Number(first[0].source_at) : null,
       tradesCapped: trades.length === 400,
-      chartSamples: samples,
+      ...samples,
     };
   };
 }

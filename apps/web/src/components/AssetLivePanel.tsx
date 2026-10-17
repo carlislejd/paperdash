@@ -1,5 +1,8 @@
 import { useState } from "react";
-import type { MarketWindow } from "../../../../packages/shared/src/types";
+import type {
+  MarketSegment,
+  MarketWindow,
+} from "../../../../packages/shared/src/types";
 import { useAssetMarket } from "../lib/use-asset-market";
 import { AssetTradeGraph } from "./AssetTradeGraph";
 import { AnalyticsNotice } from "./AnalyticsShared";
@@ -14,7 +17,8 @@ export function AssetLivePanel({
   onWallet: (address: string) => void;
 }) {
   const [window, setWindow] = useState<MarketWindow>("15m");
-  const market = useAssetMarket(instrument, window);
+  const [segment, setSegment] = useState<MarketSegment>("all");
+  const market = useAssetMarket(instrument, window, segment);
   return (
     <>
       <AnalyticsNotice error={market.error} hasData={Boolean(market.data)} />
@@ -26,6 +30,10 @@ export function AssetLivePanel({
         chartSample={market.chartSample}
         window={window}
         onWindowChange={setWindow}
+        segment={segment}
+        onSegmentChange={setSegment}
+        segmentCoverage={market.segmentCoverage}
+        segmentUnavailable={market.segmentUnavailable}
         price={market.price}
         receivedAt={market.data?.receivedAt ?? null}
         stale={market.stale}

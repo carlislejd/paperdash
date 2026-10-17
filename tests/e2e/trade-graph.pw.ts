@@ -8,8 +8,8 @@ test("price bubbles and side feed share selection, keyboard inspection and walle
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
   await panel
-    .getByRole("combobox", { name: "Minimum trade notional" })
-    .selectOption("0");
+    .getByRole("combobox", { name: "Trader segment" })
+    .selectOption("all");
   const chart = panel.getByRole("group", {
     name: "BTC reference price and execution bubbles",
   });
@@ -76,8 +76,8 @@ test("pausing freezes the chart cohort while new data is buffered and resumes to
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
   await panel
-    .getByRole("combobox", { name: "Minimum trade notional" })
-    .selectOption("0");
+    .getByRole("combobox", { name: "Trader segment" })
+    .selectOption("all");
   const chart = panel.getByRole("group", {
     name: "BTC reference price and execution bubbles",
   });
@@ -136,8 +136,8 @@ test("unpriced executions stay in the feed without invented price bubbles", asyn
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
   await panel
-    .getByRole("combobox", { name: "Minimum trade notional" })
-    .selectOption("0");
+    .getByRole("combobox", { name: "Trader segment" })
+    .selectOption("all");
   await expect(
     panel.getByText("Waiting for price observations", { exact: true }),
   ).toBeVisible();
@@ -155,7 +155,7 @@ test("unpriced executions stay in the feed without invented price bubbles", asyn
   await expect(page.getByRole("dialog")).toBeVisible();
 });
 
-test("window-wide samples spread bubbles, filter notional and request the selected cohort", async ({
+test("window-wide samples spread bubbles without a notional cutoff and request the selected window", async ({
   page,
 }) => {
   const now = Date.now();
@@ -207,11 +207,11 @@ test("window-wide samples spread bubbles, filter notional and request the select
   });
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
-  const minimum = panel.getByRole("combobox", {
-    name: "Minimum trade notional",
+  const segment = panel.getByRole("combobox", {
+    name: "Trader segment",
   });
-  await expect(minimum).toHaveValue("100000");
-  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(3);
+  await expect(segment).toHaveValue("all");
+  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(4);
   await expect(panel.locator(".trade-graph-feed h4")).toContainText(
     "Largest observed trades",
   );
@@ -238,12 +238,6 @@ test("window-wide samples spread bubbles, filter notional and request the select
   expect(Math.max(...positions) - Math.min(...positions)).toBeGreaterThan(
     (width - 85) * 0.65,
   );
-  await minimum.selectOption("1000000");
-  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(2);
-  await minimum.selectOption("10000000");
-  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(1);
-  await minimum.selectOption("0");
-  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(4);
   await panel.getByRole("button", { name: "Pause chart", exact: true }).click();
   await expect(
     panel.getByRole("button", { name: "5m", exact: true }),
@@ -261,8 +255,7 @@ test("window-wide samples spread bubbles, filter notional and request the select
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(page.viewportSize()!.width);
   await panel.getByRole("button", { name: "15m", exact: true }).click();
-  await minimum.selectOption("100000");
-  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(3);
+  await expect(panel.locator(".trade-graph-bubble")).toHaveCount(4);
   await page.mouse.move(0, 0);
   await panel.screenshot({
     path: test.info().outputPath("windowed-trade-sample.png"),

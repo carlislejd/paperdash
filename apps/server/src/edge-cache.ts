@@ -6,9 +6,12 @@ const snapshots = new Set([
   "/api/assets/0/market",
   "/api/assets/1/market",
   ...[0, 1].flatMap((instrument) =>
-    ["5m", "15m", "1h"].map(
-      (window) => `/api/assets/${instrument}/market?window=${window}`,
-    ),
+    ["5m", "15m", "1h"].flatMap((window) => [
+      `/api/assets/${instrument}/market?window=${window}`,
+      ...["all", "profitable"].map(
+        (segment) => `/api/assets/${instrument}/market?window=${window}&segment=${segment}`,
+      ),
+    ]),
   ),
   "/api/house",
   "/api/protocol/charts",
@@ -17,7 +20,7 @@ const snapshots = new Set([
   "/api/liquidations/stats",
 ]);
 
-/** Opt in only shared snapshots and fixed chart-window variants. Browser revalidation stays separate. */
+/** Opt in only shared snapshots and fixed chart window/segment variants. Browser revalidation stays separate. */
 export function applyEdgeCachePolicy(
   request: FastifyRequest,
   reply: FastifyReply,

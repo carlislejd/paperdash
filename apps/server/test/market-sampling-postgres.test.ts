@@ -9,6 +9,7 @@ import {
   sampleFixtures,
   sampleNow as now,
 } from "./market-sampling-fixtures.js";
+import { seedProfitableMarket, segmentAccount } from "./market-segment-fixtures.js";
 const url = process.env.TEST_DATABASE_URL;
 
 describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
@@ -40,6 +41,18 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
           (await sqlite.market.read(instrument, now)).chartSamples,
         );
       }
+      const expectedCoverage = await seedProfitableMarket(pg);
+      await seedProfitableMarket(sqlite);
+      const profitable = (await pg.market.read(0, now)).profitable;
+      expect(profitable).toEqual((await sqlite.market.read(0, now)).profitable);
+      // The sampling fixtures add one unknown wallet to the classification set.
+      expect(profitable.coverage).toMatchObject({
+        ...expectedCoverage,
+        observedWallets: expectedCoverage.observedWallets + 1,
+        unknownWallets: expectedCoverage.unknownWallets + 1,
+      });
+      expect(profitable.chartSamples["5m"].trades.map((trade) => trade.id)).toEqual(["wallet-2", "wallet-1"]);
+      await pg.following.retainAccounts([{ ...segmentAccount(1), address: "0x1111111111111111111111111111111111111111" }], now);
       // Bulk synthetic projections only: no external traffic or production data.
       // Each economic execution is observed by both public source transports.
       await pool.query(
@@ -65,7 +78,11 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
         [now],
       );
       await pool.query(
-        "ANALYZE paperdash_analytics_fingerprints; ANALYZE paperdash_analytics_members; ANALYZE paperdash_trade_observations",
+        `INSERT INTO paperdash_snapshots SELECT 'unrelated:'||g,'{}'::jsonb,$1 FROM generate_series(0,19999) g`,
+        [now],
+      );
+      await pool.query(
+        "ANALYZE paperdash_snapshots; ANALYZE paperdash_analytics_fingerprints; ANALYZE paperdash_analytics_members; ANALYZE paperdash_trade_observations",
       );
       const query = vi.spyOn(pool, "query");
       const start = performance.now();
@@ -82,6 +99,8 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
         expect([...buckets.values()].every((n) => n <= 2)).toBe(true);
       }
       expect(result.rawTrades).toHaveLength(400);
+      expect(result.profitable.rawTrades).toHaveLength(400);
+      expect(result.profitable.chartSamples["1h"].trades.length).toBeGreaterThanOrEqual(50);
       const sampling = query.mock.calls.filter(
         ([sql]) => typeof sql === "string" && sql.startsWith("WITH recent"),
       );
@@ -101,6 +120,8 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
       expect(planText).toContain(
         "Index Scan using paperdash_analytics_fingerprints_pkey",
       );
+      expect(planText).toContain("Index Scan using paperdash_snapshots_pkey");
+      expect(planText).not.toContain("Seq Scan on paperdash_snapshots");
       expect(planText).not.toContain("Seq Scan on paperdash_analytics_members");
       expect(planText).not.toContain(
         "Seq Scan on paperdash_analytics_fingerprints",

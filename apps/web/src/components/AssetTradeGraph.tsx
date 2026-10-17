@@ -7,6 +7,8 @@ import {
   type CSSProperties,
 } from "react";
 import type {
+  AssetMarketResponse,
+  MarketSegment,
   MarketTradeSample,
   MarketWindow,
   TradeEvent,
@@ -37,6 +39,10 @@ export interface AssetTradeGraphProps {
   chartSample?: MarketTradeSample;
   window: MarketWindow;
   onWindowChange: (window: MarketWindow) => void;
+  segment: MarketSegment;
+  onSegmentChange: (segment: MarketSegment) => void;
+  segmentCoverage?: AssetMarketResponse["segmentCoverage"];
+  segmentUnavailable: boolean;
   price: { priceUsd: number; sourceAt: number; receivedAt: number } | null;
   receivedAt: number | null;
   stale: boolean;
@@ -46,12 +52,6 @@ export interface AssetTradeGraphProps {
 }
 
 const windows = Object.keys(MARKET_WINDOWS) as MarketWindow[];
-const minimums = [
-  { value: 0, label: "All" },
-  { value: 100_000, label: "$100K" },
-  { value: 1_000_000, label: "$1M" },
-  { value: 10_000_000, label: "$10M" },
-];
 const action = (trade: TradeEvent) =>
   trade.kind === "open"
     ? "Opened"
@@ -90,7 +90,6 @@ function useVisibleClock() {
 export function AssetTradeGraph(props: AssetTradeGraphProps) {
   const { instrument, symbol, onWallet } = props;
   const now = useVisibleClock();
-  const [minimumNotional, setMinimumNotional] = useState(100_000);
   const range = MARKET_WINDOWS[props.window];
   const [frozen, setFrozen] = useState<{
     at: number;
@@ -125,7 +124,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
     setSelectedId(null);
     setHoveredId(null);
     if (feedRef.current) feedRef.current.scrollTop = 0;
-  }, [instrument, range, minimumNotional]);
+  }, [instrument, range, props.segment]);
 
   const prices = useMemo(() => {
     const latest = data.price;
@@ -139,9 +138,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
   }, [data.points, data.price, from, through]);
   const sampled = Boolean(data.chartSample);
   const trades = useMemo(() => {
-    const recent = graphTrades(data.trades, instrument, from, through).filter(
-      (trade) => trade.notionalUsd >= minimumNotional,
-    );
+    const recent = graphTrades(data.trades, instrument, from, through);
     if (!data.chartSample) return recent;
     const selected = selectMarketSample(
       data.chartSample.trades,
@@ -149,7 +146,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
       instrument,
       data.window,
       through,
-    ).filter((trade) => trade.notionalUsd >= minimumNotional);
+    );
     // Unpriced executions remain inspectable, but never consume a priced
     // sample slot or borrow a position on the reference-price line.
     const unpriced = recent
@@ -165,7 +162,6 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
     instrument,
     from,
     through,
-    minimumNotional,
   ]);
   const plotted = useMemo(
     () =>
@@ -292,20 +288,21 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
               </button>
             ))}
           </div>
-          <label className="trade-graph-minimum">
-            <span>Min. notional</span>
+          <label className="trade-graph-segment">
+            <span>Traders</span>
             <select
-              aria-label="Minimum trade notional"
-              value={minimumNotional}
+              aria-label="Trader segment"
+              value={props.segment}
+              disabled={paused}
+              title={
+                paused ? "Resume the chart to change its traders" : undefined
+              }
               onChange={(event) =>
-                setMinimumNotional(Number(event.target.value))
+                props.onSegmentChange(event.target.value as MarketSegment)
               }
             >
-              {minimums.map((minimum) => (
-                <option key={minimum.value} value={minimum.value}>
-                  {minimum.label}
-                </option>
-              ))}
+              <option value="all">All traders</option>
+              <option value="profitable">Profitable traders</option>
             </select>
           </label>
           <button
@@ -529,6 +526,16 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
               Arrow keys select trades; Escape clears selection.
             </span>
           </p>
+          {data.segment === "profitable" && (
+            <p className="trade-graph-note trade-graph-segment-note">
+              New entries by wallets with positive lifetime realized trading P&L.
+              Rewards and unrealized P&L excluded. Classification uses the latest
+              retained account snapshot, not profitability at entry.
+              {data.segmentCoverage
+                ? ` Classified ${relativeTime(data.segmentCoverage.classifiedAt)}; ${data.segmentCoverage.classifiedWallets.toLocaleString()} of ${data.segmentCoverage.observedWallets.toLocaleString()} observed wallets checked, ${data.segmentCoverage.unknownWallets.toLocaleString()} unknown excluded. Account snapshots were at most 5 minutes old when classified. Entries update with each classified snapshot.`
+                : " Classification unavailable; entries are hidden until a recent snapshot is available."}
+            </p>
+          )}
           {!prices.length && axis && (
             <p className="trade-graph-note">
               Reference price history is unavailable. Only priced executions are
@@ -542,15 +549,23 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
         >
           <div className="trade-graph-feed-heading">
             <h4>
-              {sampled ? "Largest observed trades" : "Recent observed trades"}{" "}
+              {data.segment === "profitable"
+                ? "Profitable trader entries"
+                : sampled
+                  ? "Largest observed trades"
+                  : "Recent observed trades"}{" "}
               <span>{trades.length}</span>
             </h4>
             <small>
               {paused
                 ? "Paused"
-                : data.connected && !data.stale
-                  ? "Live observations"
-                  : "Retained observations"}
+                : data.segment === "profitable"
+                  ? data.segmentUnavailable
+                    ? "Classification unavailable"
+                    : "Classified snapshot"
+                  : data.connected && !data.stale
+                    ? "Live observations"
+                    : "Retained observations"}
             </small>
           </div>
           <ul ref={feedRef}>
@@ -599,9 +614,13 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
             ))}
             {!trades.length && (
               <li className="trade-graph-feed-empty">
-                {sampled
-                  ? "No sampled trades match this minimum in the selected window."
-                  : "No recent observed trades match this minimum in the selected window."}
+                {data.segmentUnavailable
+                  ? "Waiting for a recent trader classification."
+                  : data.segment === "profitable"
+                    ? "No observed entries from profitable traders in this window."
+                    : sampled
+                      ? "No sampled trades in the selected window."
+                      : "No recent observed trades in the selected window."}
               </li>
             )}
           </ul>

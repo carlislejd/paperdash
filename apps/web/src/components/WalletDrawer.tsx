@@ -36,7 +36,10 @@ import {
 import { PositionReceiptDialog } from "./PositionReceiptDialog";
 import { WalletPnlCardDialog } from "./WalletPnlCardDialog";
 import { PNL_CARD_ART, type PnlCardSnapshot } from "../lib/wallet-pnl-card";
-import { walletPerformance } from "../lib/wallet-performance";
+import {
+  PAPER_BREAK_EVEN_NOTE,
+  walletPerformance,
+} from "../lib/wallet-performance";
 import type { PositionMetricsResponse } from "../../../../packages/shared/src/position-metrics";
 import { analyticsResources } from "../lib/analytics-resource";
 import {
@@ -1058,7 +1061,9 @@ export function WalletDrawer({
   const paperOwned = totalPaper(wallet);
   const availableBalance = formatRawUsd(snapshot?.balance ?? null);
   const paperOwnedDisplay = paperAmount(paperOwned);
-  const performance = wallet ? walletPerformance(wallet) : null;
+  const performance = wallet
+    ? walletPerformance(wallet, Date.now(), Boolean(error))
+    : null;
   const activeBalances = [
     { label: "Locked margin", raw: snapshot?.locked },
     { label: "Queued claims", raw: snapshot?.queued },
@@ -1364,6 +1369,25 @@ export function WalletDrawer({
                     </span>
                   </div>
                 </dl>
+                <section
+                  className="wd-paper-break-even"
+                  aria-label="PAPER break-even"
+                >
+                  <dl>
+                    <dt>PAPER break-even</dt>
+                    <dd
+                      className={
+                        performance.paperBreakEvenStatus === "recovered"
+                          ? "wd-tone-positive"
+                          : undefined
+                      }
+                    >
+                      {performance.paperBreakEven}
+                    </dd>
+                    <span>{performance.paperBreakEvenNote}</span>
+                  </dl>
+                  <p>{PAPER_BREAK_EVEN_NOTE}</p>
+                </section>
                 {activeBalances.length > 0 && (
                   <dl className="wd-active-balances">
                     {activeBalances.map(({ label, raw }) => (

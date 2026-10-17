@@ -7,6 +7,7 @@ import {
   type PnlCardSnapshot,
 } from "../lib/wallet-pnl-card";
 import { useImageActions } from "../lib/use-image-actions";
+import { PAPER_BREAK_EVEN_NOTE } from "../lib/wallet-performance";
 import "./wallet-pnl-card.css";
 
 export function WalletPnlCardDialog({
@@ -184,7 +185,7 @@ export function WalletPnlCardDialog({
               src={ready.url}
               width={model.width}
               height={model.height}
-              alt={`${model.identity} · ${model.pnl} total P&L · ${model.tradingPnl} realized trading P&L · ${model.rewards} rewards (${model.rewardsNote}) · ${model.paper} PAPER owned`}
+              alt={`${model.identity} · ${model.pnl} total P&L · ${model.tradingPnl} realized trading P&L · ${model.rewards} rewards (${model.rewardsNote}) · ${model.paper} PAPER owned · ${model.paperBreakEven} PAPER break-even (${model.paperBreakEvenNote})`}
             />
           ) : previewError ? (
             <div role="alert">
@@ -214,6 +215,10 @@ export function WalletPnlCardDialog({
         </dd>
         <dt>PAPER owned, staked and unstaked</dt>
         <dd>{model.paper}</dd>
+        <dt>PAPER break-even</dt>
+        <dd>
+          {model.paperBreakEven} · {model.paperBreakEvenNote}. {PAPER_BREAK_EVEN_NOTE}
+        </dd>
         {model.stats.map((stat) => (
           <div key={stat.label}>
             <dt>{stat.label}</dt>

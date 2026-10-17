@@ -110,6 +110,19 @@ export interface AssetPricePoint {
   gapBefore?: boolean;
 }
 export type MarketWindow = "5m" | "15m" | "1h";
+export type MarketSegment = "all" | "profitable";
+export interface MarketSegmentCoverage {
+  basis: "positive-lifetime-realized-trading-pnl";
+  classifiedAt: number;
+  maxAccountAgeMs: number;
+  /** Unique wallets with retained opens in the saved one-hour market window. */
+  observedWallets: number;
+  classifiedWallets: number;
+  profitableWallets: number;
+  unknownWallets: number;
+  oldestAccountReceivedAt: number | null;
+  newestAccountReceivedAt: number | null;
+}
 export interface MarketTradeSample {
   windowFrom: number;
   windowTo: number;
@@ -121,6 +134,9 @@ export interface MarketTradeSample {
   partial: true;
 }
 export interface AssetMarketResponse {
+  /** Absent in older all-trader snapshots. */
+  segment?: MarketSegment;
+  segmentCoverage?: MarketSegmentCoverage;
   instrument: number;
   symbol: string;
   price: { priceUsd: number; sourceAt: number; receivedAt: number } | null;

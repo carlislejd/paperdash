@@ -4,6 +4,7 @@ import {
   PNL_CARD_PNL_LABEL,
   type PnlCardModel,
 } from "./wallet-pnl-card";
+import { PAPER_BREAK_EVEN_NOTE } from "./wallet-performance";
 
 const C = {
   paper: "#f5f2e9",
@@ -224,6 +225,19 @@ async function renderCard(
     text(m.paper, x, y + size + 4, width, size, C.ink, 600);
     text("Staked + unstaked", x, y + size + 30, width, 14, C.muted);
   };
+  const breakEven = (x: number, y: number, width: number, size = 30) => {
+    text("PAPER BREAK-EVEN", x, y, width, 13, C.muted);
+    text(
+      m.paperBreakEven,
+      x,
+      y + size + 4,
+      width,
+      size,
+      m.paperBreakEvenStatus === "recovered" ? C.green : C.ink,
+      600,
+    );
+    text(m.paperBreakEvenNote, x, y + size + 27, width, 12, C.muted);
+  };
   const stats = (
     x: number,
     y: number,
@@ -248,6 +262,7 @@ async function renderCard(
     text(m.accountNote, x, y, width - 260, 13, C.muted);
     text(m.historyNote, x, y + 22, width - 260, 13, C.muted);
     text("papertrade.club", x + width - 230, y + 16, 230, 22, C.ink, 550);
+    text(PAPER_BREAK_EVEN_NOTE, x, y + 40, width, 10, C.muted);
   };
   if (m.layout === "gallery") {
     brand(46, 62);
@@ -255,20 +270,23 @@ async function renderCard(
     identity(48, 417, 720);
     hero(48, 467, 720, 88);
     paper(831, 467, 315, 36);
+    breakEven(831, 606, 315, 30);
     breakdown(48, 606, 720, 32);
     stats(48, 704, w - 70, 4, 120, 31, 4);
     footer(48, 843, w - 96);
   } else if (m.layout === "split") {
-    artRect(565, 0, 635, 432, 0.83);
+    artRect(565, 0, 635, 452, 0.83);
     ctx.fillStyle = C.lavender;
-    ctx.fillRect(0, 0, 565, 432);
+    ctx.fillRect(0, 0, 565, 452);
     brand(36, 55, 30);
     identity(38, 112, 482);
     hero(38, 169, 492, 67);
     breakdown(38, 293, 500, 29);
-    text("PAPER OWNED", 38, 401, 120, 12, C.muted);
-    text(m.paper, 174, 401, 346, 25, C.ink, 600);
-    stats(38, 459, w - 50, 4, 108, 30, 4);
+    text("PAPER OWNED", 38, 390, 230, 12, C.muted);
+    text(m.paper, 38, 416, 230, 23, C.ink, 600);
+    text("Staked + unstaked", 38, 439, 230, 12, C.muted);
+    breakEven(302, 390, 230, 22);
+    stats(38, 478, w - 50, 4, 108, 30, 4);
     footer(38, 617, w - 76);
   } else {
     brand(48, 70, 38);
@@ -278,7 +296,8 @@ async function renderCard(
     breakdown(48, 757, w - 70, 42);
     ctx.fillStyle = C.lavender;
     ctx.fillRect(32, 870, w - 64, 125);
-    paper(56, 900, w - 112, 42);
+    paper(56, 900, 460, 42);
+    breakEven(558, 900, 466, 38);
     stats(48, 1020, w - 70, 3, 120, 36);
     footer(48, 1300, w - 96);
   }

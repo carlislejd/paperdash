@@ -72,8 +72,8 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
   await page.goto("/?view=assets&asset=0");
   const graph = page.getByRole("region", { name: "BTC price and trades" });
   await graph
-    .getByRole("combobox", { name: "Minimum trade notional" })
-    .selectOption("0");
+    .getByRole("combobox", { name: "Trader segment" })
+    .selectOption("all");
   await expect(
     graph.locator(".trade-graph-feed li[data-trade-id]"),
   ).toHaveCount(12);
@@ -174,10 +174,10 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
   await page.getByRole("button", { name: "ETH Ethereum" }).click();
   const eth = page.getByRole("region", { name: "ETH price and trades" });
   await expect(
-    eth.getByRole("combobox", { name: "Minimum trade notional" }),
-  ).toHaveValue("100000");
+    eth.getByRole("combobox", { name: "Trader segment" }),
+  ).toHaveValue("all");
   await expect(eth.locator(".trade-graph-feed li[data-trade-id]")).toHaveCount(
-    11,
+    12,
   );
   await send({ type: "trade", data: { ...trade, id: "wrong-asset" } });
   await send(quote);

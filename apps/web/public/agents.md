@@ -118,6 +118,8 @@ Do not count `/api/overview.trades`, `activity.recent`, liquidation `items`, lea
 
 For chart highlights, `/api/assets/0/market?window=15m` (BTC) or `/api/assets/1/market?window=15m` (ETH) accepts `window=5m|15m|1h`, defaulting to `1h`. Its optional `chartSample` contains up to two large, priced observations per time bucket across the selected window (at most 62 trades), with explicit bounds and `partial: true`. These are sampled highlights, **not execution counts for that window**. The separate `trades` list remains capped at 200 recent observations. If `chartSample` is absent, window-wide highlights are unavailable; do not infer them from the recent list.
 
+The market endpoint also accepts `segment=all|profitable`, defaulting to `all`. Profitable filters position openings before sampling to wallets with strictly positive latest checked lifetime realized trading P&L across markets. Rewards and unrealized P&L do not qualify a wallet. This is current classification, not evidence that a wallet was profitable when it entered. `segmentCoverage` counts unique opening wallets across the retained hour and reports classification time, known/profitable/unknown counts and account receipt bounds. Account summaries older than five minutes, missing or invalid remain unknown and are excluded. Coverage remains partial. Older responses without segment metadata cannot establish a profitable cohort; never substitute the unfiltered list for it. This filter does not change the separate rolling-24h all-trader activity totals.
+
 ## Units and interpretation
 
 - USD/USDC and PAPER raw integer strings use 18 decimal places. This includes `pnlRaw`, balances, supply, staked amounts and reward fields. Keep strings intact; use arbitrary-precision integers or decimal arithmetic. In Python, set sufficient decimal precision (for example, `getcontext().prec = 100`) before `Decimal(raw) / Decimal(10**18)`. Do not convert raw strings to JavaScript `Number` before scaling. Raw representation preserves the API's precision; it does not establish independent accounting accuracy.
@@ -132,7 +134,9 @@ For chart highlights, `/api/assets/0/market?window=15m` (BTC) or `/api/assets/1/
 - Wallet position tuples are easiest to interpret through `node paperclub.mjs positions ADDRESS`, which includes column names and unit descriptions. BTC raw entry/bust prices divide by 10; ETH by 100, unlike 18-decimal monetary amounts. `useDebt=true` means queued-balance funding; `false` means cash funding. It does not mean ordinary borrowed margin.
 - Missing or null is unavailable, not zero. Never fabricate a missing value.
 
-Wallet staking: `snapshot.paper.staked` is staked PAPER; `snapshot.lifetime.paperRewardsClaimedRaw` is claimed USDC rewards. Pending/claimable wallet rewards are currently unavailable. Do not interpret `snapshot.paper.pendingBase` as the total pending/claimable balance.
+Wallet staking: `snapshot.paper.staked` is staked PAPER; `snapshot.lifetime.paperRewardsClaimedRaw` is claimed USDC rewards. `stakingRewards.pendingRaw` is the observed pending USDC calculation from a coherent account/accumulator pair; inspect its receipt/source clocks and `stale`. Missing pending is unavailable, not zero. Do not interpret `snapshot.paper.pendingBase` as the total pending/claimable balance.
+
+Wallet UI and P&L cards show PAPER break-even as `max(0, -(lifetime realized trading P&L + claimed rewards + pending rewards)) / (staked + unstaked PAPER)`, in USDC per PAPER. This excludes open P&L and is not a market quote or acquisition cost basis. With a positive PAPER balance and a known nonnegative combined result, show **Cost recovered**. Zero PAPER or missing required data leaves the result unavailable. Retained stale values are labeled Last available. Tiny positive values must not round to zero.
 
 ### Wallet margin at risk
 

@@ -321,7 +321,7 @@ function AssetDetail({
           <h4 className="analytics-subheading" id="asset-recent-heading">
             Recent activity
           </h4>
-          <span>Retained observations · rolling 24h</span>
+          <span>All traders · retained observations · rolling 24h</span>
         </div>
         {asset.activity?.recent.length ? (
           <div className="table-scroll">

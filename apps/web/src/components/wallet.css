@@ -474,6 +474,33 @@
   line-height: 1.25;
   margin-top: 4px;
 }
+.wd-paper-break-even {
+  padding: 18px 0;
+  border-bottom: 1px solid #d3cfc3;
+}
+.wd-paper-break-even dl {
+  margin: 0;
+}
+.wd-paper-break-even dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.wd-paper-break-even dd {
+  margin: 6px 0;
+  font-size: 24px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.wd-paper-break-even span,
+.wd-paper-break-even p {
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.wd-paper-break-even p {
+  margin: 8px 0 0;
+}
 .wd-staking {
   padding: 0 0 24px;
 }

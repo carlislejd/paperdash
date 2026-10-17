@@ -87,9 +87,12 @@ describe("explicit native edge-cache policy", () => {
     "/api/assets/0/market",
     "/api/assets/1/market",
     ...[0, 1].flatMap((instrument) =>
-      ["5m", "15m", "1h"].map(
-        (window) => `/api/assets/${instrument}/market?window=${window}`,
-      ),
+      ["5m", "15m", "1h"].flatMap((window) => [
+        `/api/assets/${instrument}/market?window=${window}`,
+        ...["all", "profitable"].map(
+          (segment) => `/api/assets/${instrument}/market?window=${window}&segment=${segment}`,
+        ),
+      ]),
     ),
     "/api/house",
     "/api/protocol/charts",
@@ -162,6 +165,12 @@ describe("explicit native edge-cache policy", () => {
       "/api/assets/0/market?window=5m&window=1h",
       "/api/assets/0/market?window=6h",
       "/api/assets/0/market?window=%35m",
+      "/api/assets/0/market?window=15m&segment=unknown",
+      "/api/assets/0/market?window=15m&segment=profitable&segment=all",
+      "/api/assets/0/market?window=15m&segment=profitable&ignored=1",
+      "/api/assets/0/market?window=15m&segment=%70rofitable",
+      "/api/assets/0/market?segment=profitable&window=15m",
+      "/api/assets/0/market?segment=profitable",
       "/api/%6fverview",
       "/api/house?x=1",
       "/api/protocol/charts?range=1d",
@@ -204,7 +213,11 @@ describe("explicit native edge-cache policy", () => {
       { cookie: "" },
       { "x-test-cookie": "yes" },
     ]) {
-      for (const url of ["/api/overview", "/api/assets/0/market?window=15m"]) {
+      for (const url of [
+        "/api/overview",
+        "/api/assets/0/market?window=15m",
+        "/api/assets/0/market?window=15m&segment=profitable",
+      ]) {
         const response = await api.inject({ url, headers });
         expect(response.statusCode).toBe(200);
         expect(response.headers["cdn-cache-control"]).toBe("no-store");

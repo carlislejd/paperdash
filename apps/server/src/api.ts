@@ -271,14 +271,17 @@ export async function buildApi(
     const { instrument } = z
       .object({ instrument: z.enum(["0", "1"]).transform(Number) })
       .parse(req.params);
-    const { window } = z
-      .object({ window: z.enum(["5m", "15m", "1h"]).default("1h") })
+    const { window, segment } = z
+      .object({
+        window: z.enum(["5m", "15m", "1h"]).default("1h"),
+        segment: z.enum(["all", "profitable"]).default("all"),
+      })
       .parse(req.query);
     return analyticsResponse(
       req,
       reply,
-      await reads.read(`market:${instrument}:${window}`, () =>
-        readMarket(store, instrument, Date.now(), window),
+      await reads.read(`market:${instrument}:${window}:${segment}`, () =>
+        readMarket(store, instrument, Date.now(), window, segment),
       ),
     );
   });
