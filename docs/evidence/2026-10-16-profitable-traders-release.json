@@ -1,0 +1,494 @@
+{
+  "releaseCommit": "41cb86295c321af642e48319fe4df409dc24f9f2",
+  "site": "https://papertrade.club",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/38990223832",
+    "conclusion": "success",
+    "browserTests": {
+      "total": 242,
+      "passedWithoutRetry": 241,
+      "passedOnRetry": 1,
+      "retryNote": "Existing mobile wallet-freshness pending-account recheck timing test passed on retry."
+    }
+  },
+  "marketVerification": {
+    "startedAt": "2026-10-17T01:26:49.913Z",
+    "completedAt": "2026-10-17T01:26:57.780Z",
+    "requestCountIncludingAccountsDepositsRatesAndHealth": 16,
+    "combinations": 12,
+    "assertions": 21,
+    "passed": 21,
+    "failures": [],
+    "checks": [
+      "Explicit segment and asset identity",
+      "Selected window and bucket widths",
+      "At most 200 feed rows and 62 sample entries",
+      "At most two sample entries per time bucket",
+      "Correct time bounds and positive execution prices",
+      "Profitable entries are opens only",
+      "Classification no older than 60 seconds",
+      "Classified account receipts no older than five minutes",
+      "Coverage arithmetic and receipt ordering",
+      "Retained qualifying account realized trading P&L is positive",
+      "Exact October 8 deposits preserved",
+      "Exact October 10 cutoff and allocation rate arithmetic"
+    ],
+    "responses": [
+      {
+        "symbol": "BTC",
+        "window": "5m",
+        "segment": "all",
+        "url": "https://paperdash-api.onrender.com/api/assets/0/market?window=5m&segment=all",
+        "requestedAt": "2026-10-17T01:26:49.913Z",
+        "completedAt": "2026-10-17T01:26:51.125Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 200,
+        "sampleEntries": 58
+      },
+      {
+        "symbol": "BTC",
+        "window": "5m",
+        "segment": "profitable",
+        "url": "https://paperdash-api.onrender.com/api/assets/0/market?window=5m&segment=profitable",
+        "requestedAt": "2026-10-17T01:26:51.131Z",
+        "completedAt": "2026-10-17T01:26:51.621Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 4,
+        "sampleEntries": 0
+      },
+      {
+        "symbol": "BTC",
+        "window": "15m",
+        "segment": "all",
+        "url": "https://paperdash-api.onrender.com/api/assets/0/market?window=15m&segment=all",
+        "requestedAt": "2026-10-17T01:26:51.623Z",
+        "completedAt": "2026-10-17T01:26:52.330Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 200,
+        "sampleEntries": 62
+      },
+      {
+        "symbol": "BTC",
+        "window": "15m",
+        "segment": "profitable",
+        "url": "https://paperdash-api.onrender.com/api/assets/0/market?window=15m&segment=profitable",
+        "requestedAt": "2026-10-17T01:26:52.346Z",
+        "completedAt": "2026-10-17T01:26:52.763Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 4,
+        "sampleEntries": 0
+      },
+      {
+        "symbol": "BTC",
+        "window": "1h",
+        "segment": "all",
+        "url": "https://paperdash-api.onrender.com/api/assets/0/market?window=1h&segment=all",
+        "requestedAt": "2026-10-17T01:26:52.766Z",
+        "completedAt": "2026-10-17T01:26:53.194Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 200,
+        "sampleEntries": 62
+      },
+      {
+        "symbol": "BTC",
+        "window": "1h",
+        "segment": "profitable",
+        "url": "https://paperdash-api.onrender.com/api/assets/0/market?window=1h&segment=profitable",
+        "requestedAt": "2026-10-17T01:26:53.211Z",
+        "completedAt": "2026-10-17T01:26:53.700Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 4,
+        "sampleEntries": 4
+      },
+      {
+        "symbol": "ETH",
+        "window": "5m",
+        "segment": "all",
+        "url": "https://paperdash-api.onrender.com/api/assets/1/market?window=5m&segment=all",
+        "requestedAt": "2026-10-17T01:26:53.702Z",
+        "completedAt": "2026-10-17T01:26:54.087Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 200,
+        "sampleEntries": 59
+      },
+      {
+        "symbol": "ETH",
+        "window": "5m",
+        "segment": "profitable",
+        "url": "https://paperdash-api.onrender.com/api/assets/1/market?window=5m&segment=profitable",
+        "requestedAt": "2026-10-17T01:26:54.105Z",
+        "completedAt": "2026-10-17T01:26:54.550Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 0,
+        "sampleEntries": 0
+      },
+      {
+        "symbol": "ETH",
+        "window": "15m",
+        "segment": "all",
+        "url": "https://paperdash-api.onrender.com/api/assets/1/market?window=15m&segment=all",
+        "requestedAt": "2026-10-17T01:26:54.552Z",
+        "completedAt": "2026-10-17T01:26:54.967Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 200,
+        "sampleEntries": 62
+      },
+      {
+        "symbol": "ETH",
+        "window": "15m",
+        "segment": "profitable",
+        "url": "https://paperdash-api.onrender.com/api/assets/1/market?window=15m&segment=profitable",
+        "requestedAt": "2026-10-17T01:26:55.075Z",
+        "completedAt": "2026-10-17T01:26:55.484Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 0,
+        "sampleEntries": 0
+      },
+      {
+        "symbol": "ETH",
+        "window": "1h",
+        "segment": "all",
+        "url": "https://paperdash-api.onrender.com/api/assets/1/market?window=1h&segment=all",
+        "requestedAt": "2026-10-17T01:26:55.486Z",
+        "completedAt": "2026-10-17T01:26:55.900Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 200,
+        "sampleEntries": 62
+      },
+      {
+        "symbol": "ETH",
+        "window": "1h",
+        "segment": "profitable",
+        "url": "https://paperdash-api.onrender.com/api/assets/1/market?window=1h&segment=profitable",
+        "requestedAt": "2026-10-17T01:26:55.921Z",
+        "completedAt": "2026-10-17T01:26:56.339Z",
+        "status": 200,
+        "receivedAt": 1792200410352,
+        "stale": false,
+        "feedEntries": 0,
+        "sampleEntries": 0
+      }
+    ],
+    "classificationBasis": "positive-lifetime-realized-trading-pnl",
+    "coverage": [
+      {
+        "symbol": "BTC",
+        "basis": "positive-lifetime-realized-trading-pnl",
+        "classifiedAt": 1792200410352,
+        "unknownWallets": 515,
+        "maxAccountAgeMs": 300000,
+        "observedWallets": 523,
+        "classifiedWallets": 8,
+        "profitableWallets": 3,
+        "newestAccountReceivedAt": 1792200394750,
+        "oldestAccountReceivedAt": 1792200164003
+      },
+      {
+        "symbol": "ETH",
+        "basis": "positive-lifetime-realized-trading-pnl",
+        "classifiedAt": 1792200410352,
+        "unknownWallets": 293,
+        "maxAccountAgeMs": 300000,
+        "observedWallets": 302,
+        "classifiedWallets": 9,
+        "profitableWallets": 0,
+        "newestAccountReceivedAt": 1792200361961,
+        "oldestAccountReceivedAt": 1792200164003
+      }
+    ],
+    "qualifyingAccountVerification": {
+      "url": "https://paperdash-api.onrender.com/api/wallets/batch?addresses=0x46d9c4eb277846733b01d8dc6a46d7ba70df2ef1,0x5d725c14cf9ee6d24a312350b201e63d10f90d57,0x169d0806f10636f5b13d1bc26119d77d2fff142b",
+      "completedAt": "2026-10-17T01:26:56.969Z",
+      "rows": [
+        {
+          "address": "0x169d0806f10636f5b13d1bc26119d77d2fff142b",
+          "realizedTradingPnlRaw": "150847479426941371739100",
+          "currentUnrealizedPnlRaw": "0",
+          "totalWindowedPnlRaw": "150847479426941371739100",
+          "receivedAt": 1792200300490,
+          "stale": true
+        },
+        {
+          "address": "0x46d9c4eb277846733b01d8dc6a46d7ba70df2ef1",
+          "realizedTradingPnlRaw": "56643424010924555555",
+          "currentUnrealizedPnlRaw": "469669281849629540352",
+          "totalWindowedPnlRaw": "526312705860554095907",
+          "receivedAt": 1792200287705,
+          "stale": true
+        },
+        {
+          "address": "0x5d725c14cf9ee6d24a312350b201e63d10f90d57",
+          "realizedTradingPnlRaw": "7005201013080639782660",
+          "currentUnrealizedPnlRaw": "272035757177970360320",
+          "totalWindowedPnlRaw": "7277236770258610142980",
+          "receivedAt": 1792200348751,
+          "stale": true
+        }
+      ],
+      "freshnessNote": "The batch endpoint uses a 60-second account freshness threshold. Its stale flags were true for these retained accounts; all receipts still met the profitable segment’s five-minute classification limit."
+    },
+    "limitation": "This is a partial cohort based on latest checked lifetime realized trading P&L, not profitability at entry. Most observed wallets were unknown at verification. Empty windows are valid; this does not establish complete trader coverage."
+  },
+  "walletFormulaVerification": {
+    "collectedAt": "2026-10-17T01:11:44.491Z",
+    "phase": "Public API input verification before feature deployment; live browser evidence is recorded separately.",
+    "units": "All raw monetary and PAPER values have 18 decimals.",
+    "formula": "max(0, -(lifetime.realizedPnlRaw + lifetime.paperRewardsClaimedRaw + stakingRewards.pendingRaw)) / (paper.balance + paper.staked)",
+    "recoveredCondition": "PAPER owned > 0 and realized trading P&L + claimed rewards + pending rewards >= 0, with all inputs available.",
+    "wallets": [
+      {
+        "address": "0x26b61e7ec6ccd97df9836e3358c8c92d4fa79a13",
+        "leaderboardName": "stablealt",
+        "apiUrl": "https://paperdash-api.onrender.com/api/wallets/0x26b61e7ec6ccd97df9836e3358c8c92d4fa79a13",
+        "tradingPnlRaw": "-1714932871670683584499611",
+        "claimedRaw": "1111868966850300997705419",
+        "pendingRaw": "301467471630080887108317",
+        "rewardsRaw": "1413336438480381884813736",
+        "paperBalanceRaw": "0",
+        "paperStakedRaw": "135908219081747352598758886",
+        "paperTotalRaw": "135908219081747352598758886",
+        "netPerformanceRaw": "-301596433190301699685875",
+        "display": {
+          "tradingPnlUsdc": "-1714932.871670",
+          "claimedUsdc": "1111868.966850",
+          "pendingUsdc": "301467.471630",
+          "rewardsUsdc": "1413336.438480",
+          "paperOwned": "135908219.081747",
+          "netPerformanceUsdc": "-301596.433190",
+          "breakEven": "$0.002219"
+        },
+        "accountFreshness": {
+          "receivedAt": 1792199475513,
+          "sourceAt": 1792190208000,
+          "stale": false,
+          "refreshing": false
+        },
+        "stakingRewards": {
+          "pendingRaw": "301467471630080887108317",
+          "sourceAt": 1792199472000,
+          "receivedAt": 1792199473314,
+          "stale": false
+        },
+        "receivedAt": 1792197162011,
+        "stale": true,
+        "errors": []
+      },
+      {
+        "address": "0x35b29bdd690f95fe35c9645f21866b04616295a7",
+        "leaderboardName": null,
+        "apiUrl": "https://paperdash-api.onrender.com/api/wallets/0x35b29bdd690f95fe35c9645f21866b04616295a7",
+        "tradingPnlRaw": "-979132127860928201739738",
+        "claimedRaw": "1824423919901169473188257",
+        "pendingRaw": "44620135362391070807959",
+        "rewardsRaw": "1869044055263560543996216",
+        "paperBalanceRaw": "0",
+        "paperStakedRaw": "252057160476062350514411978",
+        "paperTotalRaw": "252057160476062350514411978",
+        "netPerformanceRaw": "889911927402632342256478",
+        "display": {
+          "tradingPnlUsdc": "-979132.127860",
+          "claimedUsdc": "1824423.919901",
+          "pendingUsdc": "44620.135362",
+          "rewardsUsdc": "1869044.055263",
+          "paperOwned": "252057160.476062",
+          "netPerformanceUsdc": "889911.927402",
+          "breakEven": "Cost recovered"
+        },
+        "accountFreshness": {
+          "receivedAt": 1792199493494,
+          "sourceAt": 1792183610000,
+          "stale": false,
+          "refreshing": false
+        },
+        "stakingRewards": {
+          "pendingRaw": "44620135362391070807959",
+          "sourceAt": 1792199490000,
+          "receivedAt": 1792199492089,
+          "stale": false
+        },
+        "receivedAt": 1792197065809,
+        "stale": true,
+        "errors": []
+      }
+    ],
+    "limitations": [
+      "Expected displayed values apply to the captured snapshot; pending rewards continue to accrue.",
+      "Both selected wallets had current account and reward freshness flags with no errors. Their separate retained-history outer stale flags were true.",
+      "The recovered wallet had negative lifetime trading P&L and claimed rewards alone exceeding those losses."
+    ]
+  },
+  "preservedDeposits": {
+    "verifiedAt": "2026-10-17T01:26:57.395Z",
+    "url": "https://paperdash-api.onrender.com/api/wallets/0xf3dcaeb909d3d17318c0908a1ec0ca31321e1672/cashflows",
+    "comparisonEvidence": "2026-10-16-trading-launch-release.json",
+    "oct8DepositsIdentical": true,
+    "oct8Deposits": [
+      {
+        "kind": "Deposit",
+        "route": "hypercore",
+        "txHash": "0x68109d32d020e313d940ea8642d5bc7d9a266170141188dd735f41b3deaa46fd",
+        "amountRaw": "600000000000000000000000",
+        "timestampMs": 1791482718000,
+        "withdrawalStatus": null,
+        "recipientAmountRaw": null,
+        "id": "f0d0e6384adaa3cfc48f52610f3529424a469730cc8d678930b887bdebc896ba:1"
+      },
+      {
+        "kind": "Deposit",
+        "route": "hypercore",
+        "txHash": "0x6987fb9b076a4cf628f82f93ec08943c434ccfba6fe93e62576c230ee28fa4b9",
+        "amountRaw": "1000000000000000000000",
+        "timestampMs": 1791481726000,
+        "withdrawalStatus": null,
+        "recipientAmountRaw": null,
+        "id": "46fbb41d265e45fca008f1695c8b649185cfbc59479c31591ab4a859f61bd0af:1"
+      }
+    ],
+    "sampledRecordCount": 20,
+    "stale": true,
+    "coverage": {
+      "backfillComplete": true,
+      "sourceComplete": null,
+      "identity": "source-fields-and-occurrence",
+      "identityAmbiguous": true,
+      "retainedCount": 20,
+      "indexing": false,
+      "lastIndexedAt": 1792199757375,
+      "retainedCountCapped": false
+    },
+    "limitation": "Exact comparison covers the two original October 8 deposit records. Retained history remained delayed; this does not establish complete or current upstream history."
+  },
+  "preservedTradingRates": {
+    "verifiedAt": "2026-10-17T01:26:57.771Z",
+    "url": "https://paperdash-api.onrender.com/api/paper/economics",
+    "sourceAt": 1792200412000,
+    "receivedAt": 1792200413574,
+    "stale": false,
+    "exactDailyAndAnnualizedRecalculationMatched": true,
+    "annualized": {
+      "toMs": 1792200412000,
+      "basis": "observed-trading-window",
+      "fromMs": 1791640800000,
+      "yearDays": 365,
+      "cutoffBasis": "announced-trading-start",
+      "usdPerDayRaw": "7895224393613188160510184",
+      "usdPerYearRaw": "2881756903668813678586217211",
+      "baselineRewardsRaw": "0",
+      "lifetimeRewardsRaw": "51137295293503049223141495",
+      "allocatedSinceStartRaw": "51137295293503049223141495"
+    }
+  },
+  "health": {
+    "verifiedAt": "2026-10-17T01:27:06.795Z",
+    "url": "https://paperdash-api.onrender.com/health/ready",
+    "body": {
+      "ready": true,
+      "degraded": false,
+      "status": {
+        "stale": false,
+        "stream": "connected",
+        "sourceAt": 1792200424000,
+        "receivedAt": 1792200424764,
+        "persistence": "postgres",
+        "indexedBlock": "48742814"
+      }
+    }
+  },
+  "featureCommit": "93047776fa99cb634902b0b9b83b7cddc2afad77",
+  "deployments": [
+    {
+      "service": "API",
+      "serviceId": "srv-db4sq6g473hc739111lg",
+      "deploymentId": "dep-db9cs9rrjlhs73ebf5sg",
+      "status": "live",
+      "liveInstances": 3,
+      "startedAt": "2026-10-17T01:23:51Z",
+      "durationSeconds": 52.5
+    },
+    {
+      "service": "collector",
+      "serviceId": "srv-db4sq6g473hc739111jg",
+      "deploymentId": "dep-db9csorrjlhs73ebgqdg",
+      "status": "live",
+      "startedAt": "2026-10-17T01:24:51Z",
+      "durationSeconds": 39.6,
+      "handoffNote": "Replacement entered standby at 01:25:31Z; fresh classified snapshots were observed after handoff."
+    },
+    {
+      "service": "frontend",
+      "serviceId": "srv-db4sp78473hc7390tou0",
+      "deploymentId": "dep-db9ctntg1s2s7388ag3g",
+      "status": "live",
+      "startedAt": "2026-10-17T01:26:55Z",
+      "durationSeconds": 21
+    }
+  ],
+  "deploymentScope": "All three services deployed releaseCommit. No history/checkpoint reset or schema, environment, service-plan or resource change.",
+  "browserVerification": {
+    "site": "https://papertrade.club",
+    "source": "Production browser UI with real public data; no fixtures.",
+    "numericWallet": {
+      "url": "https://papertrade.club/?wallet=0x26b61e7ec6ccd97df9836e3358c8c92d4fa79a13",
+      "verifiedAt": "2026-10-17T01:29:50.365Z",
+      "breakEven": "PAPER break-even\n$0.002219\nUSDC per PAPER · last available\n\nRemaining realized trading losses after claimed + pending rewards ÷ PAPER owned (staked + unstaked). Excludes open P&L and token price; not an acquisition cost.",
+      "performance": "TOTAL P&L\n−$301,573.57\n\nLifetime realized trading + rewards\n\nTRADING P&L\n−$1,714,932.87\nRealized · lifetime\nREWARDS\n+$1,413,359.30\nClaimed + pending · USDC · delayed",
+      "cardAlt": "WALLET HIDDEN · −$301,573.57 total P&L · −$1,714,932.87 realized trading P&L · +$1,413,359.30 rewards (Claimed + pending · USDC · delayed) · 135,908,219.08 PAPER owned · $0.002219 PAPER break-even (USDC per PAPER · last available)"
+    },
+    "costRecoveredWallet": {
+      "address": "0x35b29bdd690f95fe35c9645f21866b04616295a7",
+      "verificationWindowUtc": "2026-10-17 01:28–01:29 UTC",
+      "sidepanelDisplay": "Cost recovered",
+      "cardDisplay": "Cost recovered",
+      "tradingPnlUsdc": "-979132.13",
+      "rewardsUsdc": "1869086.46",
+      "totalPnlUsdc": "889954.33",
+      "claimedRewardsUsdc": "1824423.92",
+      "pendingRewardsUsdc": "44662.54",
+      "paperStaked": "252057160.47",
+      "freshness": "Observed with fresh account inputs, then retained values labeled last available as inputs aged. Card preserves the captured freshness label."
+    },
+    "btc": {
+      "profitableOneHourEntries": 4,
+      "distinctProfitableWallets": 3,
+      "feedAndPriceBubblesAgree": true,
+      "allTraderModeObserved": true,
+      "fiveMinuteEmptyState": "No observed entries from profitable traders in this window.",
+      "walletNavigationVerified": "Opened 0x46d9c4eb277846733b01d8dc6a46d7ba70df2ef1 from an entry; wallet trading P&L +$56.64, rewards $0.00; closing restored chart."
+    },
+    "ethAndControls": {
+      "verifiedAt": "2026-10-17T01:32:32.676Z",
+      "ethOneHourProfitable": "ETH price\nReference price\n$2,420.05\nLive\n5m\n15m\n1h\nTraders\nAll traders\nProfitable traders\nPause chart\nReference\nLong\nShort\nBubble area ≈ notional\n$2,414\n$2,416\n$2,418\n$2,420\n$2,422\n$2,424\n$2,426\n05:32 PM\n06:02 PM\n06:32 PM\nSelect a bubble or a trade to inspect it.\n\nLine: reference price · bubbles: execution price. Up to 2 largest observed priced trades per 120s across 1h.\nArrow keys select trades; Escape clears selection.\n\nNew entries by wallets with positive lifetime realized trading P&L. Rewards and unrealized P&L excluded. Classification uses the latest retained account snapshot, not profitability at entry. Classified 18s ago; 8 of 301 observed wallets checked, 293 unknown excluded. Account snapshots were at most 5 minutes old when classified. Entries update with each classified snapshot.\n\nProfitable trader entries 0\nClassified snapshot\nNo observed entries from profitable traders in this window.\n\nSelected across 1h · Partial public activity · 18s ago",
+      "pauseDisablesSegment": true,
+      "resumeEnablesSegment": true
+    },
+    "screenshots": [
+      "docs/previews/production-profitable-traders.jpg",
+      "docs/previews/production-paper-break-even.jpg",
+      "docs/previews/production-paper-break-even-card.jpg",
+      "docs/previews/production-paper-cost-recovered.jpg",
+      "docs/previews/production-paper-cost-recovered-card.jpg"
+    ]
+  }
+}
