@@ -588,7 +588,7 @@ function App() {
         {section === "assets" && (
           <AssetsView
             instrument={asset}
-            connected={Boolean(streamLive)}
+            connected={transport}
             onSelect={(instrument) => navigate("assets", instrument)}
             onWallet={openWallet}
           />

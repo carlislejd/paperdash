@@ -9,7 +9,7 @@ import {
   sampleFixtures,
   sampleNow as now,
 } from "./market-sampling-fixtures.js";
-import { seedProfitableMarket, segmentAccount } from "./market-segment-fixtures.js";
+import { seedProfitableMarket, seedProfitFloors, segmentAccount } from "./market-segment-fixtures.js";
 const url = process.env.TEST_DATABASE_URL;
 
 describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
@@ -52,7 +52,16 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
         unknownWallets: expectedCoverage.unknownWallets + 1,
       });
       expect(profitable.chartSamples["5m"].trades.map((trade) => trade.id)).toEqual(["wallet-2", "wallet-1"]);
-      await pg.following.retainAccounts([{ ...segmentAccount(1), address: "0x1111111111111111111111111111111111111111" }], now);
+      await seedProfitFloors(pg);
+      await seedProfitFloors(sqlite);
+      expect((await pg.market.read(0, now)).profitableByMinPnl).toEqual(
+        (await sqlite.market.read(0, now)).profitableByMinPnl,
+      );
+      // Exercise every saved floor in the large-query case, sharing one account lookup.
+      await pg.following.retainAccounts([{
+        ...segmentAccount(1, (100000n * 10n ** 18n).toString()),
+        address: "0x1111111111111111111111111111111111111111",
+      }], now);
       // Bulk synthetic projections only: no external traffic or production data.
       // Each economic execution is observed by both public source transports.
       await pool.query(
@@ -99,8 +108,10 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
         expect([...buckets.values()].every((n) => n <= 2)).toBe(true);
       }
       expect(result.rawTrades).toHaveLength(400);
-      expect(result.profitable.rawTrades).toHaveLength(400);
-      expect(result.profitable.chartSamples["1h"].trades.length).toBeGreaterThanOrEqual(50);
+      for (const cohort of Object.values(result.profitableByMinPnl)) {
+        expect(cohort.rawTrades).toHaveLength(400);
+        expect(cohort.chartSamples["1h"].trades.length).toBeGreaterThanOrEqual(50);
+      }
       const sampling = query.mock.calls.filter(
         ([sql]) => typeof sql === "string" && sql.startsWith("WITH recent"),
       );

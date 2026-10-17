@@ -92,6 +92,9 @@ describe("explicit native edge-cache policy", () => {
         ...["all", "profitable"].map(
           (segment) => `/api/assets/${instrument}/market?window=${window}&segment=${segment}`,
         ),
+        ...[1000, 10000, 100000].map(
+          (floor) => `/api/assets/${instrument}/market?window=${window}&segment=profitable&minPnl=${floor}`,
+        ),
       ]),
     ),
     "/api/house",
@@ -171,6 +174,10 @@ describe("explicit native edge-cache policy", () => {
       "/api/assets/0/market?window=15m&segment=%70rofitable",
       "/api/assets/0/market?segment=profitable&window=15m",
       "/api/assets/0/market?segment=profitable",
+      "/api/assets/0/market?window=15m&segment=profitable&minPnl=0",
+      "/api/assets/0/market?window=15m&segment=profitable&minPnl=%31%30%30%30",
+      "/api/assets/0/market?window=15m&minPnl=1000&segment=profitable",
+      "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&ignored=1",
       "/api/%6fverview",
       "/api/house?x=1",
       "/api/protocol/charts?range=1d",

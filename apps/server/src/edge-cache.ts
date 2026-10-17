@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { marketMinPnlUsd } from "../../../packages/shared/src/types.js";
 
 const snapshots = new Set([
   "/api/overview",
@@ -10,6 +11,9 @@ const snapshots = new Set([
       `/api/assets/${instrument}/market?window=${window}`,
       ...["all", "profitable"].map(
         (segment) => `/api/assets/${instrument}/market?window=${window}&segment=${segment}`,
+      ),
+      ...marketMinPnlUsd.filter((floor) => floor > 0).map(
+        (floor) => `/api/assets/${instrument}/market?window=${window}&segment=profitable&minPnl=${floor}`,
       ),
     ]),
   ),

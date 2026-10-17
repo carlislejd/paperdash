@@ -7,9 +7,7 @@ test("price bubbles and side feed share selection, keyboard inspection and walle
   await mockSources(page);
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
-  await panel
-    .getByRole("combobox", { name: "Trader segment" })
-    .selectOption("all");
+  await panel.getByRole("button", { name: "All traders", exact: true }).click();
   const chart = panel.getByRole("group", {
     name: "BTC reference price and execution bubbles",
   });
@@ -75,9 +73,7 @@ test("pausing freezes the chart cohort while new data is buffered and resumes to
   );
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
-  await panel
-    .getByRole("combobox", { name: "Trader segment" })
-    .selectOption("all");
+  await panel.getByRole("button", { name: "All traders", exact: true }).click();
   const chart = panel.getByRole("group", {
     name: "BTC reference price and execution bubbles",
   });
@@ -112,13 +108,32 @@ test("pausing freezes the chart cohort while new data is buffered and resumes to
     panel.getByRole("button", { name: "5m", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   expect(await chart.getByRole("button").count()).toBeLessThan(13);
+  await panel.getByRole("button", { name: "Pause chart", exact: true }).click();
+  response = {
+    ...response,
+    receivedAt: now + 12_000,
+    price: { priceUsd: 93_000, sourceAt: now + 12_000, receivedAt: now + 12_000 },
+    points: [...response.points, { time: now + 12_000, priceUsd: 93_000 }],
+  };
   await page.getByRole("button", { name: "ETH Ethereum", exact: true }).click();
+  const eth = page.getByRole("region", { name: "ETH price and trades" });
+  await expect(eth).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "ETH price and trades" }),
+    eth.getByRole("button", { name: "5m", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    eth.getByRole("button", { name: "Pause chart", exact: true }),
+  ).toBeVisible();
+  await page.clock.fastForward(6_001);
+  await page.getByRole("button", { name: "BTC Bitcoin", exact: true }).click();
+  await expect(
+    panel.getByRole("button", { name: "Pause chart", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Pause chart", exact: true }),
-  ).toBeVisible();
+    panel.getByRole("button", { name: "5m", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(panel.locator(".trade-graph-price")).toHaveText("$93,000.00");
+  await expect(panel.locator(".trade-graph-status")).not.toHaveText("Paused");
 });
 
 test("unpriced executions stay in the feed without invented price bubbles", async ({
@@ -135,9 +150,7 @@ test("unpriced executions stay in the feed without invented price bubbles", asyn
   );
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
-  await panel
-    .getByRole("combobox", { name: "Trader segment" })
-    .selectOption("all");
+  await panel.getByRole("button", { name: "All traders", exact: true }).click();
   await expect(
     panel.getByText("Waiting for price observations", { exact: true }),
   ).toBeVisible();
@@ -207,10 +220,11 @@ test("window-wide samples spread bubbles without a notional cutoff and request t
   });
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
-  const segment = panel.getByRole("combobox", {
-    name: "Trader segment",
+  const segment = panel.getByRole("button", {
+    name: "All traders",
+    exact: true,
   });
-  await expect(segment).toHaveValue("all");
+  await expect(segment).toHaveAttribute("aria-pressed", "true");
   await expect(panel.locator(".trade-graph-bubble")).toHaveCount(4);
   await expect(panel.locator(".trade-graph-feed h4")).toContainText(
     "Largest observed trades",

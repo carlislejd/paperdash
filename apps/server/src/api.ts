@@ -5,6 +5,7 @@ import { z } from "zod";
 import type {
   Cashflow,
   ClosedTrade,
+  MarketMinPnlUsd,
 } from "../../../packages/shared/src/types.js";
 import { config, errorMessage } from "./config.js";
 import { trustProxy } from "./proxy.js";
@@ -271,17 +272,24 @@ export async function buildApi(
     const { instrument } = z
       .object({ instrument: z.enum(["0", "1"]).transform(Number) })
       .parse(req.params);
-    const { window, segment } = z
+    const { window, segment, minPnl } = z
       .object({
         window: z.enum(["5m", "15m", "1h"]).default("1h"),
         segment: z.enum(["all", "profitable"]).default("all"),
+        minPnl: z.enum(["0", "1000", "10000", "100000"])
+          .default("0")
+          .transform((value) => Number(value) as MarketMinPnlUsd),
       })
+      .refine(
+        (query) => query.segment === "profitable" || query.minPnl === 0,
+        "A profit floor requires the profitable trader segment",
+      )
       .parse(req.query);
     return analyticsResponse(
       req,
       reply,
-      await reads.read(`market:${instrument}:${window}:${segment}`, () =>
-        readMarket(store, instrument, Date.now(), window, segment),
+      await reads.read(`market:${instrument}:${window}:${segment}:${minPnl}`, () =>
+        readMarket(store, instrument, Date.now(), window, segment, minPnl),
       ),
     );
   });

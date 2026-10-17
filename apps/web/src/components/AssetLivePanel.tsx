@@ -18,7 +18,8 @@ export function AssetLivePanel({
 }) {
   const [window, setWindow] = useState<MarketWindow>("15m");
   const [segment, setSegment] = useState<MarketSegment>("all");
-  const market = useAssetMarket(instrument, window, segment);
+  const [minPnlUsd, setMinPnlUsd] = useState(1_000);
+  const market = useAssetMarket(instrument, window, segment, minPnlUsd);
   return (
     <>
       <AnalyticsNotice error={market.error} hasData={Boolean(market.data)} />
@@ -32,6 +33,8 @@ export function AssetLivePanel({
         onWindowChange={setWindow}
         segment={segment}
         onSegmentChange={setSegment}
+        minPnlUsd={minPnlUsd}
+        onMinPnlChange={setMinPnlUsd}
         segmentCoverage={market.segmentCoverage}
         segmentUnavailable={market.segmentUnavailable}
         price={market.price}

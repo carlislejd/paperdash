@@ -39,9 +39,10 @@ export function useAssetMarket(
   instrument: number,
   window: MarketWindow = "15m",
   segment: MarketSegment = "all",
+  minPnlUsd = 0,
 ) {
   const snapshot = useAnalytics<AssetMarketResponse>(
-    `/api/assets/${instrument}/market?window=${window}${segment === "profitable" ? "&segment=profitable" : ""}`,
+    `/api/assets/${instrument}/market?window=${window}${segment === "profitable" ? `&segment=profitable${minPnlUsd > 0 ? `&minPnl=${minPnlUsd}` : ""}` : ""}`,
     { liveAsset: instrument },
   );
   const [live, setLive] = useState<LiveMarket>(() => emptyLive(instrument));
@@ -139,6 +140,7 @@ export function useAssetMarket(
     segment,
     Math.max(classificationNow, Date.now()),
     Boolean(snapshot.error),
+    minPnlUsd,
   )
     ? market
     : null;

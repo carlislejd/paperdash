@@ -421,7 +421,7 @@ export function AssetsView({
         />
       </div>
       <p className="analytics-description">
-        Current trader open interest and observed activity.
+        Follow the price, spot meaningful entries, and see how traders are positioned.
       </p>
       <AnalyticsNotice error={message} hasData={Boolean(data?.assets.length)} />
       <div className="asset-selectors" aria-label="Select an asset">
@@ -458,7 +458,6 @@ export function AssetsView({
         })}
       </div>
       <AssetLivePanel
-        key={instrument}
         instrument={instrument}
         connected={connected}
         onWallet={onWallet}

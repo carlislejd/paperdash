@@ -185,6 +185,14 @@ export class AnalyticsResources {
     }
   }
   private assetLease(entry: Entry): number | null {
+    const [path, query] = entry.path.split("?");
+    // Profitable trade classification only arrives in snapshots. Price ticks
+    // cannot keep this cohort current, so preserve its normal polling cadence.
+    if (
+      /^\/api\/assets\/\d+\/market$/.test(path) &&
+      new URLSearchParams(query).get("segment") === "profitable"
+    )
+      return null;
     if (
       !this.assetDelivery.connected ||
       !entry.listeners.size ||
@@ -199,7 +207,7 @@ export class AnalyticsResources {
         liveAsset === undefined ||
         !this.assetDelivery.topics.includes(`asset:${liveAsset}`) ||
         (entry.path !== "/api/assets" &&
-          entry.path.split("?")[0] !== `/api/assets/${liveAsset}/market`)
+          path !== `/api/assets/${liveAsset}/market`)
       )
         return null;
       const quote = this.assetDelivery.quotes[liveAsset];

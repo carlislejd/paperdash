@@ -127,6 +127,74 @@ describe("asset snapshot reconciliation", () => {
     expect(read).toHaveBeenCalledTimes(4);
   });
 
+  it("refreshes profitable classifications every five seconds despite continuous quotes while all-trader markets reconcile slowly", async () => {
+    const profitablePath =
+      "/api/assets/0/market?segment=profitable&window=15m&minPnl=1000";
+    publishLiveConnection(true, "overview,asset:0");
+    quote();
+    for (const path of [paths[1], profitablePath])
+      resources.subscribe(path, () => {}, { liveAsset: 0 });
+    await flush();
+    const initial = resources.get(profitablePath).data;
+    for (let second = 1; second <= 30; second++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      quote();
+      const snapshots = read.mock.calls.filter(
+        ([path]) => path === profitablePath,
+      );
+      expect(snapshots).toHaveLength(1 + Math.floor(second / 5));
+      expect(resources.get(profitablePath).data).toMatchObject({
+        receivedAt: AT + Math.floor(second / 5) * 5000,
+      });
+    }
+    expect(resources.get(profitablePath).data).not.toBe(initial);
+    expect(read.mock.calls.filter(([path]) => path === paths[1])).toHaveLength(
+      2,
+    );
+    expect(resources.diagnostics()).toMatchObject({
+      requests: 9,
+      pollingRequests: 6,
+      recoveryRequests: 1,
+      resources: [
+        { path: paths[1], mode: "events" },
+        { path: profitablePath, mode: "poll" },
+      ],
+    });
+  });
+
+  it("keeps profitable refreshes bounded by failure cooldown and pauses them while hidden despite incoming quotes", async () => {
+    const path = "/api/assets/1/market?window=5m&segment=profitable";
+    publishLiveConnection(true, "overview,asset:1");
+    quote(1);
+    resources.subscribe(path, () => {}, { liveAsset: 1 });
+    await flush();
+    read.mockRejectedValueOnce(new ApiError("Cooling down", 429, 30000));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(read).toHaveBeenCalledTimes(2);
+    for (let second = 0; second < 29; second++) {
+      quote(1);
+      resources.refresh(path);
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(read).toHaveBeenCalledTimes(2);
+    hidden = true;
+    resources.visibilityChanged();
+    for (let second = 0; second < 10; second++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      quote(1);
+    }
+    expect(read).toHaveBeenCalledTimes(2);
+    hidden = false;
+    resources.visibilityChanged();
+    await flush();
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(resources.get(path).error).toBe("");
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(read).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(read).toHaveBeenCalledTimes(4);
+  });
+
   it("expires a silent asset feed even while unrelated asset quotes and panel heartbeats arrive", async () => {
     publishLiveConnection(true, "overview,asset:0,asset:1");
     quote();

@@ -111,8 +111,12 @@ export interface AssetPricePoint {
 }
 export type MarketWindow = "5m" | "15m" | "1h";
 export type MarketSegment = "all" | "profitable";
+export const marketMinPnlUsd = [0, 1000, 10000, 100000] as const;
+export type MarketMinPnlUsd = (typeof marketMinPnlUsd)[number];
 export interface MarketSegmentCoverage {
   basis: "positive-lifetime-realized-trading-pnl";
+  /** Lifetime realized trading profit floor; absent in older zero-floor snapshots. */
+  minPnlUsd?: MarketMinPnlUsd;
   classifiedAt: number;
   maxAccountAgeMs: number;
   /** Unique wallets with retained opens in the saved one-hour market window. */

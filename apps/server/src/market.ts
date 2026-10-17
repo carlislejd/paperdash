@@ -3,7 +3,9 @@ import type {
   MarketTradeSample,
   MarketWindow,
   MarketSegment,
+  MarketMinPnlUsd,
 } from "../../../packages/shared/src/types.js";
+import { marketMinPnlUsd } from "../../../packages/shared/src/types.js";
 import { visibleTrades, type Store } from "./store.js";
 import { activityDelayed } from "./activity-health.js";
 import { PROFITABLE_SNAPSHOT_MAX_AGE_MS } from "./market-store.js";
@@ -12,6 +14,12 @@ export const marketSymbols = ["BTC", "ETH"] as const;
 interface SavedMarket extends AssetMarketResponse {
   chartSamples?: Record<MarketWindow, MarketTradeSample>;
 }
+const snapshotKey = (
+  instrument: number,
+  segment: MarketSegment,
+  minPnlUsd: MarketMinPnlUsd,
+) =>
+  `market:${instrument}${segment === "profitable" ? `:profitable${minPnlUsd > 0 ? `:min-pnl:${minPnlUsd}` : ""}` : ""}`;
 export async function refreshMarkets(store: Store, now = Date.now()) {
   for (const [instrument, symbol] of marketSymbols.entries()) {
     const data = await store.market.read(instrument, now);
@@ -36,22 +44,25 @@ export async function refreshMarkets(store: Store, now = Date.now()) {
       },
     };
     await store.put(`market:${instrument}`, response, now);
-    const profitable = visibleTrades(data.profitable.rawTrades, 201);
-    await store.put(
-      `market:${instrument}:profitable`,
-      {
-        ...response,
-        segment: "profitable",
-        segmentCoverage: data.profitable.coverage,
-        trades: profitable.slice(0, 200),
-        chartSamples: data.profitable.chartSamples,
-        coverage: {
-          ...response.coverage,
-          tradesCapped: data.profitable.tradesCapped || profitable.length > 200,
+    for (const minPnlUsd of marketMinPnlUsd) {
+      const cohort = data.profitableByMinPnl[minPnlUsd];
+      const profitable = visibleTrades(cohort.rawTrades, 201);
+      await store.put(
+        snapshotKey(instrument, "profitable", minPnlUsd),
+        {
+          ...response,
+          segment: "profitable",
+          segmentCoverage: cohort.coverage,
+          trades: profitable.slice(0, 200),
+          chartSamples: cohort.chartSamples,
+          coverage: {
+            ...response.coverage,
+            tradesCapped: cohort.tradesCapped || profitable.length > 200,
+          },
         },
-      },
-      now,
-    );
+        now,
+      );
+    }
   }
 }
 export async function readMarket(
@@ -60,19 +71,20 @@ export async function readMarket(
   now = Date.now(),
   window: MarketWindow = "1h",
   segment: MarketSegment = "all",
+  minPnlUsd: MarketMinPnlUsd = 0,
 ): Promise<AssetMarketResponse> {
   if (
     !Number.isInteger(instrument) ||
     instrument < 0 ||
     instrument >= marketSymbols.length ||
     !["5m", "15m", "1h"].includes(window) ||
-    !["all", "profitable"].includes(segment)
+    !["all", "profitable"].includes(segment) ||
+    !marketMinPnlUsd.includes(minPnlUsd) ||
+    (segment === "all" && minPnlUsd !== 0)
   )
     throw new Error("Unknown market instrument");
   const [saved, connection, tradesDelayed, heartbeat] = await Promise.all([
-    store.get<SavedMarket>(
-      `market:${instrument}${segment === "profitable" ? ":profitable" : ""}`,
-    ),
+    store.get<SavedMarket>(snapshotKey(instrument, segment, minPnlUsd)),
     store.get<{ connected: boolean }>("market-connection"),
     activityDelayed(store, now),
     store.get<{ errors?: Record<string, string> }>("collector-heartbeat"),
@@ -87,6 +99,7 @@ export async function readMarket(
       (value.segment !== "profitable" ||
         !classification ||
         classification.basis !== "positive-lifetime-realized-trading-pnl" ||
+        (classification.minPnlUsd ?? 0) !== minPnlUsd ||
         !Number.isSafeInteger(classification.classifiedAt) ||
         classification.classifiedAt > now ||
         now - classification.classifiedAt > PROFITABLE_SNAPSHOT_MAX_AGE_MS);

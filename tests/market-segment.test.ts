@@ -65,6 +65,15 @@ describe("profitable market cohort acceptance", () => {
     expect(acceptsMarketSegment(data(), 0, "profitable", NOW - 30_001)).toBe(false);
   });
 
+  it("requires the returned profit floor to match the requested cohort", () => {
+    const classified = data();
+    expect(acceptsMarketSegment(classified, 0, "profitable", NOW, false, 1000)).toBe(false);
+    classified.segmentCoverage!.minPnlUsd = 1000;
+    expect(acceptsMarketSegment(classified, 0, "profitable", NOW, false, 1000)).toBe(true);
+    expect(acceptsMarketSegment(classified, 0, "profitable", NOW, false, 10000)).toBe(false);
+    expect(acceptsMarketSegment(classified, 0, "profitable", NOW)).toBe(false);
+  });
+
   it.each([
     { observedWallets: 2 },
     { classifiedWallets: -1 },

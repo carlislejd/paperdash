@@ -10,6 +10,7 @@ export function acceptsMarketSegment(
   segment: MarketSegment,
   now = Date.now(),
   failed = false,
+  minPnlUsd = 0,
 ): data is AssetMarketResponse {
   if (!data || data.instrument !== instrument) return false;
   if (segment === "all") return !data.segment || data.segment === "all";
@@ -20,6 +21,7 @@ export function acceptsMarketSegment(
     !Array.isArray(data.trades) ||
     !Array.isArray(data.points) ||
     !coverage ||
+    (coverage.minPnlUsd ?? 0) !== minPnlUsd ||
     coverage.basis !== "positive-lifetime-realized-trading-pnl" ||
     coverage.maxAccountAgeMs !== 300_000 ||
     !Number.isSafeInteger(coverage.classifiedAt) ||

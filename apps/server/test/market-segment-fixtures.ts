@@ -54,3 +54,24 @@ export async function seedProfitableMarket(store: Store) {
   }));
   return { observedWallets: rows.length, classifiedWallets: 6, profitableWallets: 4, unknownWallets: rows.length - 6 };
 }
+
+/** Exact 18-decimal boundaries plus a tiny-profit wallet with huge executions. */
+export async function seedProfitFloors(store: Store) {
+  const rows = [
+    { n: 21, pnl: 20n * 10n ** 18n, notional: 1e12 },
+    { n: 22, pnl: 1000n * 10n ** 18n - 1n, notional: 1e11 },
+    { n: 23, pnl: 1000n * 10n ** 18n, notional: 1 },
+    { n: 24, pnl: 10000n * 10n ** 18n - 1n, notional: 2 },
+    { n: 25, pnl: 10000n * 10n ** 18n, notional: 3 },
+    { n: 26, pnl: 100000n * 10n ** 18n, notional: 4 },
+    { n: 27, pnl: BigInt("9".repeat(79)), notional: 0.5 },
+    { n: 28, pnl: 100000n * 10n ** 18n - 1n, notional: 5 },
+  ];
+  for (const row of rows) {
+    await store.recordTrade(sampleTrade(`floor-${row.n}`, {
+      wallet: segmentWallet(row.n), notionalUsd: row.notional,
+    }));
+    await store.put(`account-summary:${segmentWallet(row.n)}`,
+      segmentAccount(row.n, row.pnl.toString()), now);
+  }
+}

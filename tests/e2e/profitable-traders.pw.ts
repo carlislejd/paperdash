@@ -43,6 +43,7 @@ function response(
       ? {
           segmentCoverage: {
             basis: "positive-lifetime-realized-trading-pnl" as const,
+            minPnlUsd: 1000 as const,
             classifiedAt: NOW,
             maxAccountAgeMs: 300_000,
             observedWallets: 3,
@@ -121,10 +122,11 @@ test("profitable entries include small trades, explain current classification, a
   });
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
-  const segment = panel.getByRole("combobox", { name: "Trader segment" });
-  await expect(segment).toHaveValue("all");
+  const segment = panel.getByRole("button", { name: "Profitable traders", exact: true });
+  await expect(segment).toHaveAttribute("aria-pressed", "false");
   await expect(panel.locator('[data-trade-id="large-losing-entry"]')).toHaveCount(1);
-  await segment.selectOption("profitable");
+  await segment.click();
+  await expect(panel.getByRole("combobox", { name: "Minimum realized profit" })).toHaveValue("1000");
   await expect(panel.locator('[data-trade-id="small-profitable-entry"]')).toHaveCount(1);
   await expect(panel.locator('[data-trade-id="large-losing-entry"]')).toHaveCount(0);
   await expect(panel.locator('[data-trade-id="unexpected-close"]')).toHaveCount(0);
@@ -136,11 +138,12 @@ test("profitable entries include small trades, explain current classification, a
   await expect(page.getByText("All traders · retained observations · rolling 24h")).toBeVisible();
   await panel.getByRole("button", { name: "Pause chart", exact: true }).click();
   await expect(segment).toBeDisabled();
+  await expect(panel.getByRole("combobox", { name: "Minimum realized profit" })).toBeDisabled();
   await expect(panel.getByRole("button", { name: "5m", exact: true })).toBeDisabled();
   await panel.getByRole("button", { name: "Resume live chart", exact: true }).click();
   for (const window of ["5m", "1h", "15m"]) {
     await panel.getByRole("button", { name: window, exact: true }).click();
-    await expect.poll(() => requests).toContain(`?window=${window}&segment=profitable`);
+    await expect.poll(() => requests).toContain(`?window=${window}&segment=profitable&minPnl=1000`);
     await expect(panel.getByRole("button", { name: window, exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(panel.locator('[data-trade-id="small-profitable-entry"]')).toHaveCount(1);
   }
@@ -150,11 +153,11 @@ test("profitable entries include small trades, explain current classification, a
   await panel.locator('[data-trade-id="small-profitable-entry"]').getByRole("button", { name: /^View wallet/ }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Escape");
-  await segment.selectOption("all");
+  await panel.getByRole("button", { name: "All traders", exact: true }).click();
   await expect(panel.locator('[data-trade-id="large-losing-entry"]')).toHaveCount(1);
   await expect(panel.locator('[data-trade-id="small-profitable-entry"]')).toHaveCount(0);
   await page.getByRole("button", { name: "ETH Ethereum", exact: true }).click();
-  await expect(page.getByRole("combobox", { name: "Trader segment" })).toHaveValue("all");
+  await expect(page.getByRole("button", { name: "All traders", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('[data-trade-id="small-profitable-entry"]')).toHaveCount(0);
 });
 
@@ -168,11 +171,11 @@ test("raw stream trades cannot enter the profitable cohort until a classified sn
   });
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
-  const segment = panel.getByRole("combobox", { name: "Trader segment" });
+  const segment = panel.getByRole("button", { name: "Profitable traders", exact: true });
   await expect(panel.locator('[data-trade-id="large-losing-entry"]')).toHaveCount(1);
   await send(page, { type: "trade", data: entry("prior-stream-entry", 5_000) });
   await expect(panel.locator('[data-trade-id="prior-stream-entry"]')).toHaveCount(1);
-  await segment.selectOption("profitable");
+  await segment.click();
   await expect(panel.locator('[data-trade-id="small-profitable-entry"]')).toHaveCount(1);
   await expect(panel.locator('[data-trade-id="prior-stream-entry"]')).toHaveCount(0);
   const pending = entry("unclassified-stream-entry", 500_000);
@@ -183,12 +186,12 @@ test("raw stream trades cannot enter the profitable cohort until a classified sn
   await expect(panel.locator('[data-trade-id="unclassified-stream-entry"]')).toHaveCount(0);
   await expect(panel.locator('[data-trade-id="unknown-stream-entry"]')).toHaveCount(0);
   classified = [...classified, pending];
-  await page.clock.fastForward(30_001);
+  await page.clock.fastForward(5_001);
   await expect(panel.locator('[data-trade-id="unclassified-stream-entry"]')).toHaveCount(1);
   await expect(panel.locator('[data-trade-id="unknown-stream-entry"]')).toHaveCount(0);
-  await segment.selectOption("all");
+  await panel.getByRole("button", { name: "All traders", exact: true }).click();
   await expect(panel.locator('[data-trade-id="unknown-stream-entry"]')).toHaveCount(1);
-  await segment.selectOption("profitable");
+  await segment.click();
   await expect(panel.locator('[data-trade-id="unknown-stream-entry"]')).toHaveCount(0);
   await expect(panel.locator('[data-trade-id="unclassified-stream-entry"]')).toHaveCount(1);
 });
@@ -206,12 +209,14 @@ test("legacy, mismatched, expired and failed classification responses fail close
   });
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
-  await panel.getByRole("combobox", { name: "Trader segment" }).selectOption("profitable");
+  await panel.getByRole("button", { name: "Profitable traders", exact: true }).click();
   await expect(panel.locator('[data-trade-id="small-profitable-entry"]')).toHaveCount(1);
   for (const invalid of [
     { ...response(true), segment: undefined, segmentCoverage: undefined },
     { ...response(true), segment: "all" as const },
     { ...response(true), instrument: 1 },
+    { ...response(true), segmentCoverage: { ...response(true).segmentCoverage!, minPnlUsd: undefined } },
+    { ...response(true), segmentCoverage: { ...response(true).segmentCoverage!, minPnlUsd: 10000 as const } },
     { ...response(true), segmentCoverage: { ...response(true).segmentCoverage!, classifiedAt: NOW - 60_001 } },
   ]) {
     data = invalid;
@@ -245,7 +250,7 @@ test("classification expires when snapshot refresh stalls even if a fresh quote 
   });
   await page.goto("/?view=assets&asset=0");
   const panel = page.getByRole("region", { name: "BTC price and trades" });
-  await panel.getByRole("combobox", { name: "Trader segment" }).selectOption("profitable");
+  await panel.getByRole("button", { name: "Profitable traders", exact: true }).click();
   await expect(panel.locator('[data-trade-id="small-profitable-entry"]')).toHaveCount(1);
   await page.clock.fastForward(60_002);
   await send(page, { type: "asset-price", data: { instrument: 0, point: { time: NOW + 60_002, priceUsd: 83_000 }, receivedAt: NOW + 60_002 } });
@@ -253,4 +258,63 @@ test("classification expires when snapshot refresh stalls even if a fresh quote 
   await expect(panel.locator("li[data-trade-id]")).toHaveCount(0);
   await expect(panel).toContainText("Waiting for a recent trader classification");
   await pendingRoute?.abort();
+});
+
+test("profit minimum and chart window survive asset switches and trader toggles", async ({ page }) => {
+  await setup(page);
+  const requests: string[] = [];
+  await page.route(/\/api\/assets\/[01]\/market/, async (route) => {
+    const url = new URL(route.request().url());
+    requests.push(`${url.pathname}${url.search}`);
+    const instrument = Number(url.pathname.split("/")[3]);
+    const profitable = url.searchParams.get("segment") === "profitable";
+    const minPnlUsd = Number(url.searchParams.get("minPnl") ?? 0) as 0 | 1000 | 10000 | 100000;
+    const window = url.searchParams.get("window") as MarketWindow;
+    const data = response(profitable, window);
+    Object.assign(data, {
+      ...marketResponse(instrument, false, NOW),
+      segment: profitable ? "profitable" : "all",
+    });
+    // Small orders from a sufficiently profitable wallet still qualify.
+    data.trades = profitable && minPnlUsd === 100000 ? [] : [
+      { ...entry(`qualified-${instrument}`, 50), instrument, priceUsd: instrument ? 2500 : 82000 },
+      ...(profitable && minPnlUsd === 0 ? [{ ...entry(`twenty-dollar-profit-${instrument}`), instrument, priceUsd: instrument ? 2501 : 82001 }] : []),
+    ];
+    data.chartSample!.trades = data.trades;
+    if (data.segmentCoverage) {
+      data.segmentCoverage.minPnlUsd = minPnlUsd;
+      data.segmentCoverage.profitableWallets = data.trades.length;
+    }
+    await route.fulfill({ json: data });
+  });
+  await page.goto("/?view=assets&asset=0");
+  const profitable = page.getByRole("button", { name: "Profitable traders", exact: true });
+  const minimum = page.getByRole("combobox", { name: "Minimum realized profit" });
+  await profitable.click();
+  await expect(minimum).toHaveValue("1000");
+  await expect(page.locator('[data-trade-id="qualified-0"]')).toHaveCount(1);
+  await expect(page.locator('[data-trade-id="twenty-dollar-profit-0"]')).toHaveCount(0);
+  await minimum.selectOption("0");
+  await expect(page.locator('[data-trade-id="twenty-dollar-profit-0"]')).toHaveCount(1);
+  await minimum.selectOption("100000");
+  await expect(page.locator('.trade-graph-feed li[data-trade-id]')).toHaveCount(0);
+  await expect(page.locator(".trade-graph-feed")).toContainText("at least $100K realized profit");
+  await minimum.selectOption("10000");
+  await page.getByRole("button", { name: "1h", exact: true }).click();
+  await expect(page.locator('[data-trade-id="qualified-0"]')).toHaveCount(1);
+  for (const [symbol, name, instrument] of [["ETH", "Ethereum", 1], ["BTC", "Bitcoin", 0]] as const) {
+    await page.getByRole("button", { name: `${symbol} ${name}`, exact: true }).click();
+    await expect(minimum).toHaveValue("10000");
+    await expect(profitable).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(() => requests).toContain(`/api/assets/${instrument}/market?window=1h&segment=profitable&minPnl=10000`);
+    await expect(page.locator(`[data-trade-id="qualified-${instrument}"]`)).toHaveCount(1);
+    await expect(page.locator(`[data-trade-id="qualified-${1 - instrument}"]`)).toHaveCount(0);
+  }
+  await page.getByRole("button", { name: "All traders", exact: true }).click();
+  await expect(minimum).toHaveCount(0);
+  await profitable.click();
+  await expect(minimum).toHaveValue("10000");
+  await expect(page.locator('[data-trade-id="qualified-0"]')).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
 });

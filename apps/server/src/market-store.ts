@@ -7,9 +7,11 @@ import type {
   MarketTradeSample,
   MarketSegment,
   MarketSegmentCoverage,
+  MarketMinPnlUsd,
   MarketWindow,
   TradeEvent,
 } from "../../../packages/shared/src/types.js";
+import { marketMinPnlUsd } from "../../../packages/shared/src/types.js";
 
 export interface MarketQuote {
   instrument: number;
@@ -25,12 +27,14 @@ export interface MarketData {
   observedFrom: number | null;
   tradesCapped: boolean;
   chartSamples: Record<MarketWindow, MarketTradeSample>;
-  profitable: {
-    rawTrades: TradeEvent[];
-    chartSamples: Record<MarketWindow, MarketTradeSample>;
-    coverage: MarketSegmentCoverage;
-    tradesCapped: boolean;
-  };
+  profitable: ProfitableMarketData;
+  profitableByMinPnl: Record<MarketMinPnlUsd, ProfitableMarketData>;
+}
+export interface ProfitableMarketData {
+  rawTrades: TradeEvent[];
+  chartSamples: Record<MarketWindow, MarketTradeSample>;
+  coverage: MarketSegmentCoverage;
+  tradesCapped: boolean;
 }
 export interface MarketStore {
   /** Saves the latest genuine quote per five-second bucket and its SSE notification atomically. */
@@ -171,9 +175,17 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
   const accountJoin = db.postgres
     ? `LEFT JOIN LATERAL (SELECT payload,received_at FROM ${db.prefix}snapshots WHERE key='account-summary:'||w.wallet OFFSET 0) s ON true`
     : `LEFT JOIN ${db.prefix}snapshots s ON s.key='account-summary:'||w.wallet`;
+  // Canonical positive integers compare exactly by length then lexically. This
+  // preserves all 18 decimals, including values immediately below a USD floor.
+  const meetsFloor = `a.known=1 AND a.pnl<>'0' AND substr(a.pnl,1,1)<>'-'
+    AND (length(a.pnl)>length(t.pnl_floor) OR (length(a.pnl)=length(t.pnl_floor) AND a.pnl>=t.pnl_floor))`;
+  const thresholds = marketMinPnlUsd
+    .map((floor) => `(${floor},'${BigInt(floor) * 10n ** 18n}')`)
+    .join(",");
   const rows = await db.rows<{
     row_kind: "chart" | "feed" | "coverage";
     segment: MarketSegment;
+    min_pnl_usd: MarketMinPnlUsd;
     window_name: MarketWindow | null;
     payload: unknown;
     observed_wallets: number | string | null;
@@ -211,27 +223,29 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
     ), candidates AS (
       SELECT p.* FROM priced p JOIN source_choice c ON c.fingerprint=p.fingerprint
       WHERE source_rank<=2 AND p.provenance=CASE WHEN c.recent_count>=c.stream_count THEN 'recent-api' ELSE 'public-stream' END
-    ), segment_candidates AS (
-      SELECT 'all' AS segment,c.* FROM candidates c
+    ), thresholds(min_pnl_usd,pnl_floor) AS (VALUES ${thresholds}), segment_candidates AS (
+      SELECT 'all' AS segment,0 AS min_pnl_usd,c.* FROM candidates c
       UNION ALL
-      SELECT 'profitable' AS segment,r.* FROM candidates r JOIN classified a ON a.wallet=${wallet}
-      WHERE ${kind}='open' AND a.known=1 AND a.pnl<>'0' AND substr(a.pnl,1,1)<>'-'
+      SELECT 'profitable' AS segment,t.min_pnl_usd,r.* FROM candidates r JOIN classified a ON a.wallet=${wallet}
+      CROSS JOIN thresholds t WHERE ${kind}='open' AND ${meetsFloor}
     ), windows(window_name,window_from,bucket_ms) AS (VALUES ('5m',CAST(? AS BIGINT),10000),('15m',CAST(? AS BIGINT),30000),('1h',CAST(? AS BIGINT),120000)), ranked AS (
-      SELECT c.segment,w.window_name,c.payload,c.source_at,c.id,
-      row_number() OVER(PARTITION BY c.segment,w.window_name,c.source_at-(c.source_at%w.bucket_ms) ORDER BY c.notional DESC,c.source_at DESC,c.id DESC) AS bucket_rank
+      SELECT c.segment,c.min_pnl_usd,w.window_name,c.payload,c.source_at,c.id,
+      row_number() OVER(PARTITION BY c.segment,c.min_pnl_usd,w.window_name,c.source_at-(c.source_at%w.bucket_ms) ORDER BY c.notional DESC,c.source_at DESC,c.id DESC) AS bucket_rank
       FROM segment_candidates c JOIN windows w ON c.source_at>=w.window_from
     ), profitable_feed AS (
-      SELECT r.id,r.payload,r.source_at FROM recent r JOIN classified a ON a.wallet=${wallet}
-      WHERE ${kind}='open' AND a.known=1 AND a.pnl<>'0' AND substr(a.pnl,1,1)<>'-'
-      ORDER BY r.source_at DESC,r.id DESC LIMIT 400
-    ) SELECT 'chart' AS row_kind,segment,window_name,payload,source_at,id,
+      SELECT t.min_pnl_usd,r.id,r.payload,r.source_at,
+        row_number() OVER(PARTITION BY t.min_pnl_usd ORDER BY r.source_at DESC,r.id DESC) AS feed_rank
+      FROM recent r JOIN classified a ON a.wallet=${wallet}
+      CROSS JOIN thresholds t WHERE ${kind}='open' AND ${meetsFloor}
+    ) SELECT 'chart' AS row_kind,segment,min_pnl_usd,window_name,payload,source_at,id,
         CAST(NULL AS BIGINT) AS observed_wallets,CAST(NULL AS BIGINT) AS classified_wallets,CAST(NULL AS BIGINT) AS profitable_wallets,CAST(NULL AS BIGINT) AS oldest_received_at,CAST(NULL AS BIGINT) AS newest_received_at
       FROM ranked WHERE bucket_rank<=2
-    UNION ALL SELECT 'feed','profitable',NULL,payload,source_at,id,NULL,NULL,NULL,NULL,NULL FROM profitable_feed
-    UNION ALL SELECT 'coverage','profitable',NULL,NULL,NULL,NULL,count(*),coalesce(sum(known),0),
-      coalesce(sum(CASE WHEN known=1 AND pnl<>'0' AND substr(pnl,1,1)<>'-' THEN 1 ELSE 0 END),0),
-      min(CASE WHEN known=1 THEN received_at END),max(CASE WHEN known=1 THEN received_at END) FROM classified
-    ORDER BY row_kind,segment,window_name,source_at DESC,id DESC`,
+    UNION ALL SELECT 'feed','profitable',min_pnl_usd,NULL,payload,source_at,id,NULL,NULL,NULL,NULL,NULL FROM profitable_feed WHERE feed_rank<=400
+    UNION ALL SELECT 'coverage','profitable',t.min_pnl_usd,NULL,NULL,NULL,NULL,count(a.wallet),coalesce(sum(a.known),0),
+      coalesce(sum(CASE WHEN ${meetsFloor} THEN 1 ELSE 0 END),0),
+      min(CASE WHEN a.known=1 THEN a.received_at END),max(CASE WHEN a.known=1 THEN a.received_at END)
+      FROM thresholds t LEFT JOIN classified a ON true GROUP BY t.min_pnl_usd
+    ORDER BY row_kind,segment,min_pnl_usd,window_name,source_at DESC,id DESC`,
     [
       db.postgres ? String(instrument) : instrument,
       Math.max(0, now - 3600000),
@@ -260,9 +274,8 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
     "15m": sampleFor("15m"),
     "1h": sampleFor("1h"),
   });
-  const result = { all: samples(), profitable: samples() };
-  const rawTrades: TradeEvent[] = [];
-  let coverage: MarketSegmentCoverage = {
+  const all = samples();
+  const coverage: MarketSegmentCoverage = {
     basis: "positive-lifetime-realized-trading-pnl",
     classifiedAt: now,
     maxAccountAgeMs: PROFITABLE_ACCOUNT_MAX_AGE_MS,
@@ -273,10 +286,19 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
     oldestAccountReceivedAt: null,
     newestAccountReceivedAt: null,
   };
+  const profitableByMinPnl = Object.fromEntries(
+    marketMinPnlUsd.map((minPnlUsd) => [minPnlUsd, {
+      rawTrades: [],
+      chartSamples: samples(),
+      coverage: { ...coverage, minPnlUsd },
+      tradesCapped: false,
+    }]),
+  ) as unknown as Record<MarketMinPnlUsd, ProfitableMarketData>;
   for (const row of rows) {
+    const cohort = profitableByMinPnl[row.min_pnl_usd];
     if (row.row_kind === "coverage") {
-      coverage = {
-        ...coverage,
+      cohort.coverage = {
+        ...cohort.coverage,
         observedWallets: Number(row.observed_wallets),
         classifiedWallets: Number(row.classified_wallets),
         profitableWallets: Number(row.profitable_wallets),
@@ -293,11 +315,11 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
       typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload
     ) as TradeEvent;
     if (row.row_kind === "feed") {
-      rawTrades.push(trade);
+      cohort.rawTrades.push(trade);
       continue;
     }
     const sample = row.window_name
-      ? result[row.segment][row.window_name]
+      ? (row.segment === "all" ? all : cohort.chartSamples)[row.window_name]
       : undefined;
     if (
       sample &&
@@ -313,14 +335,12 @@ async function chartSamples(db: Reader, instrument: number, now: number) {
     )
       sample.trades.push(trade);
   }
+  for (const cohort of Object.values(profitableByMinPnl))
+    cohort.tradesCapped = cohort.rawTrades.length === 400;
   return {
-    chartSamples: result.all,
-    profitable: {
-      rawTrades,
-      chartSamples: result.profitable,
-      coverage,
-      tradesCapped: rawTrades.length === 400,
-    },
+    chartSamples: all,
+    profitable: profitableByMinPnl[0],
+    profitableByMinPnl,
   };
 }
 function reader(db: Reader): MarketStore["read"] {
