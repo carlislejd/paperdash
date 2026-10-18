@@ -1,0 +1,705 @@
+{
+  "releaseCommit": "de0aba7a52c661afc0021cdd288fac2e9c8b013a",
+  "baseline": {
+    "at": "2026-10-18T01:19:34.035Z",
+    "mode": "baseline",
+    "health": {
+      "ready": true,
+      "degraded": false,
+      "status": {
+        "stale": false,
+        "stream": "connected",
+        "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+        "sourceAt": 1792286372000,
+        "receivedAt": 1792286373554,
+        "persistence": "postgres",
+        "indexedBlock": "48830194"
+      }
+    },
+    "assets": [
+      {
+        "instrument": 0,
+        "symbol": "BTC",
+        "stale": true,
+        "coverage": {
+          "basis": "positive-lifetime-realized-trading-pnl",
+          "minPnlUsd": 1000,
+          "classifiedAt": 1792286371859,
+          "unknownWallets": 488,
+          "maxAccountAgeMs": 300000,
+          "observedWallets": 492,
+          "classifiedWallets": 4,
+          "profitableWallets": 0,
+          "newestAccountReceivedAt": 1792286324003,
+          "oldestAccountReceivedAt": 1792286171149
+        },
+        "receivedAt": 1792286371859,
+        "classificationAgeMs": 3466,
+        "priceSourceAt": 1792286371261,
+        "quoteAgeMs": 4064,
+        "recentEntries": 0,
+        "chartEntries": 0,
+        "chartWindow": "5m"
+      },
+      {
+        "instrument": 1,
+        "symbol": "ETH",
+        "stale": true,
+        "coverage": {
+          "basis": "positive-lifetime-realized-trading-pnl",
+          "minPnlUsd": 1000,
+          "classifiedAt": 1792286371859,
+          "unknownWallets": 321,
+          "maxAccountAgeMs": 300000,
+          "observedWallets": 329,
+          "classifiedWallets": 8,
+          "profitableWallets": 0,
+          "newestAccountReceivedAt": 1792286354445,
+          "oldestAccountReceivedAt": 1792286171149
+        },
+        "receivedAt": 1792286371859,
+        "classificationAgeMs": 3885,
+        "priceSourceAt": 1792286371061,
+        "quoteAgeMs": 4683,
+        "recentEntries": 0,
+        "chartEntries": 0,
+        "chartWindow": "5m"
+      }
+    ],
+    "checks": [
+      {
+        "name": "/health/ready HTTP 200",
+        "ok": true
+      },
+      {
+        "name": "readiness",
+        "ok": true
+      },
+      {
+        "name": "stream connected",
+        "ok": true
+      },
+      {
+        "name": "/api/assets/0/market?window=5m&segment=profitable&minPnl=1000 HTTP 200",
+        "ok": true
+      },
+      {
+        "name": "BTC segment/floor",
+        "ok": true
+      },
+      {
+        "name": "BTC fresh classification",
+        "ok": true
+      },
+      {
+        "name": "BTC coverage arithmetic",
+        "ok": true
+      },
+      {
+        "name": "BTC fresh price",
+        "ok": true
+      },
+      {
+        "name": "BTC classifier freshness threshold unchanged",
+        "ok": true
+      },
+      {
+        "name": "BTC bounded chart",
+        "ok": true
+      },
+      {
+        "name": "BTC opening entries only",
+        "ok": true
+      },
+      {
+        "name": "/api/assets/1/market?window=5m&segment=profitable&minPnl=1000 HTTP 200",
+        "ok": true
+      },
+      {
+        "name": "ETH segment/floor",
+        "ok": true
+      },
+      {
+        "name": "ETH fresh classification",
+        "ok": true
+      },
+      {
+        "name": "ETH coverage arithmetic",
+        "ok": true
+      },
+      {
+        "name": "ETH fresh price",
+        "ok": true
+      },
+      {
+        "name": "ETH classifier freshness threshold unchanged",
+        "ok": true
+      },
+      {
+        "name": "ETH bounded chart",
+        "ok": true
+      },
+      {
+        "name": "ETH opening entries only",
+        "ok": true
+      }
+    ],
+    "failures": [],
+    "finishedAt": "2026-10-18T01:19:35.744Z"
+  },
+  "sourceVerification": {
+    "verifiedAt": "2026-10-18T01:19:39.692Z",
+    "sourceOrigin": "https://exchange.papertrade.xyz",
+    "path": "/state/leaderboard/accounts",
+    "params": {
+      "page": 0,
+      "pageSize": 100,
+      "sortDir": "desc",
+      "sortKey": "lastActiveTs",
+      "window": "all"
+    },
+    "status": 200,
+    "ok": true,
+    "accountsReturned": 100,
+    "uniqueAccounts": 21966,
+    "totalPages": 220,
+    "page": 0,
+    "descendingLastActiveTs": true,
+    "newestLastActiveTs": 1792286378,
+    "oldestLastActiveTs": 1792286355,
+    "realizedPnlCanonical": true,
+    "maxPageSizeProbe": {
+      "params": {
+        "page": 0,
+        "pageSize": 200,
+        "sortDir": "desc",
+        "sortKey": "lastActiveTs",
+        "window": "all"
+      },
+      "status": 400,
+      "error": "Expected a value between 1 and 100\n  at [\"pageSize\"]",
+      "verifiedEarlierInSameSession": true
+    },
+    "limitations": [
+      "lastActiveTs is a source activity timestamp, distinct from local account receipt freshness.",
+      "Mutable pagination is not a snapshot and can skip or repeat accounts; retain actual coverage and targeted fallback.",
+      "The source directory is not a guarantee of complete public execution activity."
+    ]
+  },
+  "localValidation": {
+    "build": "passed",
+    "unitIntegrationTests": 1035,
+    "focusedDesktopMobileTests": 34,
+    "postgresVersion": 17,
+    "redisVersion": "7.4",
+    "independentReview": "No blocking findings"
+  },
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/39086352555",
+    "status": "success",
+    "jobUrl": "https://github.com/carlislejd/paperdash/actions/runs/39086352555/job/117553641039"
+  },
+  "deploymentScope": "API (three instances), collector and frontend; no schema, environment, plan or resource changes; no history/checkpoint resets.",
+  "deployments": [
+    {
+      "service": "API",
+      "serviceId": "srv-db4sq6g473hc739111lg",
+      "deploymentId": "dep-dba22sdg1s2s73afo6k0",
+      "status": "live",
+      "instances": 3,
+      "triggeredAtPdt": "2026-10-17 18:31:29",
+      "durationSeconds": 52.4
+    },
+    {
+      "service": "collector",
+      "serviceId": "srv-db4sq6g473hc739111jg",
+      "deploymentId": "dep-dba23cgm7kps73f5u970",
+      "status": "live",
+      "triggeredAtPdt": "2026-10-17 18:32:34",
+      "durationSeconds": 30.7
+    },
+    {
+      "service": "frontend",
+      "serviceId": "srv-db4sp78473hc7390tou0",
+      "deploymentId": "dep-dba23gjrjlhs738julrg",
+      "status": "live",
+      "triggeredAtPdt": "2026-10-17 18:32:50",
+      "durationSeconds": 18.2
+    }
+  ],
+  "collectorHealth": {
+    "healthy": true,
+    "heartbeatAt": 1792287307766,
+    "errors": {
+      "trade-ingestion-gap": "Trade observation coverage has an unresolved intake gap. Saved observations remain available."
+    },
+    "profitRefresh": {
+      "page": 11,
+      "turn": 3,
+      "pageFailures": 0,
+      "retries": 0,
+      "nextRunAt": 1792287312860
+    }
+  },
+  "liveSamples": [
+    {
+      "at": "2026-10-18T01:34:11.163Z",
+      "mode": "rollout-start",
+      "health": {
+        "ready": true,
+        "degraded": false,
+        "status": {
+          "stale": false,
+          "stream": "connected",
+          "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+          "sourceAt": 1792287246000,
+          "receivedAt": 1792287249897,
+          "persistence": "postgres",
+          "indexedBlock": "48831083"
+        }
+      },
+      "assets": [
+        {
+          "instrument": 0,
+          "symbol": "BTC",
+          "stale": true,
+          "coverage": {
+            "basis": "positive-lifetime-realized-trading-pnl",
+            "minPnlUsd": 1000,
+            "classifiedAt": 1792287251322,
+            "unknownWallets": 358,
+            "maxAccountAgeMs": 300000,
+            "observedWallets": 508,
+            "classifiedWallets": 150,
+            "profitableWallets": 64,
+            "newestAccountReceivedAt": 1792287249278,
+            "oldestAccountReceivedAt": 1792287147028
+          },
+          "receivedAt": 1792287251322,
+          "classificationAgeMs": 1089,
+          "priceSourceAt": 1792287249941,
+          "quoteAgeMs": 2470,
+          "recentEntries": 200,
+          "chartEntries": 44,
+          "chartWindow": "5m"
+        },
+        {
+          "instrument": 1,
+          "symbol": "ETH",
+          "stale": true,
+          "coverage": {
+            "basis": "positive-lifetime-realized-trading-pnl",
+            "minPnlUsd": 1000,
+            "classifiedAt": 1792287251322,
+            "unknownWallets": 255,
+            "maxAccountAgeMs": 300000,
+            "observedWallets": 317,
+            "classifiedWallets": 62,
+            "profitableWallets": 14,
+            "newestAccountReceivedAt": 1792287249278,
+            "oldestAccountReceivedAt": 1792287147028
+          },
+          "receivedAt": 1792287251322,
+          "classificationAgeMs": 1526,
+          "priceSourceAt": 1792287250519,
+          "quoteAgeMs": 2329,
+          "recentEntries": 200,
+          "chartEntries": 13,
+          "chartWindow": "5m"
+        }
+      ],
+      "checks": [
+        {
+          "name": "/health/ready HTTP 200",
+          "ok": true
+        },
+        {
+          "name": "readiness",
+          "ok": true
+        },
+        {
+          "name": "stream connected",
+          "ok": true
+        },
+        {
+          "name": "/api/assets/0/market?window=5m&segment=profitable&minPnl=1000 HTTP 200",
+          "ok": true
+        },
+        {
+          "name": "BTC segment/floor",
+          "ok": true
+        },
+        {
+          "name": "BTC fresh classification",
+          "ok": true
+        },
+        {
+          "name": "BTC coverage arithmetic",
+          "ok": true
+        },
+        {
+          "name": "BTC fresh price",
+          "ok": true
+        },
+        {
+          "name": "BTC classifier freshness threshold unchanged",
+          "ok": true
+        },
+        {
+          "name": "BTC bounded chart",
+          "ok": true
+        },
+        {
+          "name": "BTC opening entries only",
+          "ok": true
+        },
+        {
+          "name": "/api/assets/1/market?window=5m&segment=profitable&minPnl=1000 HTTP 200",
+          "ok": true
+        },
+        {
+          "name": "ETH segment/floor",
+          "ok": true
+        },
+        {
+          "name": "ETH fresh classification",
+          "ok": true
+        },
+        {
+          "name": "ETH coverage arithmetic",
+          "ok": true
+        },
+        {
+          "name": "ETH fresh price",
+          "ok": true
+        },
+        {
+          "name": "ETH classifier freshness threshold unchanged",
+          "ok": true
+        },
+        {
+          "name": "ETH bounded chart",
+          "ok": true
+        },
+        {
+          "name": "ETH opening entries only",
+          "ok": true
+        }
+      ],
+      "failures": [],
+      "finishedAt": "2026-10-18T01:34:12.848Z"
+    },
+    {
+      "at": "2026-10-18T01:34:54.095Z",
+      "mode": "warm-sweep",
+      "health": {
+        "ready": true,
+        "degraded": false,
+        "status": {
+          "stale": false,
+          "stream": "connected",
+          "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+          "sourceAt": 1792287290000,
+          "receivedAt": 1792287293269,
+          "persistence": "postgres",
+          "indexedBlock": "48831127"
+        }
+      },
+      "assets": [
+        {
+          "instrument": 0,
+          "symbol": "BTC",
+          "stale": true,
+          "coverage": {
+            "basis": "positive-lifetime-realized-trading-pnl",
+            "minPnlUsd": 1000,
+            "classifiedAt": 1792287290894,
+            "unknownWallets": 0,
+            "maxAccountAgeMs": 300000,
+            "observedWallets": 506,
+            "classifiedWallets": 506,
+            "profitableWallets": 99,
+            "newestAccountReceivedAt": 1792287290576,
+            "oldestAccountReceivedAt": 1792287249278
+          },
+          "receivedAt": 1792287290894,
+          "classificationAgeMs": 4467,
+          "priceSourceAt": 1792287289943,
+          "quoteAgeMs": 5418,
+          "recentEntries": 200,
+          "chartEntries": 41,
+          "chartWindow": "5m"
+        },
+        {
+          "instrument": 1,
+          "symbol": "ETH",
+          "stale": true,
+          "coverage": {
+            "basis": "positive-lifetime-realized-trading-pnl",
+            "minPnlUsd": 1000,
+            "classifiedAt": 1792287290894,
+            "unknownWallets": 0,
+            "maxAccountAgeMs": 300000,
+            "observedWallets": 314,
+            "classifiedWallets": 314,
+            "profitableWallets": 31,
+            "newestAccountReceivedAt": 1792287290576,
+            "oldestAccountReceivedAt": 1792287249278
+          },
+          "receivedAt": 1792287290894,
+          "classificationAgeMs": 4992,
+          "priceSourceAt": 1792287290282,
+          "quoteAgeMs": 5604,
+          "recentEntries": 200,
+          "chartEntries": 16,
+          "chartWindow": "5m"
+        }
+      ],
+      "checks": [
+        {
+          "name": "/health/ready HTTP 200",
+          "ok": true
+        },
+        {
+          "name": "readiness",
+          "ok": true
+        },
+        {
+          "name": "stream connected",
+          "ok": true
+        },
+        {
+          "name": "/api/assets/0/market?window=5m&segment=profitable&minPnl=1000 HTTP 200",
+          "ok": true
+        },
+        {
+          "name": "BTC segment/floor",
+          "ok": true
+        },
+        {
+          "name": "BTC fresh classification",
+          "ok": true
+        },
+        {
+          "name": "BTC coverage arithmetic",
+          "ok": true
+        },
+        {
+          "name": "BTC fresh price",
+          "ok": true
+        },
+        {
+          "name": "BTC classifier freshness threshold unchanged",
+          "ok": true
+        },
+        {
+          "name": "BTC bounded chart",
+          "ok": true
+        },
+        {
+          "name": "BTC opening entries only",
+          "ok": true
+        },
+        {
+          "name": "/api/assets/1/market?window=5m&segment=profitable&minPnl=1000 HTTP 200",
+          "ok": true
+        },
+        {
+          "name": "ETH segment/floor",
+          "ok": true
+        },
+        {
+          "name": "ETH fresh classification",
+          "ok": true
+        },
+        {
+          "name": "ETH coverage arithmetic",
+          "ok": true
+        },
+        {
+          "name": "ETH fresh price",
+          "ok": true
+        },
+        {
+          "name": "ETH classifier freshness threshold unchanged",
+          "ok": true
+        },
+        {
+          "name": "ETH bounded chart",
+          "ok": true
+        },
+        {
+          "name": "ETH opening entries only",
+          "ok": true
+        }
+      ],
+      "failures": [],
+      "finishedAt": "2026-10-18T01:34:55.886Z"
+    },
+    {
+      "at": "2026-10-18T01:36:00.559Z",
+      "mode": "final",
+      "health": {
+        "ready": true,
+        "degraded": false,
+        "status": {
+          "stale": false,
+          "stream": "connected",
+          "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+          "sourceAt": 1792287356000,
+          "receivedAt": 1792287359679,
+          "persistence": "postgres",
+          "indexedBlock": "48831194"
+        }
+      },
+      "assets": [
+        {
+          "instrument": 0,
+          "symbol": "BTC",
+          "stale": true,
+          "coverage": {
+            "basis": "positive-lifetime-realized-trading-pnl",
+            "minPnlUsd": 1000,
+            "classifiedAt": 1792287357480,
+            "unknownWallets": 0,
+            "maxAccountAgeMs": 300000,
+            "observedWallets": 503,
+            "classifiedWallets": 503,
+            "profitableWallets": 99,
+            "newestAccountReceivedAt": 1792287356844,
+            "oldestAccountReceivedAt": 1792287322166
+          },
+          "receivedAt": 1792287357480,
+          "classificationAgeMs": 4321,
+          "priceSourceAt": 1792287356813,
+          "quoteAgeMs": 4988,
+          "recentEntries": 200,
+          "chartEntries": 41,
+          "chartWindow": "5m"
+        },
+        {
+          "instrument": 1,
+          "symbol": "ETH",
+          "stale": true,
+          "coverage": {
+            "basis": "positive-lifetime-realized-trading-pnl",
+            "minPnlUsd": 1000,
+            "classifiedAt": 1792287357480,
+            "unknownWallets": 0,
+            "maxAccountAgeMs": 300000,
+            "observedWallets": 313,
+            "classifiedWallets": 313,
+            "profitableWallets": 31,
+            "newestAccountReceivedAt": 1792287356844,
+            "oldestAccountReceivedAt": 1792287322166
+          },
+          "receivedAt": 1792287357480,
+          "classificationAgeMs": 4762,
+          "priceSourceAt": 1792287358035,
+          "quoteAgeMs": 4207,
+          "recentEntries": 200,
+          "chartEntries": 15,
+          "chartWindow": "5m"
+        }
+      ],
+      "checks": [
+        {
+          "name": "/health/ready HTTP 200",
+          "ok": true
+        },
+        {
+          "name": "readiness",
+          "ok": true
+        },
+        {
+          "name": "stream connected",
+          "ok": true
+        },
+        {
+          "name": "/api/assets/0/market?window=5m&segment=profitable&minPnl=1000 HTTP 200",
+          "ok": true
+        },
+        {
+          "name": "BTC segment/floor",
+          "ok": true
+        },
+        {
+          "name": "BTC fresh classification",
+          "ok": true
+        },
+        {
+          "name": "BTC coverage arithmetic",
+          "ok": true
+        },
+        {
+          "name": "BTC fresh price",
+          "ok": true
+        },
+        {
+          "name": "BTC classifier freshness threshold unchanged",
+          "ok": true
+        },
+        {
+          "name": "BTC bounded chart",
+          "ok": true
+        },
+        {
+          "name": "BTC opening entries only",
+          "ok": true
+        },
+        {
+          "name": "/api/assets/1/market?window=5m&segment=profitable&minPnl=1000 HTTP 200",
+          "ok": true
+        },
+        {
+          "name": "ETH segment/floor",
+          "ok": true
+        },
+        {
+          "name": "ETH fresh classification",
+          "ok": true
+        },
+        {
+          "name": "ETH coverage arithmetic",
+          "ok": true
+        },
+        {
+          "name": "ETH fresh price",
+          "ok": true
+        },
+        {
+          "name": "ETH classifier freshness threshold unchanged",
+          "ok": true
+        },
+        {
+          "name": "ETH bounded chart",
+          "ok": true
+        },
+        {
+          "name": "ETH opening entries only",
+          "ok": true
+        }
+      ],
+      "failures": [],
+      "finishedAt": "2026-10-18T01:36:02.242Z"
+    }
+  ],
+  "interpretation": "Final sample classified 503/503 observed BTC opening wallets and 313/313 ETH opening wallets, versus 4/492 and 8/329 before deployment. This is 100% of the observed one-hour cohort at the sampled instant, not a claim of complete public trade capture or a future freshness guarantee. Account age threshold remains five minutes. The pre-existing trade-ingestion-gap warning remains visible and keeps aggregate market stale=true; no new collector errors, page failures or targeted retries were present.",
+  "browserVerification": {
+    "url": "https://papertrade.club/?view=assets&asset=0&release=de0aba7",
+    "coverageCard": "Profit checked for 505 of 505 wallets; Opening wallets \u00b7 past hour \u00b7 100%",
+    "confirmedQualifyingWallets": 99,
+    "confirmedChartEntries": 39,
+    "retainedAcrossBtcEthSwitch": [
+      "Profitable traders",
+      "5m window",
+      "$10,000 minimum"
+    ],
+    "restoredMinimumUsd": 1000,
+    "quoteStatus": "Live",
+    "tradeStatus": "Trade coverage delayed",
+    "viewportWidth": 1280,
+    "scrollWidth": 1280,
+    "screenshot": "../previews/production-active-profit-coverage-2026-10-17.jpg"
+  }
+}
