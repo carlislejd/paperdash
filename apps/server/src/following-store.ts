@@ -29,6 +29,8 @@ export interface FollowingStore {
     retryAt?: number,
   ): Promise<void>;
   completeWatch(address: string, receivedAt: number): Promise<void>;
+  /** Recent BTC/ETH opening wallets whose profit classification needs a refresh. */
+  profitRefreshCandidates(after: string, now?: number): Promise<string[]>;
   activity(
     addresses: string[],
     now?: number,
@@ -178,6 +180,40 @@ function createFollowing(db: Db): FollowingStore {
         `UPDATE ${watches} SET next_run=CASE WHEN next_run>? THEN next_run ELSE ? END,failures=0 WHERE address=?`,
         [receivedAt + WATCH_REFRESH, receivedAt + WATCH_REFRESH, address],
       );
+    },
+    async profitRefreshCandidates(after, now = Date.now()) {
+      if (after) addressSchema.parse(after);
+      time(now);
+      const wallet = db.pg ? "r.payload->>'wallet'" : "json_extract(r.payload,'$.wallet')";
+      const kind = db.pg ? "r.payload->>'kind'" : "json_extract(r.payload,'$.kind')";
+      const instrument = db.pg ? "r.payload->>'instrument'" : "json_extract(r.payload,'$.instrument')";
+      const address = db.pg ? "s.payload->>'address'" : "json_extract(s.payload,'$.address')";
+      const pnl = db.pg ? "s.payload->>'realizedPnl'" : "json_extract(s.payload,'$.realizedPnl')";
+      const pnlString = db.pg ? "jsonb_typeof(s.payload->'realizedPnl')='string'" : "json_type(s.payload,'$.realizedPnl')='text'";
+      const validPnl = db.pg
+        ? "pnl ~ '^(0|[1-9][0-9]*|-[1-9][0-9]*)$'"
+        : "(pnl='0' OR (substr(pnl,1,1) BETWEEN '1' AND '9' AND pnl NOT GLOB '*[^0-9]*') OR (substr(pnl,1,1)='-' AND substr(pnl,2,1) BETWEEN '1' AND '9' AND substr(pnl,2) NOT GLOB '*[^0-9]*'))";
+      // Two indexed instrument/time ranges bound this to the actual one-hour
+      // opening cohort. The cursor rotates missing accounts too, so a deleted
+      // wallet cannot monopolize the repair lane. No historical jobs are queued.
+      const rows = await db.rows<{ wallet: string }>(
+        `WITH recent AS MATERIALIZED (
+          SELECT DISTINCT ${wallet} AS wallet FROM ${db.prefix}trade_observations r
+          WHERE ${instrument} IN (?,?) AND r.source_at>=? AND r.source_at<=? AND ${kind}='open'
+        ), accounts AS MATERIALIZED (
+          SELECT w.wallet,${address} AS account_address,${pnl} AS pnl,s.received_at,
+            CASE WHEN ${pnlString} THEN 1 ELSE 0 END AS pnl_is_string
+          FROM recent w ${db.pg
+            ? `LEFT JOIN LATERAL (SELECT payload,received_at FROM ${snapshots} WHERE key='account-summary:'||w.wallet OFFSET 0) s ON true`
+            : `LEFT JOIN ${snapshots} s ON s.key='account-summary:'||w.wallet`}
+        ) SELECT wallet FROM accounts WHERE NOT coalesce(
+          account_address=wallet AND pnl_is_string=1 AND length(pnl)<=79 AND ${validPnl}
+          AND received_at>=? AND received_at<=?,false)
+        ORDER BY CASE WHEN wallet>? THEN 0 ELSE 1 END,wallet LIMIT 25`,
+        [db.pg ? "0" : 0, db.pg ? "1" : 1, Math.max(0, now - 3600000), now,
+          Math.max(0, now - 240000), now, after],
+      );
+      return rows.map((row) => row.wallet);
     },
     async activity(input, now = Date.now()) {
       const addresses = batchAddresses(input);

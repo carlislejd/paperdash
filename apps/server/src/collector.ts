@@ -8,6 +8,7 @@ import type {
 } from "../../../packages/shared/src/types.js";
 import { refreshWatchedWallet } from "./following.js";
 import { refreshDirectoryHead } from "./directory-refresh.js";
+import { ACTIVE_PROFIT_REFRESH_INTERVAL_MS, refreshActiveTraderProfits } from "./active-profit-refresh.js";
 import { config, errorMessage } from "./config.js";
 import {
   accountsSchema,
@@ -372,6 +373,9 @@ export class Collector {
     );
     this.loop("wallet-summaries", 5000, () =>
       refreshWatchedWallet(this.store, this.upstream),
+    );
+    this.loop("active-trader-profits", ACTIVE_PROFIT_REFRESH_INTERVAL_MS, () =>
+      refreshActiveTraderProfits(this.store, this.upstream),
     );
     this.loop(
       "directory",

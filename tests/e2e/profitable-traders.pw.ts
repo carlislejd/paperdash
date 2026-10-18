@@ -133,7 +133,10 @@ test("profitable entries include small trades, explain current classification, a
   await expect(panel).toContainText("$50");
   await expect(panel).toContainText("Rewards and unrealized P&L excluded");
   await expect(panel).toContainText("not profitability at entry");
-  await expect(panel).toContainText("2 of 3 observed wallets checked, 1 unknown excluded");
+  const coverage = panel.getByLabel("Trader profit coverage", { exact: true });
+  await expect(coverage).toContainText("Profit checked for 2 of 3 wallets");
+  await expect(coverage).toContainText("Opening wallets · past hour · 66.7%");
+  await expect(coverage).toContainText("1 unknown wallet excluded; more may qualify");
   await expect(panel.locator(".trade-graph-feed h4")).toContainText("Profitable trader entries");
   await expect(page.getByText("All traders · retained observations · rolling 24h")).toBeVisible();
   await panel.getByRole("button", { name: "Pause chart", exact: true }).click();
@@ -223,6 +226,8 @@ test("legacy, mismatched, expired and failed classification responses fail close
     await page.clock.fastForward(5_001);
     await expect(panel.locator("li[data-trade-id]")).toHaveCount(0);
     await expect(panel).toContainText("Waiting for a recent trader classification");
+    await expect(panel.getByLabel("Trader profit coverage", { exact: true })).toContainText("Profit coverage unavailable");
+    await expect(panel.locator(".trade-graph-feed h4")).toContainText("Unavailable");
   }
   data = response(true);
   await page.clock.fastForward(5_001);
@@ -231,6 +236,102 @@ test("legacy, mismatched, expired and failed classification responses fail close
   await page.clock.fastForward(5_001);
   await expect(panel.locator("li[data-trade-id]")).toHaveCount(0);
   await expect(panel).toContainText("Classification unavailable");
+});
+
+for (const state of [
+  { name: "entirely unknown", observed: 515, checked: 0, percent: "0%", count: "Checking profit…", incomplete: true },
+  { name: "partially checked", observed: 515, checked: 3, percent: "0.6%", count: "0 confirmed", incomplete: true },
+  { name: "almost fully checked", observed: 10_000, checked: 9_999, percent: "99.9%", count: "0 confirmed", incomplete: true },
+  { name: "fully checked with no qualifiers", observed: 515, checked: 515, percent: "100%", count: "0 confirmed", incomplete: false },
+  { name: "no observed opening wallets", observed: 0, checked: 0, percent: null, count: "0 confirmed", incomplete: false },
+]) {
+  test(`profit coverage makes ${state.name} distinct from zero profitable traders`, async ({ page }) => {
+    await setup(page);
+    await page.route("**/api/assets/0/market*", async (route) => {
+      const url = new URL(route.request().url());
+      const profitable = url.searchParams.get("segment") === "profitable";
+      const window = url.searchParams.get("window") as MarketWindow;
+      const data = response(profitable, window, profitable ? [] : undefined);
+      // An intake gap does not make a fresh profit classification stale.
+      data.stale = true;
+      if (data.segmentCoverage) Object.assign(data.segmentCoverage, {
+        observedWallets: state.observed,
+        classifiedWallets: state.checked,
+        profitableWallets: 0,
+        unknownWallets: state.observed - state.checked,
+        oldestAccountReceivedAt: state.checked ? NOW - 60_000 : null,
+        newestAccountReceivedAt: state.checked ? NOW - 5_000 : null,
+      });
+      await route.fulfill({ json: data });
+    });
+    await page.goto("/?view=assets&asset=0");
+    const panel = page.getByRole("region", { name: "BTC price and trades" });
+    await panel.getByRole("button", { name: "Profitable traders", exact: true }).click();
+    const coverage = panel.getByLabel("Trader profit coverage", { exact: true });
+    await expect(coverage).toContainText(`Profit checked for ${state.checked.toLocaleString()} of ${state.observed.toLocaleString()} wallets`);
+    await expect(coverage).toContainText("Opening wallets · past hour");
+    await expect(panel.locator(".trade-graph-feed h4")).toContainText(state.count);
+    await expect(panel.locator(".trade-graph-feed-heading small")).toHaveText("Trade coverage delayed");
+    await expect(panel).not.toContainText("Classification delayed");
+    if (state.percent !== null) {
+      await expect(coverage).toContainText(`· ${state.percent}`);
+      await expect(coverage.getByRole("progressbar")).toHaveAttribute("value", String(state.checked));
+      await expect(coverage.getByRole("progressbar")).toHaveAttribute("max", String(state.observed));
+    } else {
+      await expect(coverage.getByRole("progressbar")).toHaveCount(0);
+      await expect(coverage).not.toContainText("100%");
+    }
+    const empty = panel.locator(".trade-graph-feed-empty");
+    if (state.incomplete) {
+      await expect(coverage).toContainText("unknown");
+      await expect(coverage).toContainText("excluded; more may qualify");
+      await expect(empty).toContainText("No confirmed entries");
+      await expect(empty).toContainText("this is not a complete count");
+      await expect(empty).not.toContainText("Try a lower profit minimum");
+    } else if (state.observed) {
+      await expect(coverage).toContainText("All observed opening wallets checked");
+      await expect(empty).toContainText("No observed entries");
+      await expect(empty).toContainText("Try a lower profit minimum");
+    } else {
+      await expect(empty).toHaveText("No wallet openings observed in the past hour.");
+    }
+    await panel.getByRole("button", { name: "5m", exact: true }).click();
+    await expect(coverage).toContainText("Opening wallets · past hour");
+    await expect(panel.locator(".trade-graph-feed")).toContainText("Selected across 5m");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
+    if (state.name === "partially checked") await panel.screenshot({ path: test.info().outputPath("partial-profit-coverage.png") });
+  });
+}
+
+test("coverage and confirmed entries update when active wallet profit checks finish", async ({ page }) => {
+  await setup(page);
+  let checked = false;
+  await page.route("**/api/assets/0/market*", async (route) => {
+    const profitable = new URL(route.request().url()).searchParams.get("segment") === "profitable";
+    const data = response(profitable, "15m", profitable ? checked ? [entry("newly-classified-entry")] : [] : undefined);
+    if (data.segmentCoverage) Object.assign(data.segmentCoverage, {
+      observedWallets: 3,
+      classifiedWallets: checked ? 3 : 0,
+      profitableWallets: checked ? 1 : 0,
+      unknownWallets: checked ? 0 : 3,
+      oldestAccountReceivedAt: checked ? NOW : null,
+      newestAccountReceivedAt: checked ? NOW : null,
+    });
+    await route.fulfill({ json: data });
+  });
+  await page.goto("/?view=assets&asset=0");
+  const panel = page.getByRole("region", { name: "BTC price and trades" });
+  await panel.getByRole("button", { name: "Profitable traders", exact: true }).click();
+  const coverage = panel.getByLabel("Trader profit coverage", { exact: true });
+  await expect(coverage).toContainText("Profit checked for 0 of 3 wallets");
+  await expect(panel.locator(".trade-graph-feed h4")).toContainText("Checking profit…");
+  checked = true;
+  await page.clock.fastForward(5_001);
+  await expect(coverage).toContainText("Profit checked for 3 of 3 wallets");
+  await expect(coverage).toContainText("All observed opening wallets checked");
+  await expect(panel.locator(".trade-graph-feed h4")).toContainText("1 confirmed");
+  await expect(panel.locator('[data-trade-id="newly-classified-entry"]')).toHaveCount(1);
+  await expect(panel.locator(".trade-graph-feed-empty")).toHaveCount(0);
 });
 
 test("classification expires when snapshot refresh stalls even if a fresh quote arrives", async ({ page }) => {

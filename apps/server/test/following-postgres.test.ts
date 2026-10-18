@@ -40,6 +40,58 @@ const trade = (id: string, more: Partial<TradeEvent> = {}): TradeEvent => ({
   ...more,
 });
 describe.skipIf(!url)("PostgreSQL Following", () => {
+  it("matches the bounded active profit cohort and uses indexed trades and account lookups amid cold history", async () => {
+    const schema = `active_profit_${randomUUID().replaceAll("-", "")}`;
+    const admin = new Pool({ connectionString: url });
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    const connection = new URL(url!);
+    connection.searchParams.set("options", `-c search_path=${schema}`);
+    const pool = new Pool({ connectionString: connection.toString() });
+    let pg: Store | undefined, local: Store | undefined;
+    try {
+      pg = await createStore({ databaseUrl: connection.toString(), autoMigrate: true });
+      local = await createStore({ memory: true, databaseUrl: "" });
+      for (const store of [pg, local]) {
+        for (let n = 1; n <= 30; n++) await store.recordTrade(trade(`active:${n}`, { wallet: addr(n), instrument: n % 2 }));
+        await store.following.retainAccounts([account(1)], at);
+        await store.following.retainAccounts([account(2)], at - 240000);
+        await store.following.retainAccounts([account(3)], at - 240001);
+        await store.following.retainAccounts([account(4)], at + 1);
+        await store.put(`account-summary:${addr(5)}`, { ...account(5), realizedPnl: "01" }, at);
+        await store.put(`account-summary:${addr(6)}`, account(100), at);
+        await store.put(`account-summary:${addr(7)}`, { ...account(7), realizedPnl: 1 }, at);
+        await store.recordTrade(trade("old", { wallet: addr(100), ts: at - 3600001 }));
+        await store.recordTrade(trade("future", { wallet: addr(101), ts: at + 1 }));
+        await store.recordTrade(trade("close", { wallet: addr(102), kind: "close" }));
+        await store.recordTrade(trade("boundary", { wallet: addr(103), ts: at - 3600000 }));
+      }
+      await pool.query(`INSERT INTO paperdash_trade_observations(id,payload,source_at,received_at)
+        SELECT 'cold:'||n,jsonb_build_object('instrument',n%2,'wallet',$1::text,'kind','open'),$2::bigint-n,$2::bigint
+        FROM generate_series(1,20000) n`, [addr(999), at - 7200000]);
+      await pool.query(`INSERT INTO paperdash_snapshots(key,payload,received_at)
+        SELECT 'cold:'||n,'{}'::jsonb,$1::bigint FROM generate_series(1,20000) n`, [at]);
+      await pool.query("ANALYZE paperdash_trade_observations");
+      await pool.query("ANALYZE paperdash_snapshots");
+      let plan = "";
+      const explained = createPgFollowing({ query: async (sql: string, args: unknown[]) => {
+        if (sql.startsWith("WITH recent AS MATERIALIZED")) {
+          const result = await pool.query(`EXPLAIN (ANALYZE,BUFFERS) ${sql}`, args);
+          plan = result.rows.map((row) => row["QUERY PLAN"]).join("\n");
+        }
+        return pool.query(sql, args);
+      } } as Pool);
+      expect(await explained.profitRefreshCandidates("", at)).toEqual(await local.following.profitRefreshCandidates("", at));
+      expect(await pg.following.profitRefreshCandidates(addr(25), at)).toEqual(await local.following.profitRefreshCandidates(addr(25), at));
+      expect(await pg.following.profitRefreshCandidates("", at)).toHaveLength(25);
+      expect(plan).toMatch(/paperdash_trade_(instrument_time|time)/);
+      expect(plan).toContain("paperdash_snapshots_pkey");
+      expect(plan).not.toMatch(/Seq Scan on paperdash_(snapshots|trade_observations)/);
+    } finally {
+      await Promise.allSettled([pg?.close(), local?.close(), pool.end()]);
+      await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+      await admin.end();
+    }
+  });
   it("matches SQLite dense source multiplicity and indexed bounds, and enforces watch admission across instances", async () => {
     const schema = `following_${randomUUID().replaceAll("-", "")}`;
     const admin = new Pool({ connectionString: url });

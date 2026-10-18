@@ -243,6 +243,16 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
           trade.ts >= from &&
           trade.ts <= through,
       ).length > GRAPH_TRADE_LIMIT);
+  const coverage = data.segment === "profitable" ? data.segmentCoverage : undefined;
+  const coveragePercent = coverage && coverage.observedWallets > 0
+    ? Math.min(
+        coverage.unknownWallets > 0 ? 99.9 : 100,
+        (coverage.classifiedWallets / coverage.observedWallets) * 100,
+      ).toLocaleString(undefined, { maximumFractionDigits: 1 })
+    : null;
+  const profitRequirement = data.minPnlUsd > 0
+    ? `with at least ${formatUsd(data.minPnlUsd, true)} realized profit`
+    : "with positive realized profit";
 
   const selectTrade = (trade: PricedTrade) => {
     setSelectedId(trade.id);
@@ -368,8 +378,12 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
         )}
         <span className="trade-graph-filter-summary">
           {data.segment === "profitable"
-            ? data.segmentCoverage
-              ? `${data.segmentCoverage.profitableWallets.toLocaleString()} qualifying ${data.segmentCoverage.profitableWallets === 1 ? "wallet" : "wallets"} · past hour`
+            ? coverage
+              ? coverage.observedWallets === 0
+                ? "No opening wallets observed · past hour"
+                : coverage.classifiedWallets === 0
+                  ? "Profit checks pending · past hour"
+                  : `${coverage.profitableWallets.toLocaleString()} confirmed qualifying ${coverage.profitableWallets === 1 ? "wallet" : "wallets"} · past hour`
               : "Checking trader profitability…"
             : "All observed opens, closes & liquidations"}
         </span>
@@ -591,8 +605,8 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                 : "positive lifetime realized trading P&L."}{" "}
               Rewards and unrealized P&L excluded. Classification uses the latest
               retained account snapshot, not profitability at entry.
-              {data.segmentCoverage
-                ? ` Classified ${relativeTime(data.segmentCoverage.classifiedAt)}; ${data.segmentCoverage.classifiedWallets.toLocaleString()} of ${data.segmentCoverage.observedWallets.toLocaleString()} observed wallets checked, ${data.segmentCoverage.unknownWallets.toLocaleString()} unknown excluded. Account snapshots were at most 5 minutes old when classified. Entries update with each classified snapshot.`
+              {coverage
+                ? ` Classified ${relativeTime(coverage.classifiedAt)}. Account snapshots were at most 5 minutes old when classified. Entries update with each classified snapshot.`
                 : " Classification unavailable; entries are hidden until a recent snapshot is available."}
             </p>
           )}
@@ -614,7 +628,13 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                 : sampled
                   ? "Largest observed trades"
                   : "Recent observed trades"}{" "}
-              <span>{trades.length}</span>
+              <span>{data.segment === "profitable"
+                ? data.segmentUnavailable
+                  ? "Unavailable"
+                  : coverage?.classifiedWallets === 0 && coverage.unknownWallets > 0
+                    ? "Checking profit…"
+                    : `${trades.length} confirmed`
+                : trades.length}</span>
             </h4>
             <small>
               {paused
@@ -623,7 +643,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                   ? data.segmentUnavailable
                     ? "Classification unavailable"
                     : data.stale
-                      ? "Classification delayed"
+                      ? "Trade coverage delayed"
                       : "Classified snapshot"
                   : data.stale
                     ? "Trade snapshot delayed"
@@ -632,6 +652,35 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                       : "Retained observations"}
             </small>
           </div>
+          {data.segment === "profitable" && (
+            <div className="trade-graph-coverage" aria-label="Trader profit coverage">
+              {coverage ? <>
+                <strong>
+                  Profit checked for {coverage.classifiedWallets.toLocaleString()} of {coverage.observedWallets.toLocaleString()} wallets
+                </strong>
+                <span>
+                  Opening wallets · past hour{coveragePercent !== null ? ` · ${coveragePercent}%` : ""}
+                </span>
+                {coverage.observedWallets > 0 && (
+                  <progress
+                    aria-label="Profit checked for opening wallets in the past hour"
+                    value={coverage.classifiedWallets}
+                    max={coverage.observedWallets}
+                  />
+                )}
+                <span className={coverage.unknownWallets > 0 ? "trade-graph-coverage-incomplete" : undefined}>
+                  {coverage.unknownWallets > 0
+                    ? `${coverage.unknownWallets.toLocaleString()} unknown ${coverage.unknownWallets === 1 ? "wallet" : "wallets"} excluded; more may qualify.`
+                    : coverage.observedWallets > 0
+                      ? "All observed opening wallets checked."
+                      : "No opening wallets observed in the past hour."}
+                </span>
+              </> : <>
+                <strong>Profit coverage unavailable</strong>
+                <span>Entries are hidden until a recent classification is available.</span>
+              </>}
+            </div>
+          )}
           <ul ref={feedRef}>
             {trades.map((trade) => (
               <li
@@ -681,7 +730,11 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                 {data.segmentUnavailable
                   ? "Waiting for a recent trader classification."
                   : data.segment === "profitable"
-                    ? `No observed entries from wallets ${data.minPnlUsd > 0 ? `with at least ${formatUsd(data.minPnlUsd, true)} realized profit` : "with positive realized profit"} in this window. Try a lower profit minimum or a wider window.`
+                    ? coverage?.observedWallets === 0
+                      ? "No wallet openings observed in the past hour."
+                      : coverage && coverage.unknownWallets > 0
+                        ? `No confirmed entries from wallets ${profitRequirement} in this window. Profit is still unknown for ${coverage.unknownWallets.toLocaleString()} observed ${coverage.unknownWallets === 1 ? "wallet" : "wallets"}, so this is not a complete count.`
+                        : `No observed entries from wallets ${profitRequirement} in this window. Try a lower profit minimum or a wider window.`
                     : sampled
                       ? "No sampled trades in the selected window."
                       : "No recent observed trades in the selected window."}
@@ -694,7 +747,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
               : capped
                 ? `${trades.length} recent trades shown · `
                 : ""}
-            Partial public activity
+            Observed {data.segment === "profitable" ? "entries" : "trades"} only · history may be incomplete
             {data.receivedAt ? ` · ${relativeTime(data.receivedAt)}` : ""}
           </p>
         </aside>

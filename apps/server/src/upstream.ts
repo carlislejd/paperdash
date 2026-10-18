@@ -462,7 +462,7 @@ export class Upstream {
     q = "",
     sort = "currentBalance",
     page = 0,
-    pageSize: 10 | 25 = 25,
+    pageSize: 10 | 25 | 100 = 25,
     wait = false,
   ) {
     const path = canonicalPath("/state/leaderboard/accounts", {
