@@ -1,0 +1,228 @@
+{
+  "commit": "096be0ac3637a7dfbb710888b606227ebe47b2a1",
+  "ci": "https://github.com/carlislejd/paperdash/actions/runs/39195250336",
+  "ciConclusion": "success",
+  "localChecks": {
+    "unitPassed": 1014,
+    "unitEnvironmentSkipped": 45,
+    "browserPassed": 40,
+    "build": "passed"
+  },
+  "api": {
+    "deployment": "dep-dbap2ami0phs73a1o070",
+    "status": "Live",
+    "instances": "3/3",
+    "duration": "53.4s"
+  },
+  "worker": {
+    "deployment": "dep-dbap2uom7kps739nkalg",
+    "status": "Live",
+    "leaseAtFirstCheck": "standby",
+    "duration": "31.7s",
+    "leaseVerifiedBy": "Fresh para:PAPER snapshots appeared before frontend deployment."
+  },
+  "frontend": {
+    "deployment": "dep-dbap4vom7kps739nr9m0",
+    "status": "Live",
+    "duration": "20.7s"
+  },
+  "finalVerification": {
+    "checkedAt": "2026-10-19T03:47:44.354Z",
+    "checks": [
+      {
+        "name": "API ready",
+        "pass": true
+      },
+      {
+        "name": "Reward observations current",
+        "pass": true
+      },
+      {
+        "name": "Expected source and market",
+        "pass": true
+      },
+      {
+        "name": "Price source current",
+        "pass": true
+      },
+      {
+        "name": "Price receipt current",
+        "pass": true
+      },
+      {
+        "name": "Measured reward rate available",
+        "pass": true
+      },
+      {
+        "name": "Positive non-crossed book",
+        "pass": true
+      },
+      {
+        "name": "Exact integer midpoint",
+        "pass": true
+      },
+      {
+        "name": "Measured staking interval preserved",
+        "pass": true
+      }
+    ],
+    "health": {
+      "ready": true,
+      "degraded": false,
+      "status": {
+        "stale": false,
+        "stream": "connected",
+        "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+        "sourceAt": 1792381661000,
+        "receivedAt": 1792381662977,
+        "persistence": "postgres",
+        "indexedBlock": "48927071"
+      }
+    },
+    "sourceAt": 1792381659000,
+    "receivedAt": 1792381661258,
+    "stale": false,
+    "price": {
+      "basis": "perp-mid",
+      "market": "para:PAPER",
+      "source": "hyperliquid",
+      "sourceAt": 1792381656695,
+      "askUsdRaw": "24601000000000000",
+      "bidUsdRaw": "24488000000000000",
+      "receivedAt": 1792381657042,
+      "priceUsdRaw": "24544500000000000"
+    },
+    "stakingYield": {
+      "toMs": 1792381659000,
+      "basis": "observed-accumulator",
+      "fromMs": 1792123080000,
+      "yearDays": 365,
+      "elapsedMs": 258579000,
+      "earnedUsdPerPaperRaw": "885327040537474",
+      "usdPerPaperPerYearRaw": "107973476385900653"
+    },
+    "expectedApr": "439.91%"
+  },
+  "updates": [
+    {
+      "at": 1792381581170,
+      "status": 200,
+      "stale": false,
+      "sourceAt": 1792381578000,
+      "receivedAt": 1792381581036,
+      "quote": {
+        "basis": "perp-mid",
+        "market": "para:PAPER",
+        "source": "hyperliquid",
+        "sourceAt": 1792381573938,
+        "askUsdRaw": "24713000000000000",
+        "bidUsdRaw": "24616000000000000",
+        "receivedAt": 1792381574298,
+        "priceUsdRaw": "24664500000000000"
+      },
+      "stakingYield": {
+        "toMs": 1792381578000,
+        "basis": "observed-accumulator",
+        "fromMs": 1792123080000,
+        "yearDays": 365,
+        "elapsedMs": 258498000,
+        "earnedUsdPerPaperRaw": "885309213199396",
+        "usdPerPaperPerYearRaw": "108005134846134823"
+      }
+    },
+    {
+      "at": 1792381597106,
+      "status": 200,
+      "stale": false,
+      "sourceAt": 1792381588000,
+      "receivedAt": 1792381591119,
+      "quote": {
+        "basis": "perp-mid",
+        "market": "para:PAPER",
+        "source": "hyperliquid",
+        "sourceAt": 1792381584118,
+        "askUsdRaw": "24697000000000000",
+        "bidUsdRaw": "24615000000000000",
+        "receivedAt": 1792381584506,
+        "priceUsdRaw": "24656000000000000"
+      },
+      "stakingYield": {
+        "toMs": 1792381588000,
+        "basis": "observed-accumulator",
+        "fromMs": 1792123080000,
+        "yearDays": 365,
+        "elapsedMs": 258508000,
+        "earnedUsdPerPaperRaw": "885309213199396",
+        "usdPerPaperPerYearRaw": "108000956827085272"
+      }
+    },
+    {
+      "at": 1792381612914,
+      "status": 200,
+      "stale": false,
+      "sourceAt": 1792381607000,
+      "receivedAt": 1792381611157,
+      "quote": {
+        "basis": "perp-mid",
+        "market": "para:PAPER",
+        "source": "hyperliquid",
+        "sourceAt": 1792381604387,
+        "askUsdRaw": "24544000000000000",
+        "bidUsdRaw": "24446000000000000",
+        "receivedAt": 1792381604810,
+        "priceUsdRaw": "24495000000000000"
+      },
+      "stakingYield": {
+        "toMs": 1792381607000,
+        "basis": "observed-accumulator",
+        "fromMs": 1792123080000,
+        "yearDays": 365,
+        "elapsedMs": 258527000,
+        "earnedUsdPerPaperRaw": "885309213199396",
+        "usdPerPaperPerYearRaw": "107993019481354595"
+      }
+    },
+    {
+      "at": 1792381628797,
+      "status": 200,
+      "stale": false,
+      "sourceAt": 1792381619000,
+      "receivedAt": 1792381621177,
+      "quote": {
+        "basis": "perp-mid",
+        "market": "para:PAPER",
+        "source": "hyperliquid",
+        "sourceAt": 1792381614208,
+        "askUsdRaw": "24538000000000000",
+        "bidUsdRaw": "24450000000000000",
+        "receivedAt": 1792381614947,
+        "priceUsdRaw": "24494000000000000"
+      },
+      "stakingYield": {
+        "toMs": 1792381619000,
+        "basis": "observed-accumulator",
+        "fromMs": 1792123080000,
+        "yearDays": 365,
+        "elapsedMs": 258539000,
+        "earnedUsdPerPaperRaw": "885309213199396",
+        "usdPerPaperPerYearRaw": "107988007021981827"
+      }
+    }
+  ],
+  "updateChecks": {
+    "allFourFresh": true,
+    "quoteClocksAdvanced": true,
+    "originalRewardBaselinePreserved": true
+  },
+  "browser": {
+    "desktopWidth": 1440,
+    "mobileWidth": 390,
+    "mobileScrollWidth": 390,
+    "consoleErrors": [],
+    "calculatorRemoved": true,
+    "sourceLink": "https://app.hyperliquid.xyz/trade/para:PAPER",
+    "automaticAprUpdatesObserved": true
+  },
+  "handoffObservation": "One initial economics publication withheld an incomparable reward pair during handoff; the next checked publication recovered the original October 16 reward baseline. All four subsequent sampled publications had fresh price and reward inputs.",
+  "unchanged": "No schema, environment, service-plan, history or checkpoint changes. The existing trade-ingestion-gap warning remains disclosed."
+}
