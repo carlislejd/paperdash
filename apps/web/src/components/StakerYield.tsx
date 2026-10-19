@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef, useState } from "react";
 import { paperPriceDelayed, validPaperPrice } from "../../../../packages/shared/src/paper-price";
 import type { PaperEconomicsResponse } from "../../../../packages/shared/src/types";
 import { useAnalytics } from "../lib/use-analytics";
@@ -13,6 +14,25 @@ import {
 import "./staker-yield.css";
 
 export function StakerYieldMetric() {
+  const metric = useRef<HTMLDivElement>(null);
+  const methodId = useId();
+  const [methodOpen, setMethodOpen] = useState(false);
+  useEffect(() => {
+    if (!methodOpen) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !metric.current?.contains(event.target))
+        setMethodOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMethodOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [methodOpen]);
   const { data, error } = useAnalytics<PaperEconomicsResponse>(
     "/api/paper/economics",
   );
@@ -29,33 +49,53 @@ export function StakerYieldMetric() {
     rewards.elapsedMs < 3_600_000;
 
   return (
-    <div className="metric metric-staker-yield">
-      <span className="metric-label">Staker yield / year</span>
+    <div
+      className="metric metric-staker-yield"
+      ref={metric}
+      onPointerEnter={event => {
+        if (event.pointerType === "mouse") setMethodOpen(true);
+      }}
+      onPointerLeave={() => {
+        if (!metric.current?.contains(document.activeElement)) setMethodOpen(false);
+      }}
+      onFocus={() => setMethodOpen(true)}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setMethodOpen(false);
+      }}
+    >
+      <span className="metric-label">
+        Staker yield / year
+        <button
+          type="button"
+          className="staker-yield-info"
+          aria-label="How staker yield is calculated"
+          aria-describedby={methodOpen ? methodId : undefined}
+          onClick={() => setMethodOpen(true)}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.25" />
+            <path d="M8 7v4M8 4.5v1" />
+          </svg>
+        </button>
+      </span>
       <strong>{formatStakerApr(rate, quote?.priceUsdRaw)}</strong>
-      <span className="metric-note">
-        Simple APR · {delayed ? "last available" : "observed rate"}
+      <span className="metric-note staker-yield-price-row">
+        <a
+          className="staker-yield-source"
+          href="https://app.hyperliquid.xyz/trade/para:PAPER"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-describedby={methodOpen ? methodId : undefined}
+        >
+          {quote ? `PAPER price ${formatPaperPrice(quote.priceUsdRaw)}` : "PAPER price unavailable"} <span aria-hidden="true">↗</span>
+        </a>
+        {quote && priceDelayed && <span className="staker-yield-delayed"> · Price delayed</span>}
+        {rate !== null && rewardDelayed && <span className="staker-yield-delayed"> · Rewards delayed</span>}
+        {rate === null && <span> · {collecting ? "Rewards pending" : "Rewards unavailable"}</span>}
       </span>
-      <span className="metric-note staker-yield-price">
-        {quote ? `PAPER ${formatPaperPrice(quote.priceUsdRaw)} · perp midpoint` : "PAPER price unavailable"}
-      </span>
-      <a
-        className="metric-note staker-yield-source"
-        href="https://app.hyperliquid.xyz/trade/para:PAPER"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Hyperliquid para:PAPER <span aria-hidden="true">↗</span>
-      </a>
-      {quote && priceDelayed && <span className="metric-note staker-yield-delayed">Price delayed</span>}
-      {rate !== null && rewardDelayed && <span className="metric-note staker-yield-delayed">Rewards delayed</span>}
-      {rate === null && (
-        <span className="metric-note">
-          {collecting ? "Collecting the first hour of rewards" : "Waiting for reward observations"}
-        </span>
-      )}
-      <details className="staker-yield-method">
-        <summary>How it’s calculated</summary>
-        <div>
+      <div className="staker-yield-method" id={methodId} role="tooltip" hidden={!methodOpen}>
+          <p className="staker-yield-method-heading">How it’s calculated</p>
+          <p>Simple APR · {rate === null || quote === null ? "unavailable" : delayed ? "last available" : "observed rate"}</p>
           <p>
             Observed annual USDC earned per PAPER ÷ PAPER price. No compounding;
             future rewards vary.
@@ -78,8 +118,7 @@ export function StakerYieldMetric() {
           {quote && (
             <p>Price as of <time dateTime={new Date(quote.sourceAt).toISOString()}>{formatYieldTime(quote.sourceAt)}</time>.</p>
           )}
-        </div>
-      </details>
+      </div>
     </div>
   );
 }

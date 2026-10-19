@@ -35,6 +35,8 @@ The rate is unavailable for an unverified deployment, an invalid or pre-cutoff s
 
 The overview headline shows **simple APR**, combining the observed annual USDC reward per PAPER with the Hyperliquid Paragon `para:PAPER` perpetual midpoint. The duplicate manual-price calculator has been removed. The reward numerator measures changes in `paper.accumulator`, the 1e27-scaled reward-per-share accumulator used for wallet rewards. It accounts for stake at each actual distribution, including changes between hourly observations. Lifetime allocations divided by today's stake would not measure this return.
 
+The healthy headline has one note line: the current PAPER price linked to Hyperliquid. Hovering the metric or focusing its price link/info button reveals the formula, observed interval and quote timestamp in an overlay without changing the metrics row's height. The info button also opens the details on touchscreens; Escape or interacting outside dismisses them. Price/reward delays and missing inputs remain visible in compact status text.
+
 The additive `stakingYield` response contains `usdPerPaperPerYearRaw` and `earnedUsdPerPaperRaw` (18-decimal USDC per one PAPER), `fromMs`, `toMs`, `elapsedMs`, `basis: "observed-accumulator"`, and `yearDays: 365`. For accumulator endpoints A and B:
 
 ```text

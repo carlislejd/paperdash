@@ -1,48 +1,70 @@
+.metric-staker-yield {
+  position: relative;
+}
 .metric-staker-yield > strong {
   overflow-wrap: anywhere;
 }
-.metric-staker-yield .staker-yield-price,
-.metric-staker-yield .staker-yield-source,
-.metric-staker-yield .staker-yield-delayed {
-  display: block;
-  margin-top: 3px;
-  overflow-wrap: anywhere;
-}
-.metric-staker-yield .staker-yield-source {
-  width: fit-content;
+.staker-yield-source {
   color: var(--muted);
   text-decoration: underline;
   text-underline-offset: 2px;
+  overflow-wrap: anywhere;
 }
-.metric-staker-yield .staker-yield-source:hover {
+.staker-yield-source:hover {
   color: var(--ink);
 }
-.metric-staker-yield .staker-yield-delayed {
+.staker-yield-delayed {
   color: #8d8058;
 }
-.staker-yield-method {
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.5;
+.staker-yield-info {
+  position: relative;
+  flex-shrink: 0;
 }
-.staker-yield-method summary {
-  width: fit-content;
-  cursor: pointer;
+.staker-yield-info::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
 }
-.staker-yield-method summary:focus-visible,
+.staker-yield-info:focus-visible,
 .staker-yield-source:focus-visible {
   outline: 2px solid #84639f;
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
-.staker-yield-method > div {
-  margin-top: 7px;
-  padding-top: 5px;
-  border-top: 1px solid var(--line);
+.staker-yield-method {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  width: min(340px, calc(100vw - 40px));
+  max-height: min(440px, calc(100dvh - 140px));
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 13px 16px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper, #f5f2e9);
+  box-shadow: 0 7px 24px rgb(35 40 30 / 12%);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.staker-yield-method[hidden] {
+  display: none;
 }
 .staker-yield-method p {
-  margin: 4px 0;
+  margin: 6px 0;
+}
+.staker-yield-method .staker-yield-method-heading {
+  margin-top: 0;
+  color: var(--ink);
+  font-weight: 600;
 }
 .staker-yield-interval {
   overflow-wrap: anywhere;
+}
+@media (max-width: 650px) {
+  .staker-yield-method {
+    left: auto;
+    right: 0;
+  }
 }
