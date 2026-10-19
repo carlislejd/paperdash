@@ -422,7 +422,9 @@ test("a prefetched pending account retains bounded prompt rechecks", async ({
   let reads = 0;
   await page.route(`**/api/wallets/${WALLET}`, (route) => {
     reads++;
-    return route.fulfill({ json: accountWallet(at, true) });
+    const wallet = accountWallet(at, true);
+    wallet.snapshot!.paper.balance = (BigInt(reads) * 10n ** 18n).toString();
+    return route.fulfill({ json: wallet });
   });
   await page.goto("/?view=wallets");
   const row = page.getByRole("button", { name: /^Aoi / });
@@ -435,11 +437,25 @@ test("a prefetched pending account retains bounded prompt rechecks", async ({
   await expect(
     page.getByRole("status", { name: "Account snapshot freshness" }),
   ).toContainText("Updating account balances…");
+  const ownership = page
+    .locator(".wd-metrics > div")
+    .filter({ has: page.getByText("Total PAPER owned", { exact: true }) })
+    .locator("dd");
+  const refresh = page.getByRole("button", { name: "Refresh wallet details" });
+  await expect(ownership).toHaveText("1");
+  await expect(refresh).toBeEnabled();
   expect(reads).toBe(1);
   await page.clock.runFor(2_100);
   await expect.poll(() => reads).toBe(2);
+  // The next recheck starts two seconds after this response settles, not when
+  // its request reaches the route handler. Keep the paused clock here until
+  // the distinct response is rendered and the loading state has completed.
+  await expect(ownership).toHaveText("2");
+  await expect(refresh).toBeEnabled();
   await page.clock.runFor(2_100);
   await expect.poll(() => reads).toBe(3);
+  await expect(ownership).toHaveText("3");
+  await expect(refresh).toBeEnabled();
   await page.clock.runFor(5_000);
   expect(reads).toBe(3);
 });
