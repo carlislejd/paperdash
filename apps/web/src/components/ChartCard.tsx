@@ -627,48 +627,52 @@ export function ChartCard(props: ChartCardProps) {
       aria-label={`${title} chart card`}
       title={compact ? exportCoverage : undefined}
     >
-      <div className="pc-chart-heading">
-        <h3>{title}</h3>
-        <button
-          ref={opener}
-          type="button"
-          className="pc-chart-expand"
-          aria-label={`Expand ${title} chart`}
-          onClick={() => {
-            reset();
-            setOpen(true);
-          }}
-        >
-          <ExpandIcon />
-        </button>
+      <div className="pc-chart-body">
+        <div className="pc-chart-heading">
+          <h3>{title}</h3>
+          <button
+            ref={opener}
+            type="button"
+            className="pc-chart-expand"
+            aria-label={`Expand ${title} chart`}
+            onClick={() => {
+              reset();
+              setOpen(true);
+            }}
+          >
+            <ExpandIcon />
+          </button>
+        </div>
+        <div className="pc-chart-headline">
+          <strong
+            title={
+              props.valueTitle ??
+              `${formatChartNumber(last?.value, false)} ${unit}`
+            }
+          >
+            {props.valueLabel ?? formatChartNumber(last?.value)}
+          </strong>
+          <span>{unit}</span>
+          <span>· {valueCaption}</span>
+          {compact && <ChartPlot {...props} compact />}
+        </div>
+        {periodSummary}
+        {!compact && <ChartPlot {...props} />}
       </div>
-      <div className="pc-chart-headline">
-        <strong
-          title={
-            props.valueTitle ??
-            `${formatChartNumber(last?.value, false)} ${unit}`
-          }
-        >
-          {props.valueLabel ?? formatChartNumber(last?.value)}
-        </strong>
-        <span>{unit}</span>
-        <span>· {valueCaption}</span>
-        {compact && <ChartPlot {...props} compact />}
+      <div className="pc-chart-footer">
+        <div className="pc-chart-meta">
+          <span>
+            {range.label} · {status}
+          </span>
+          {!compact && <span title={exportCoverage}>{exportCoverage}</span>}
+          <span className="pc-chart-bucket-coverage">{summary.coverage}</span>
+        </div>
+        {error && onRetry && (
+          <button type="button" className="pc-chart-retry" onClick={onRetry}>
+            Retry {title.toLowerCase()}
+          </button>
+        )}
       </div>
-      {periodSummary}
-      {!compact && <ChartPlot {...props} />}
-      <div className="pc-chart-meta">
-        <span>
-          {range.label} · {status}
-        </span>
-        {!compact && <span title={exportCoverage}>{exportCoverage}</span>}
-        <span className="pc-chart-bucket-coverage">{summary.coverage}</span>
-      </div>
-      {error && onRetry && (
-        <button type="button" className="pc-chart-retry" onClick={onRetry}>
-          Retry {title.toLowerCase()}
-        </button>
-      )}
       {open &&
         createPortal(
           <dialog

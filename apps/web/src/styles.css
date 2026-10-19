@@ -53,6 +53,20 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
+@media (min-width: 651px) {
+  /* Share body/footer heights even when totals or source text differ. */
+  .overview-chart-grid > .pc-chart-card {
+    display: grid;
+    grid-row: span 2;
+    grid-template-rows: subgrid;
+    row-gap: 0;
+    container-type: normal;
+  }
+  .overview-chart-grid > .pc-chart-card > .pc-chart-body {
+    /* Card-level layout containment would disable its subgrid. */
+    container-type: inline-size;
+  }
+}
 .overview-activity-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);

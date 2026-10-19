@@ -6,6 +6,10 @@
   border-radius: 3px;
   container-type: inline-size;
 }
+.pc-chart-body,
+.pc-chart-footer {
+  min-width: 0;
+}
 .pc-chart-heading,
 .pc-chart-dialog-header,
 .pc-chart-dialog-title {
