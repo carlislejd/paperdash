@@ -17,6 +17,7 @@ test("overview ranks open PnL, expands hourly charts and exports a branded PNG",
             currentUnrealizedPnl: "10000000000000000000000000000",
             realizedPnl: "-500000000000000000000",
             currentOpenPositionCount: 4,
+            currentOpenNotional: "25000000000000000000000000000",
           },
           {
             ...account(SECOND_WALLET, "Closed winner"),
@@ -35,6 +36,7 @@ test("overview ranks open PnL, expands hourly charts and exports a branded PNG",
   await page.goto("/");
   const leaders = page.getByRole("region", { name: "Top open PnL" });
   await expect(leaders).toContainText("+$10B");
+  await expect(leaders).toContainText("$25B open notional");
   await expect(leaders).not.toContainText("Closed winner");
   await expect(page.locator("#wallets")).toHaveCount(0);
   expect(
@@ -144,7 +146,7 @@ test("legacy TVL and House funds links still open after LP balance takes the fea
   expect(new URL(page.url()).searchParams.get("chart")).toBe("house-funds");
 });
 
-test("a missing directory position count preserves open PnL without inventing a count", async ({
+test("a missing directory position count shows source open notional and preserves wallet access", async ({
   page,
 }) => {
   await mockSources(page);
@@ -153,9 +155,10 @@ test("a missing directory position count preserves open PnL without inventing a 
       json: {
         accounts: [
           {
-            ...account(WALLET, "Count unavailable"),
+            ...account(WALLET, "Open winner"),
             currentUnrealizedPnl: "123000000000000000000",
             currentOpenPositionCount: null,
+            currentOpenNotional: "12500000123456789000000000",
           },
         ],
         count: 1,
@@ -168,8 +171,15 @@ test("a missing directory position count preserves open PnL without inventing a 
   });
   await page.goto("/");
   const leaders = page.getByRole("region", { name: "Top open PnL" });
-  await expect(leaders).toContainText("Count unavailable");
-  await expect(leaders).toContainText("Position count unavailable");
+  await expect(leaders).toContainText("Open winner");
+  await expect(leaders).toContainText("$12.5M open notional");
+  await expect(leaders.locator(".open-pnl-wallet small")).toHaveAttribute(
+    "title",
+    "Total notional value of open positions: $12,500,000.12 USDC",
+  );
+  await expect(leaders).not.toContainText("Position count unavailable");
   await expect(leaders).toContainText("+$123");
   await expect(leaders).not.toContainText("0 open positions");
+  await leaders.getByRole("button", { name: /Open winner/ }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
 });

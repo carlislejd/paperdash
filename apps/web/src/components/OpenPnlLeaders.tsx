@@ -59,10 +59,10 @@ export function OpenPnlLeaders({
                   <strong>
                     {account.leaderboardName || shortAddress(account.address)}
                   </strong>
-                  <small>
-                    {account.currentOpenPositionCount == null
-                      ? "Position count unavailable"
-                      : `${account.currentOpenPositionCount.toLocaleString()} open ${account.currentOpenPositionCount === 1 ? "position" : "positions"}`}
+                  <small
+                    title={`Total notional value of open positions: ${formatRawUsd(account.currentOpenNotional)} USDC`}
+                  >
+                    {formatRawUsd(account.currentOpenNotional, true)} open notional
                   </small>
                 </span>
                 <span className="open-pnl-value">
