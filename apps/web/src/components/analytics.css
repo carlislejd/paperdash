@@ -370,8 +370,16 @@
   color: var(--muted);
   font-size: 11px;
 }
-.leaderboard-valuation-controls {
-  margin-bottom: 18px;
+.leaderboard-title-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  min-width: 0;
+}
+.leaderboard-title-controls .paragon-control {
+  min-width: 0;
 }
 .leaderboard-value-paper .paragon-estimate,
 .leaderboard-paper-summary .paragon-estimate {
@@ -605,6 +613,10 @@
   margin: 0 0 17px;
 }
 @media (max-width: 650px) {
+  .leaderboard-title-controls {
+    width: 100%;
+    column-gap: 12px;
+  }
   .leaderboard-view .analytics-segments {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

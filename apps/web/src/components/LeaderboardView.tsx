@@ -107,11 +107,14 @@ export function LeaderboardView({
       aria-labelledby="leaderboard-heading"
     >
       <div className="analytics-heading">
-        <div>
-          <span className="analytics-eyebrow">
-            {metric === "paper" ? "Current holdings" : "Rolling 24 hours"}
-          </span>
-          <h2 id="leaderboard-heading">Leaderboard</h2>
+        <div className="leaderboard-title-controls">
+          <div>
+            <span className="analytics-eyebrow">
+              {metric === "paper" ? "Current holdings" : "Rolling 24 hours"}
+            </span>
+            <h2 id="leaderboard-heading">Leaderboard</h2>
+          </div>
+          <ParagonToggle />
         </div>
         <div className="analytics-segments" aria-label="Leaderboard ranking">
           <button
@@ -151,9 +154,6 @@ export function LeaderboardView({
             Observed trades
           </button>
         </div>
-      </div>
-      <div className="leaderboard-valuation-controls">
-        <ParagonToggle />
       </div>
       {metric === "paper" && (
         <div
