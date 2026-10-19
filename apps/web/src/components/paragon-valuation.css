@@ -1,0 +1,46 @@
+.paragon-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.paragon-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--ink);
+}
+.paragon-toggle input {
+  accent-color: #84639f;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+.paragon-toggle input:focus-visible,
+.paragon-source a:focus-visible {
+  outline: 2px solid #84639f;
+  outline-offset: 3px;
+}
+.paragon-source a { text-decoration: underline; text-underline-offset: 2px; }
+.paragon-estimate {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.paragon-estimate-value,
+.paragon-estimate-label,
+.paragon-estimate-delayed { display: block; }
+.paragon-estimate-delayed { color: #8d8058; }
+.overview-valuation-controls { margin: 12px 0 0; }
+.directory-valuation-controls { margin: 0 0 15px; }
+.directory-paragon-value { padding-left: 42px; max-width: 250px; }

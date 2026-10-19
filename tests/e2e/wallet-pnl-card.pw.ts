@@ -2,8 +2,10 @@ import { expect, test, type Page, type Locator } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { PAPER_BREAK_EVEN_NOTE } from "../../apps/web/src/lib/wallet-performance";
+import { PARAGON_CARD_NOTE } from "../../apps/web/src/lib/wallet-pnl-card";
 import {
   mockSources,
+  paperEconomicsResponse,
   positionMetricsResponse,
   walletResponse,
   WALLET,
@@ -36,13 +38,28 @@ async function setup(
     rewardsWin?: boolean;
     missingPending?: boolean;
     losses?: boolean;
+    paragon?: boolean;
+    missingParagon?: boolean;
   } = {},
 ) {
   const at = Math.floor(Date.now() / 1000) * 1000;
   await page.clock.install({ time: at });
   await page.clock.pauseAt(at);
   await mockSources(page);
-  const state = { changed: false, walletReads: 0, metricReads: 0 };
+  const state = { changed: false, walletReads: 0, metricReads: 0, priceReads: 0 };
+  if (options.paragon) await page.route("**/api/paper/economics", (route) => {
+    state.priceReads++;
+    return route.fulfill({ json: {
+      ...paperEconomicsResponse(at),
+      paperPrice: options.missingParagon ? null : {
+        source: "hyperliquid", market: "para:PAPER", basis: "perp-mid",
+        priceUsdRaw: state.changed ? "50000000000000000" : "25000000000000000",
+        bidUsdRaw: state.changed ? "49000000000000000" : "24000000000000000",
+        askUsdRaw: state.changed ? "51000000000000000" : "26000000000000000",
+        sourceAt: at, receivedAt: at,
+      },
+    } });
+  });
   await page.addInitScript(() => {
     const target = window as CardDiagnosticWindow;
     target.cardText = [];
@@ -913,4 +930,64 @@ test("a failed live refresh stays last available when captured on the card", asy
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$0\.006000 PAPER break-even \(USDC per PAPER · last available\)/);
   const labels = await page.evaluate(() => (window as CardDiagnosticWindow).cardText);
   expect(labels).toContain("USDC per PAPER · last available");
+});
+
+test("Paragon estimates remain secondary and capture the same quote across all card layouts", async ({ page }, testInfo) => {
+  const state = await setup(page, { losses: true, paragon: true });
+  const wallet = page.locator(".wd-drawer");
+  const toggle = wallet.getByRole("checkbox", { name: "Show Paragon estimates" });
+  await expect(toggle).not.toBeChecked();
+  await expect(wallet.locator(".paragon-estimate")).toHaveCount(0);
+  await expect(wallet.locator(".wd-performance-value")).toHaveText("−$600.00");
+  await toggle.check();
+  await expect(wallet.locator(".wd-performance-copy .paragon-estimate")).toContainText("P&L + PAPER value · ≈ $1,900.00");
+  await expect(wallet.locator(".wd-metrics .paragon-estimate")).toContainText("PAPER value · ≈ $2,500.00");
+  await expect(wallet.locator(".wd-performance-value")).toHaveText("−$600.00");
+  await wallet.screenshot({ path: `/tmp/paperclub-paragon-wallet-${testInfo.project.name}.png` });
+  const dialog = await openCard(page);
+  for (const layout of ["Gallery", "Spotlight", "Portrait"]) {
+    await dialog.getByRole("button", { name: new RegExp(`^${layout}`) }).click();
+    await waitForSharePreview(page, dialog);
+    await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /−\$600\.00 total P&L.*\+\$1,900\.00 P&L \+ PAPER value \(Paragon premarket price.*\$2,500\.00 PAPER value/);
+    await expect(dialog.locator(".pnl-accessible-summary")).toContainText("+$1,900.00 (Paragon premarket price)");
+    await expect(dialog.locator(".pnl-accessible-summary")).toContainText("PAPER $0.025 USDC");
+    const labels = await page.evaluate(() => (window as CardDiagnosticWindow).cardText);
+    expect(labels).toContain("P&L + PAPER value  +$1,900.00");
+    expect(labels).toContain("PAPER value  $2,500.00");
+    expect(labels).toContain("(Paragon premarket price)");
+    expect(labels).toContain(PARAGON_CARD_NOTE);
+    expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+    const download = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: "Download PNG" }).click();
+    await (await download).saveAs(`/tmp/paperclub-paragon-${layout.toLowerCase()}-${testInfo.project.name}.png`);
+  }
+  const pricesBefore = state.priceReads;
+  state.changed = true;
+  await page.clock.runFor(31_100);
+  await expect.poll(() => state.priceReads).toBeGreaterThan(pricesBefore);
+  await expect(wallet.locator(".wd-performance-copy .paragon-estimate")).toContainText("P&L + PAPER value · ≈ $5,400.00");
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\+\$1,900\.00 P&L \+ PAPER value/);
+  await expect(dialog.locator(".pnl-accessible-summary")).toContainText("PAPER $0.025 USDC");
+  const readsBeforeUpdate = { wallet: state.walletReads, metrics: state.metricReads, price: state.priceReads };
+  await dialog.getByRole("button", { name: "Update card" }).click();
+  await waitForSharePreview(page, dialog);
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\+\$400\.00 total P&L.*\+\$5,400\.00 P&L \+ PAPER value \(Paragon premarket price; last available estimate\)/);
+  await expect(dialog.locator(".pnl-accessible-summary")).toContainText("PAPER $0.05 USDC");
+  expect({ wallet: state.walletReads, metrics: state.metricReads, price: state.priceReads }).toEqual(readsBeforeUpdate);
+});
+
+test("a missing Paragon quote is visibly unavailable on the captured card", async ({ page }, testInfo) => {
+  await setup(page, { losses: true, paragon: true, missingParagon: true });
+  await page.locator(".wd-drawer").getByRole("checkbox", { name: "Show Paragon estimates" }).check();
+  await expect(page.locator(".wd-performance-copy .paragon-estimate")).toContainText("Price unavailable");
+  const dialog = await openCard(page);
+  await waitForSharePreview(page, dialog);
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /−\$600\.00 total P&L.*— P&L \+ PAPER value \(Paragon premarket price; estimate unavailable\)/);
+  await expect(dialog.locator(".pnl-accessible-summary")).toContainText("Paragon price unavailable");
+  const labels = await page.evaluate(() => (window as CardDiagnosticWindow).cardText);
+  expect(labels).toContain("Estimate unavailable");
+  expect(labels).toContain("P&L + PAPER value  —");
+  const download = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Download PNG" }).click();
+  await (await download).saveAs(`/tmp/paperclub-paragon-unavailable-${testInfo.project.name}.png`);
 });

@@ -7,6 +7,11 @@ export const PAPER_BREAK_EVEN_NOTE =
   "Remaining realized trading losses after claimed + pending rewards ÷ PAPER owned (staked + unstaked). Excludes open P&L and token price; not an acquisition cost.";
 
 export interface WalletPerformance {
+  /** Exact observed amounts for optional reference valuations. */
+  pnlRaw: string | null;
+  paperOwnedRaw: string | null;
+  accountDelayed: boolean;
+  performanceDelayed: boolean;
   pnl: string;
   pnlTone: "positive" | "negative" | "neutral";
   pnlNote: string;
@@ -84,8 +89,8 @@ export function walletPerformance(
             : paper === 0n
               ? "No PAPER owned"
               : null;
-  const delayed =
-    rewardsDelayed || walletAccountClock(wallet, refreshFailed, at).stale;
+  const accountDelayed = walletAccountClock(wallet, refreshFailed, at).stale;
+  const delayed = rewardsDelayed || accountDelayed;
   let paperBreakEven = "—";
   let paperBreakEvenStatus: WalletPerformance["paperBreakEvenStatus"] =
     "unavailable";
@@ -107,6 +112,10 @@ export function walletPerformance(
   }
 
   return {
+    pnlRaw: rawPnl?.toString() ?? null,
+    paperOwnedRaw: paper?.toString() ?? null,
+    accountDelayed,
+    performanceDelayed: delayed,
     pnl: signedUsd(rawPnl),
     pnlTone: pnlTone(rawPnl),
     pnlNote:

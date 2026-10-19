@@ -1,8 +1,11 @@
-import type { WalletResponse } from "../../../../packages/shared/src/types";
+import type { PaperPriceQuote, WalletResponse } from "../../../../packages/shared/src/types";
+import { paperPriceDelayed, validPaperPrice } from "../../../../packages/shared/src/paper-price";
 import type { PositionMetricsResponse } from "../../../../packages/shared/src/position-metrics";
 import { formatHoldingTime, formatLeverage } from "./position-format";
 import { formatRawUsd, shortAddress } from "./format";
 import { walletAccountClock } from "./wallet-account-clock";
+import { addPaperValueRaw, formatParagonValue, paperValueRaw, PARAGON_LABEL } from "./paragon-valuation";
+import { formatPaperPrice } from "./staker-yield";
 import {
   walletPerformance,
   type WalletPerformance,
@@ -10,6 +13,7 @@ import {
 
 export const PNL_CARD_ART = "/art/paperclub-social-v4.png";
 export const PNL_CARD_PNL_LABEL = "Total P&L";
+export const PARAGON_CARD_NOTE = "PAPER value is an estimate, not realized profit. Acquisition costs are unknown; break-even excludes token price and open P&L.";
 export { WALLET_PERFORMANCE_NOTE as PNL_CARD_PNL_NOTE } from "./wallet-performance";
 export const PNL_CARD_LAYOUTS = [
   {
@@ -40,6 +44,14 @@ export interface PnlCardSnapshot {
   metrics: PositionMetricsResponse | null;
   displayName: string | null;
   capturedAt: number;
+  refreshFailed?: boolean;
+  /** Preference and quote are frozen with the account, not read during export. */
+  paragon?: {
+    enabled: boolean;
+    quote: PaperPriceQuote | null;
+    priceDelayed: boolean;
+    priceError: boolean;
+  };
   /** Local design-review fixtures only; visibly marked in exported pixels. */
   demo?: boolean;
 }
@@ -61,6 +73,15 @@ export interface PnlCardModel extends WalletPerformance {
   link: string;
   filename: string;
   shareText: string;
+  paragon: null | {
+    pnl: string;
+    paper: string;
+    label: string;
+    pnlNote: string;
+    paperNote: string;
+    priceNote: string;
+    summary: string;
+  };
 }
 
 function paperAmount(raw: bigint): string {
@@ -90,7 +111,7 @@ export function walletPnlCardModel(
   const { wallet, metrics, capturedAt } = snapshot;
   const account = wallet.snapshot;
   const layout = PNL_CARD_LAYOUTS.find((item) => item.id === options.layout)!;
-  const performance = walletPerformance(wallet, capturedAt);
+  const performance = walletPerformance(wallet, capturedAt, snapshot.refreshFailed);
   const { pnl, tradingPnl, rewards, rewardsNote } = performance;
   const paper =
     account &&
@@ -110,7 +131,33 @@ export function walletPnlCardModel(
     !metrics.coverage.pending &&
     metrics.coverage.historyBackfillComplete === true,
   );
-  const accountClock = walletAccountClock(wallet, false, capturedAt);
+  const accountClock = walletAccountClock(wallet, snapshot.refreshFailed, capturedAt);
+  const quote = validPaperPrice(snapshot.paragon?.quote);
+  const referenceDelayed = Boolean(
+    snapshot.paragon?.priceDelayed || snapshot.paragon?.priceError ||
+    paperPriceDelayed(quote, capturedAt),
+  );
+  const paperValue = paperValueRaw(performance.paperOwnedRaw, quote);
+  const combinedValue = addPaperValueRaw(performance.pnlRaw, performance.paperOwnedRaw, quote);
+  const estimateNote = (raw: string | null, delayed: boolean) =>
+    raw === null ? "Estimate unavailable" : delayed ? "Last available estimate" : "Reference estimate";
+  const referenceAmount = (raw: string | null, signed = false) => {
+    if (raw === null) return "—";
+    const formatted = formatParagonValue(raw);
+    return signed && BigInt(raw) > 0n && !formatted.startsWith("<") ? `+${formatted}` : formatted;
+  };
+  const paragon = snapshot.paragon?.enabled ? {
+    pnl: referenceAmount(combinedValue, true),
+    paper: referenceAmount(paperValue),
+    label: PARAGON_LABEL,
+    pnlNote: estimateNote(combinedValue, referenceDelayed || performance.performanceDelayed),
+    paperNote: estimateNote(paperValue, referenceDelayed || performance.accountDelayed),
+    priceNote: quote
+      ? `PAPER ${formatPaperPrice(quote.priceUsdRaw)} USDC · Hyperliquid para:PAPER perpetual midpoint · ${stamp(quote.sourceAt)}${referenceDelayed ? " · price delayed" : ""}`
+      : "Paragon price unavailable",
+    summary: "",
+  } : null;
+  if (paragon) paragon.summary = `${paragon.pnl} P&L + PAPER value (${paragon.label}; ${paragon.pnlNote.toLowerCase()}) · ${paragon.paper} PAPER value (${paragon.label}; ${paragon.paperNote.toLowerCase()}) · ${paragon.priceNote} · ${PARAGON_CARD_NOTE}`;
   const address = options.hideWallet ? null : wallet.address;
   const identity = options.hideWallet
     ? "WALLET HIDDEN"
@@ -167,6 +214,7 @@ export function walletPnlCardModel(
     captured: stamp(capturedAt),
     link: link.toString(),
     filename: `paperclub-pnl-${options.layout}.png`,
-    shareText: `${pnl} total P&L · ${tradingPnl} realized trading P&L · ${rewards} rewards (${rewardsNote}) · ${paper} PAPER owned · ${performance.paperBreakEven} PAPER break-even (${performance.paperBreakEvenNote}) · paperclub`,
+    paragon,
+    shareText: `${pnl} total P&L · ${tradingPnl} realized trading P&L · ${rewards} rewards (${rewardsNote}) · ${paper} PAPER owned · ${performance.paperBreakEven} PAPER break-even (${performance.paperBreakEvenNote})${paragon ? ` · ${paragon.summary}` : ""} · paperclub`,
   };
 }

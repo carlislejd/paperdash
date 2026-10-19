@@ -9,6 +9,7 @@ import {
   shortAddress,
 } from "../lib/format";
 import { Avatar } from "./Avatar";
+import { ParagonEstimate, ParagonToggle } from "./ParagonValuation";
 import "./following.css";
 
 export function FollowingView({
@@ -79,6 +80,9 @@ export function FollowingView({
           </button>
         )}
       </div>
+      <div className="following-valuation-controls">
+        <ParagonToggle />
+      </div>
       {query && (
         <div className="search-summary">
           <span>
@@ -144,6 +148,7 @@ export function FollowingView({
                       data?.error ||
                       row?.stale ||
                       !row?.receivedAt ||
+                      !Number.isSafeInteger(row.receivedAt) ||
                       clock - row.receivedAt > 60000 ||
                       row.receivedAt > clock + 30000,
                   );
@@ -170,6 +175,13 @@ export function FollowingView({
                             </span>
                           </span>
                         </button>
+                        <ParagonEstimate
+                          paperRaw={account?.paperTotal}
+                          label="PAPER value"
+                          holdingsDelayed={old}
+                          receivedAt={row?.receivedAt ?? null}
+                          compact
+                        />
                       </td>
                       <td className="numeric following-balance">
                         {formatRawUsd(account?.currentBalance)}

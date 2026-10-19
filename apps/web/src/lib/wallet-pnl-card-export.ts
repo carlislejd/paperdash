@@ -2,6 +2,7 @@ import { canvasPng, fittedText, imageCanvas } from "./image-export";
 import {
   PNL_CARD_ART,
   PNL_CARD_PNL_LABEL,
+  PARAGON_CARD_NOTE,
   type PnlCardModel,
 } from "./wallet-pnl-card";
 import { PAPER_BREAK_EVEN_NOTE } from "./wallet-performance";
@@ -238,6 +239,15 @@ async function renderCard(
     );
     text(m.paperBreakEvenNote, x, y + size + 27, width, 12, C.muted);
   };
+  const estimate = (
+    kind: "pnl" | "paper", x: number, y: number, width: number, size = 18,
+  ) => {
+    if (!m.paragon) return;
+    text(`${kind === "pnl" ? "P&L + PAPER value" : "PAPER value"}  ${m.paragon[kind]}`, x, y, width, size, C.ink, 550);
+    text(`(${m.paragon.label})`, x, y + 20, width, 14, C.muted);
+    const note = kind === "pnl" ? m.paragon.pnlNote : m.paragon.paperNote;
+    if (note !== "Reference estimate") text(note, x, y + 38, width, 12, C.muted);
+  };
   const stats = (
     x: number,
     y: number,
@@ -262,44 +272,55 @@ async function renderCard(
     text(m.accountNote, x, y, width - 260, 13, C.muted);
     text(m.historyNote, x, y + 22, width - 260, 13, C.muted);
     text("papertrade.club", x + width - 230, y + 16, 230, 22, C.ink, 550);
-    text(PAPER_BREAK_EVEN_NOTE, x, y + 40, width, 10, C.muted);
+    text(m.paragon ? PARAGON_CARD_NOTE : PAPER_BREAK_EVEN_NOTE, x, y + 40, width, m.paragon ? 12 : 10, C.muted);
+    if (m.paragon) text(m.paragon.priceNote, x, y + 59, width, 12, C.muted);
   };
   if (m.layout === "gallery") {
     brand(46, 62);
-    artRect(26, 90, w - 52, 280);
-    identity(48, 417, 720);
-    hero(48, 467, 720, 88);
-    paper(831, 467, 315, 36);
+    artRect(26, 90, w - 52, m.paragon ? 220 : 280);
+    identity(48, m.paragon ? 357 : 417, 720);
+    hero(48, m.paragon ? 406 : 467, 720, m.paragon ? 84 : 88);
+    paper(831, m.paragon ? 406 : 467, 315, 36);
+    estimate("pnl", 48, 545, 720, 21);
+    estimate("paper", 831, 520, 315, 18);
     breakEven(831, 606, 315, 30);
     breakdown(48, 606, 720, 32);
-    stats(48, 704, w - 70, 4, 120, 31, 4);
-    footer(48, 843, w - 96);
+    stats(48, m.paragon ? 690 : 704, w - 70, 4, 120, 31, 4);
+    footer(48, m.paragon ? 820 : 843, w - 96);
   } else if (m.layout === "split") {
     artRect(565, 0, 635, 452, 0.83);
     ctx.fillStyle = C.lavender;
     ctx.fillRect(0, 0, 565, 452);
     brand(36, 55, 30);
-    identity(38, 112, 482);
-    hero(38, 169, 492, 67);
-    breakdown(38, 293, 500, 29);
+    identity(38, m.paragon ? 100 : 112, 482);
+    hero(38, m.paragon ? 137 : 169, 492, m.paragon ? 57 : 67);
+    estimate("pnl", 38, 241, 492, 18);
+    breakdown(38, m.paragon ? 303 : 293, 500, 29);
     text("PAPER OWNED", 38, 390, 230, 12, C.muted);
     text(m.paper, 38, 416, 230, 23, C.ink, 600);
     text("Staked + unstaked", 38, 439, 230, 12, C.muted);
     breakEven(302, 390, 230, 22);
+    if (m.paragon) {
+      ctx.fillStyle = C.paper;
+      ctx.fillRect(589, 342, 587, 94);
+      estimate("paper", 609, 370, 547, 23);
+    }
     stats(38, 478, w - 50, 4, 108, 30, 4);
-    footer(38, 617, w - 76);
+    footer(38, m.paragon ? 608 : 617, w - 76);
   } else {
     brand(48, 70, 38);
-    artRect(24, 102, w - 48, 366, 0.72);
-    identity(48, 518, w - 96);
-    hero(48, 584, w - 96, 106);
-    breakdown(48, 757, w - 70, 42);
+    artRect(24, 102, w - 48, m.paragon ? 330 : 366, 0.72);
+    identity(48, m.paragon ? 482 : 518, w - 96);
+    hero(48, m.paragon ? 548 : 584, w - 96, m.paragon ? 100 : 106);
+    estimate("pnl", 48, 699, w - 96, 26);
+    breakdown(48, m.paragon ? 775 : 757, w - 70, 42);
     ctx.fillStyle = C.lavender;
-    ctx.fillRect(32, 870, w - 64, 125);
-    paper(56, 900, 460, 42);
+    ctx.fillRect(32, m.paragon ? 865 : 870, w - 64, m.paragon ? 150 : 125);
+    paper(56, m.paragon ? 886 : 900, 460, m.paragon ? 34 : 42);
+    estimate("paper", 56, 974, 460, 20);
     breakEven(558, 900, 466, 38);
-    stats(48, 1020, w - 70, 3, 120, 36);
-    footer(48, 1300, w - 96);
+    stats(48, m.paragon ? 1032 : 1020, w - 70, 3, m.paragon ? 108 : 120, 36);
+    footer(48, m.paragon ? 1270 : 1300, w - 96);
   }
   check();
   const blob = await canvasPng(canvas);

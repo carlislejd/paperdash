@@ -53,7 +53,84 @@ function snapshot(): PnlCardSnapshot {
   };
 }
 
+function withParagon(): PnlCardSnapshot {
+  const source = snapshot();
+  source.wallet.snapshot!.paper = { balance: raw(40_000), staked: raw(60_000) };
+  source.wallet.snapshot!.lifetime.realizedPnlRaw = raw(-1_000);
+  source.wallet.snapshot!.lifetime.paperRewardsClaimedRaw = raw(250);
+  source.wallet.stakingRewards!.pendingRaw = raw(150);
+  source.paragon = {
+    enabled: true,
+    quote: { source: "hyperliquid", market: "para:PAPER", basis: "perp-mid", priceUsdRaw: "25000000000000000", bidUsdRaw: "24000000000000000", askUsdRaw: "26000000000000000", sourceAt: at, receivedAt: at },
+    priceDelayed: false,
+    priceError: false,
+  };
+  return source;
+}
+
 describe("wallet P&L card model", () => {
+  it("keeps optional Paragon values secondary and freezes exact totals in every card layout", () => {
+    for (const layout of PNL_CARD_LAYOUTS) {
+      const source = withParagon();
+      const model = walletPnlCardModel(source, { layout: layout.id, hideWallet: true });
+      expect(model.pnl).toBe("−$600.00");
+      expect(model.paper).toBe("100,000.00");
+      expect(model.paragon).toMatchObject({
+        pnl: "+$1,900.00", paper: "$2,500.00", label: "Paragon premarket price",
+        pnlNote: "Reference estimate", paperNote: "Reference estimate",
+      });
+      expect(model.paragon!.priceNote).toContain("PAPER $0.025 USDC");
+      expect(model.paragon!.priceNote).toContain("2026-10-13 20:00 UTC");
+      expect(model.shareText).toContain("+$1,900.00 P&L + PAPER value (Paragon premarket price");
+      expect(JSON.stringify(model)).not.toContain(WALLET);
+      expect(JSON.stringify(model)).not.toContain("Private wallet name");
+      source.paragon!.quote!.priceUsdRaw = raw(10);
+      source.wallet.snapshot!.lifetime.realizedPnlRaw = raw(99_999);
+      expect(model.paragon!.pnl).toBe("+$1,900.00");
+      expect(model.pnl).toBe("−$600.00");
+    }
+    const source = withParagon();
+    source.paragon!.enabled = false;
+    const model = walletPnlCardModel(source, { layout: "split", hideWallet: true });
+    expect(model.paragon).toBeNull();
+    expect(model.shareText).not.toContain("Paragon");
+  });
+
+  it("keeps unknown holdings, rewards and reference quotes unknown without zero estimates", () => {
+    const source = withParagon();
+    source.wallet.stakingRewards!.pendingRaw = null;
+    let model = walletPnlCardModel(source, { layout: "split", hideWallet: true });
+    expect(model.paragon).toMatchObject({ pnl: "—", pnlNote: "Estimate unavailable", paper: "$2,500.00" });
+    source.wallet.snapshot!.paper.staked = "invalid";
+    model = walletPnlCardModel(source, { layout: "split", hideWallet: true });
+    expect(model.paragon).toMatchObject({ pnl: "—", paper: "—", paperNote: "Estimate unavailable" });
+    const missing = withParagon();
+    missing.paragon!.quote = null;
+    model = walletPnlCardModel(missing, { layout: "split", hideWallet: true });
+    expect(model.paragon).toMatchObject({ pnl: "—", paper: "—", priceNote: "Paragon price unavailable" });
+    expect(model.pnl).toBe("−$600.00");
+  });
+
+  it("retains explicit last-available labels for price, account and reward failures", () => {
+    for (const change of [
+      (source: PnlCardSnapshot) => { source.paragon!.priceError = true; },
+      (source: PnlCardSnapshot) => { source.paragon!.priceDelayed = true; },
+      (source: PnlCardSnapshot) => { source.paragon!.quote!.sourceAt = at - 60_001; },
+      (source: PnlCardSnapshot) => { source.wallet.accountFreshness!.stale = true; },
+    ]) {
+      const source = withParagon();
+      change(source);
+      expect(walletPnlCardModel(source, { layout: "split", hideWallet: true }).paragon).toMatchObject({
+        pnl: "+$1,900.00", paper: "$2,500.00", pnlNote: "Last available estimate", paperNote: "Last available estimate",
+      });
+    }
+    const source = withParagon();
+    source.wallet.stakingRewards!.stale = true;
+    expect(walletPnlCardModel(source, { layout: "split", hideWallet: true }).paragon).toMatchObject({
+      pnlNote: "Last available estimate", paperNote: "Reference estimate",
+    });
+  });
+
   it("uses successful check clocks for an unchanged account and unchanged trade statistics", () => {
     const source = snapshot();
     const old = at - 4 * 3600_000;

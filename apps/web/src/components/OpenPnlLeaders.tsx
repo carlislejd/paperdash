@@ -7,6 +7,7 @@ import {
   shortAddress,
 } from "../lib/format";
 import { Avatar } from "./Avatar";
+import { ParagonEstimate } from "./ParagonValuation";
 
 export function OpenPnlLeaders({
   onWallet,
@@ -27,8 +28,11 @@ export function OpenPnlLeaders({
     1,
     ...rows.map((account) => rawToNumber(account.currentUnrealizedPnl) ?? 0),
   );
+  const now = Date.now();
   const delayed = Boolean(
-    error || data?.stale || (data && Date.now() - data.receivedAt > 60000),
+    error || data?.error || data?.stale || !data?.receivedAt ||
+    !Number.isSafeInteger(data.receivedAt) ||
+    now - data.receivedAt > 60000 || data.receivedAt > now + 30000,
   );
   return (
     <section className="open-pnl-panel" aria-labelledby="open-pnl-title">
@@ -64,6 +68,13 @@ export function OpenPnlLeaders({
                   >
                     {formatRawUsd(account.currentOpenNotional, true)} open notional
                   </small>
+                  <ParagonEstimate
+                    paperRaw={account.paperTotal}
+                    label="PAPER value"
+                    holdingsDelayed={delayed}
+                    receivedAt={data?.receivedAt ?? null}
+                    compact
+                  />
                 </span>
                 <span className="open-pnl-value">
                   <span

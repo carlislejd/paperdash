@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   PNL_CARD_LAYOUTS,
   PNL_CARD_PNL_LABEL,
+  PARAGON_CARD_NOTE,
   walletPnlCardModel,
   type PnlCardLayout,
   type PnlCardSnapshot,
@@ -185,7 +186,7 @@ export function WalletPnlCardDialog({
               src={ready.url}
               width={model.width}
               height={model.height}
-              alt={`${model.identity} · ${model.pnl} total P&L · ${model.tradingPnl} realized trading P&L · ${model.rewards} rewards (${model.rewardsNote}) · ${model.paper} PAPER owned · ${model.paperBreakEven} PAPER break-even (${model.paperBreakEvenNote})`}
+              alt={`${model.identity} · ${model.pnl} total P&L · ${model.tradingPnl} realized trading P&L · ${model.rewards} rewards (${model.rewardsNote}) · ${model.paper} PAPER owned · ${model.paperBreakEven} PAPER break-even (${model.paperBreakEvenNote})${model.paragon ? ` · ${model.paragon.summary}` : ""}`}
             />
           ) : previewError ? (
             <div role="alert">
@@ -215,6 +216,14 @@ export function WalletPnlCardDialog({
         </dd>
         <dt>PAPER owned, staked and unstaked</dt>
         <dd>{model.paper}</dd>
+        {model.paragon && <>
+          <dt>P&amp;L + PAPER value</dt>
+          <dd>{model.paragon.pnl} ({model.paragon.label}) · {model.paragon.pnlNote}</dd>
+          <dt>PAPER value</dt>
+          <dd>{model.paragon.paper} ({model.paragon.label}) · {model.paragon.paperNote}</dd>
+          <dt>Reference price</dt>
+          <dd>{model.paragon.priceNote}</dd>
+        </>}
         <dt>PAPER break-even</dt>
         <dd>
           {model.paperBreakEven} · {model.paperBreakEvenNote}. {PAPER_BREAK_EVEN_NOTE}
@@ -279,6 +288,7 @@ export function WalletPnlCardDialog({
           Snapshot captured · {model.captured}. Trade highlights use recorded
           closed positions, including liquidations.
         </p>
+        {model.paragon && <p className="pnl-source-note">{model.paragon.priceNote}. {model.paragon.pnlNote}. {PARAGON_CARD_NOTE}</p>}
       </footer>
     </dialog>
   );

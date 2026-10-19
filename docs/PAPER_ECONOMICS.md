@@ -64,6 +64,14 @@ Missing or invalid prices make APR unavailable rather than zero. Prices older th
 
 Staking is required to earn rewards; holding unstaked PAPER does not earn this rate. The observed average can change with revenue and staking participation, and does not include token price gains/losses, purchase fees or taxes.
 
+## Optional Paragon reference valuations
+
+“Show Paragon estimates” is off by default and remembered in this browser. It adds secondary PAPER values to the wallet directory, wallet drawer, leaderboards, Following, top open-PnL list and overview supply. Every estimate is labeled “(Paragon premarket price).” Existing trading P&L, balances, PAPER counts, ranking order and historical charts remain unchanged. The same shared economics response supplies the quote; enabling estimates does not fetch individual wallets or call Hyperliquid from the browser.
+
+PAPER value is current staked plus unstaked PAPER multiplied by the validated `para:PAPER` perpetual midpoint, with integer arithmetic at 18 decimals. The wallet's additional “P&L + PAPER value” combines that mark with its existing lifetime trading-plus-rewards P&L. This is a reference estimate, not realized profit or token investment profit: acquisition costs are unknown, and sale proceeds depend on liquidity and execution. Current holdings are never added to 24-hour or open trading P&L. Overview supply uses the label “Implied supply value.”
+
+Unknown price or holdings remain unavailable, distinct from zero. Source timestamps are preserved; quote delays and delayed holdings or other P&L inputs are labeled separately. P&L-card capture freezes the preference, validated quote, source time and failure state alongside the account. Preview, export and share text all use that captured snapshot until the user selects Update card.
+
 ## Retained charts
 
 Supply and staked series are hourly snapshots. The net supply-change bars show signed changes between eligible consecutive hourly endpoints, not a sum of verified mint events. Reward-allocation bars show nonnegative changes in cumulative allocated USDC, not cash distributions or claims. A decreasing cumulative allocation counter cannot become a negative dividend or a fabricated zero.
