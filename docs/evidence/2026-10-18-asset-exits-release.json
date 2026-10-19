@@ -1,0 +1,644 @@
+{
+  "releaseDatePdt": "2026-10-18",
+  "commit": "612944ec49887876f9500468faada2ef20bde76f",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/39184642026",
+    "conclusion": "success",
+    "browserTestsPassed": 264
+  },
+  "deployments": {
+    "api": {
+      "id": "dep-dban26lg1s2s73co8mgg",
+      "status": "live",
+      "instancesComplete": 3,
+      "instancesTotal": 3
+    },
+    "worker": {
+      "id": "dep-dban38jbc2fs73c1favg",
+      "status": "live",
+      "standbyLogPdt": "2026-10-18T18:26:29-07:00",
+      "newActivitySnapshotsConfirmedAt": "2026-10-19T01:30:39.535Z"
+    },
+    "frontend": {
+      "id": "dep-dban5rs9v7es73964f40",
+      "status": "live",
+      "startedAtPdt": "2026-10-18T18:31:27-07:00",
+      "durationSeconds": 19.6
+    }
+  },
+  "production": {
+    "at": "2026-10-19T01:30:39.535Z",
+    "health": {
+      "ready": true,
+      "degraded": false,
+      "status": {
+        "stale": false,
+        "stream": "connected",
+        "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+        "sourceAt": 1792373439000,
+        "receivedAt": 1792373439940,
+        "persistence": "postgres",
+        "indexedBlock": "48918712"
+      }
+    },
+    "assets": [
+      {
+        "instrument": 0,
+        "segment": "all",
+        "activity": "all",
+        "receivedAgeMs": 4120,
+        "quoteAgeMs": 4620,
+        "stale": true,
+        "feedCount": 200,
+        "sampleCount": 62,
+        "counts": {
+          "open": 117,
+          "close": 145,
+          "liq": 0
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 0,
+        "segment": "all",
+        "activity": "entries",
+        "receivedAgeMs": 4570,
+        "quoteAgeMs": 5070,
+        "stale": true,
+        "feedCount": 200,
+        "sampleCount": 62,
+        "counts": {
+          "open": 262,
+          "close": 0,
+          "liq": 0
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 0,
+        "segment": "all",
+        "activity": "exits",
+        "receivedAgeMs": 5006,
+        "quoteAgeMs": 5506,
+        "stale": true,
+        "feedCount": 200,
+        "sampleCount": 62,
+        "counts": {
+          "open": 0,
+          "close": 261,
+          "liq": 1
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 0,
+        "segment": "profitable",
+        "activity": "all",
+        "receivedAgeMs": 5447,
+        "quoteAgeMs": 5947,
+        "stale": true,
+        "feedCount": 200,
+        "sampleCount": 62,
+        "counts": {
+          "open": 129,
+          "close": 133,
+          "liq": 0
+        },
+        "coverage": {
+          "basis": "positive-lifetime-realized-trading-pnl",
+          "activity": "all",
+          "minPnlUsd": 1000,
+          "classifiedAt": 1792373436790,
+          "unknownWallets": 2,
+          "maxAccountAgeMs": 300000,
+          "observedWallets": 861,
+          "classifiedWallets": 859,
+          "profitableWallets": 62,
+          "newestAccountReceivedAt": 1792373436070,
+          "oldestAccountReceivedAt": 1792373370346
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 0,
+        "segment": "profitable",
+        "activity": "entries",
+        "receivedAgeMs": 6091,
+        "quoteAgeMs": 6591,
+        "stale": true,
+        "feedCount": 200,
+        "sampleCount": 57,
+        "counts": {
+          "open": 257,
+          "close": 0,
+          "liq": 0
+        },
+        "coverage": {
+          "basis": "positive-lifetime-realized-trading-pnl",
+          "minPnlUsd": 1000,
+          "classifiedAt": 1792373436790,
+          "unknownWallets": 2,
+          "maxAccountAgeMs": 300000,
+          "observedWallets": 715,
+          "classifiedWallets": 713,
+          "profitableWallets": 58,
+          "newestAccountReceivedAt": 1792373436070,
+          "oldestAccountReceivedAt": 1792373370346,
+          "activity": "entries"
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 0,
+        "segment": "profitable",
+        "activity": "exits",
+        "receivedAgeMs": 6536,
+        "quoteAgeMs": 7036,
+        "stale": true,
+        "feedCount": 200,
+        "sampleCount": 57,
+        "counts": {
+          "open": 0,
+          "close": 257,
+          "liq": 0
+        },
+        "coverage": {
+          "basis": "positive-lifetime-realized-trading-pnl",
+          "activity": "exits",
+          "minPnlUsd": 1000,
+          "classifiedAt": 1792373436790,
+          "unknownWallets": 0,
+          "maxAccountAgeMs": 300000,
+          "observedWallets": 766,
+          "classifiedWallets": 766,
+          "profitableWallets": 58,
+          "newestAccountReceivedAt": 1792373436070,
+          "oldestAccountReceivedAt": 1792373370346
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 1,
+        "segment": "all",
+        "activity": "all",
+        "receivedAgeMs": 6963,
+        "quoteAgeMs": 4340,
+        "stale": true,
+        "feedCount": 200,
+        "sampleCount": 62,
+        "counts": {
+          "open": 140,
+          "close": 118,
+          "liq": 4
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 1,
+        "segment": "all",
+        "activity": "entries",
+        "receivedAgeMs": 7377,
+        "quoteAgeMs": 4754,
+        "stale": true,
+        "feedCount": 200,
+        "sampleCount": 62,
+        "counts": {
+          "open": 262,
+          "close": 0,
+          "liq": 0
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 1,
+        "segment": "all",
+        "activity": "exits",
+        "receivedAgeMs": 7797,
+        "quoteAgeMs": 5174,
+        "stale": true,
+        "feedCount": 200,
+        "sampleCount": 61,
+        "counts": {
+          "open": 0,
+          "close": 248,
+          "liq": 13
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 1,
+        "segment": "profitable",
+        "activity": "all",
+        "receivedAgeMs": 8225,
+        "quoteAgeMs": 5602,
+        "stale": true,
+        "feedCount": 124,
+        "sampleCount": 8,
+        "counts": {
+          "open": 65,
+          "close": 40,
+          "liq": 27
+        },
+        "coverage": {
+          "basis": "positive-lifetime-realized-trading-pnl",
+          "activity": "all",
+          "minPnlUsd": 1000,
+          "classifiedAt": 1792373436790,
+          "unknownWallets": 27,
+          "maxAccountAgeMs": 300000,
+          "observedWallets": 414,
+          "classifiedWallets": 387,
+          "profitableWallets": 16,
+          "newestAccountReceivedAt": 1792373432722,
+          "oldestAccountReceivedAt": 1792373349831
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 1,
+        "segment": "profitable",
+        "activity": "entries",
+        "receivedAgeMs": 8687,
+        "quoteAgeMs": 6064,
+        "stale": true,
+        "feedCount": 61,
+        "sampleCount": 4,
+        "counts": {
+          "open": 65,
+          "close": 0,
+          "liq": 0
+        },
+        "coverage": {
+          "basis": "positive-lifetime-realized-trading-pnl",
+          "minPnlUsd": 1000,
+          "classifiedAt": 1792373436790,
+          "unknownWallets": 26,
+          "maxAccountAgeMs": 300000,
+          "observedWallets": 354,
+          "classifiedWallets": 328,
+          "profitableWallets": 13,
+          "newestAccountReceivedAt": 1792373432722,
+          "oldestAccountReceivedAt": 1792373349831,
+          "activity": "entries"
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      },
+      {
+        "instrument": 1,
+        "segment": "profitable",
+        "activity": "exits",
+        "receivedAgeMs": 9117,
+        "quoteAgeMs": 6494,
+        "stale": true,
+        "feedCount": 63,
+        "sampleCount": 4,
+        "counts": {
+          "open": 0,
+          "close": 40,
+          "liq": 27
+        },
+        "coverage": {
+          "basis": "positive-lifetime-realized-trading-pnl",
+          "activity": "exits",
+          "minPnlUsd": 1000,
+          "classifiedAt": 1792373436790,
+          "unknownWallets": 26,
+          "maxAccountAgeMs": 300000,
+          "observedWallets": 358,
+          "classifiedWallets": 332,
+          "profitableWallets": 13,
+          "newestAccountReceivedAt": 1792373432722,
+          "oldestAccountReceivedAt": 1792373349831
+        },
+        "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+        "cacheControl": "no-cache"
+      }
+    ],
+    "stream": {
+      "durationMs": 10006,
+      "messages": 51,
+      "trades": 30,
+      "closes": 13,
+      "liquidations": 0,
+      "quotes": 20,
+      "duplicates": 0,
+      "outOfOrder": 0,
+      "maxQuoteAgeMs": 486
+    },
+    "failures": []
+  },
+  "handoffCheck": {
+    "result": "Activity views unavailable while replacement collector waited for the previous lease; frontend held until all checks passed.",
+    "initialSample": {
+      "at": "2026-10-19T01:27:26.143Z",
+      "health": {
+        "ready": true,
+        "degraded": false,
+        "status": {
+          "stale": false,
+          "stream": "connected",
+          "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+          "sourceAt": 1792373244000,
+          "receivedAt": 1792373246051,
+          "persistence": "postgres",
+          "indexedBlock": "48918514"
+        }
+      },
+      "assets": [
+        {
+          "instrument": 0,
+          "segment": "all",
+          "activity": "all",
+          "receivedAgeMs": 6374,
+          "quoteAgeMs": 7543,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 0,
+          "segment": "all",
+          "activity": "entries",
+          "receivedAgeMs": 6899,
+          "quoteAgeMs": 8068,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 0,
+          "segment": "all",
+          "activity": "exits",
+          "receivedAgeMs": 7421,
+          "quoteAgeMs": 8590,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 0,
+          "segment": "profitable",
+          "activity": "all",
+          "receivedAgeMs": 7831,
+          "quoteAgeMs": 9000,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 0,
+          "segment": "profitable",
+          "activity": "entries",
+          "receivedAgeMs": 8354,
+          "quoteAgeMs": 9523,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 0,
+          "segment": "profitable",
+          "activity": "exits",
+          "receivedAgeMs": 9000,
+          "quoteAgeMs": 10169,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 1,
+          "segment": "all",
+          "activity": "all",
+          "receivedAgeMs": 9421,
+          "quoteAgeMs": 9958,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 1,
+          "segment": "all",
+          "activity": "entries",
+          "receivedAgeMs": 9855,
+          "quoteAgeMs": 10392,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 1,
+          "segment": "all",
+          "activity": "exits",
+          "receivedAgeMs": 10353,
+          "quoteAgeMs": 10890,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 1,
+          "segment": "profitable",
+          "activity": "all",
+          "receivedAgeMs": 10789,
+          "quoteAgeMs": 11326,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 1,
+          "segment": "profitable",
+          "activity": "entries",
+          "receivedAgeMs": 11296,
+          "quoteAgeMs": 11833,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        },
+        {
+          "instrument": 1,
+          "segment": "profitable",
+          "activity": "exits",
+          "receivedAgeMs": 11811,
+          "quoteAgeMs": 12348,
+          "stale": true,
+          "feedCount": 0,
+          "counts": {
+            "open": 0,
+            "close": 0,
+            "liq": 0
+          },
+          "cdnCacheControl": "public, s-maxage=1, must-revalidate",
+          "cacheControl": "no-cache"
+        }
+      ],
+      "stream": {
+        "durationMs": 10004,
+        "messages": 62,
+        "trades": 41,
+        "closes": 14,
+        "liquidations": 0,
+        "quotes": 20,
+        "duplicates": 0,
+        "outOfOrder": 0,
+        "maxQuoteAgeMs": 996
+      },
+      "failures": [
+        "/api/assets/0/market?window=15m&activity=all bounds",
+        "/api/assets/0/market?window=15m&activity=all priced sample",
+        "/api/assets/0/market?window=15m&activity=entries bounds",
+        "/api/assets/0/market?window=15m&activity=entries priced sample",
+        "/api/assets/0/market?window=15m&activity=exits bounds",
+        "/api/assets/0/market?window=15m&activity=exits priced sample",
+        "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&activity=all bounds",
+        "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&activity=all priced sample",
+        "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&activity=all coverage",
+        "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&activity=entries bounds",
+        "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&activity=entries priced sample",
+        "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&activity=entries coverage",
+        "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&activity=exits bounds",
+        "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&activity=exits priced sample",
+        "/api/assets/0/market?window=15m&segment=profitable&minPnl=1000&activity=exits coverage",
+        "/api/assets/1/market?window=15m&activity=all bounds",
+        "/api/assets/1/market?window=15m&activity=all priced sample",
+        "/api/assets/1/market?window=15m&activity=entries bounds",
+        "/api/assets/1/market?window=15m&activity=entries priced sample",
+        "/api/assets/1/market?window=15m&activity=exits bounds",
+        "/api/assets/1/market?window=15m&activity=exits priced sample",
+        "/api/assets/1/market?window=15m&segment=profitable&minPnl=1000&activity=all bounds",
+        "/api/assets/1/market?window=15m&segment=profitable&minPnl=1000&activity=all priced sample",
+        "/api/assets/1/market?window=15m&segment=profitable&minPnl=1000&activity=all coverage",
+        "/api/assets/1/market?window=15m&segment=profitable&minPnl=1000&activity=entries bounds",
+        "/api/assets/1/market?window=15m&segment=profitable&minPnl=1000&activity=entries priced sample",
+        "/api/assets/1/market?window=15m&segment=profitable&minPnl=1000&activity=entries coverage",
+        "/api/assets/1/market?window=15m&segment=profitable&minPnl=1000&activity=exits bounds",
+        "/api/assets/1/market?window=15m&segment=profitable&minPnl=1000&activity=exits priced sample",
+        "/api/assets/1/market?window=15m&segment=profitable&minPnl=1000&activity=exits coverage"
+      ]
+    }
+  },
+  "browser": {
+    "url": "https://papertrade.club/?view=assets&asset=0&release=612944e",
+    "observedReleaseControls": [
+      "Both / Entries / Exits",
+      "All / Profitable",
+      "Minimum realized profit"
+    ],
+    "preservedAcrossBtcEthSwitch": {
+      "activity": "exits",
+      "segment": "profitable",
+      "window": "1h",
+      "minPnlUsd": 10000
+    },
+    "ethExitCoverageSample": {
+      "classified": 352,
+      "observed": 360,
+      "unknownExcluded": 8,
+      "confirmedDisplayed": 19
+    },
+    "walletOpenedFromExitMarker": {
+      "wallet": "0xe2683f451d2b0b404f92044a97593d73fcb3ce7d",
+      "kind": "close",
+      "side": "short",
+      "instrument": "BTC",
+      "notionalUsd": 5000000,
+      "executionPriceUsd": 82417.5,
+      "realizedPnlUsd": 101.58
+    },
+    "walletLoaded": true,
+    "entryMarkerEnterOpenedSameWallet": true,
+    "drawerDismissalPreservedAssetAndFilters": true,
+    "observedConsoleErrors": [],
+    "previews": [
+      "../previews/production-asset-exits-2026-10-18.png",
+      "../previews/production-asset-exits-wallet-2026-10-18.png"
+    ]
+  },
+  "localCapacityEvidence": "2026-10-18-assets-local-capacity.md",
+  "postgresEvidence": "2026-10-18-assets-postgres-local.json",
+  "browserPerformanceEvidence": "2026-10-18-asset-exits-browser-performance.json",
+  "limitations": [
+    "Existing historical trade-intake gap remains; public observations are not a complete execution ledger.",
+    "Production checks were passive single-client verification, not a production load test.",
+    "The 250-viewer run was 45 seconds on local SQLite/IPC and does not certify Render/PostgreSQL/Redis capacity or a long-duration soak.",
+    "Profit coverage samples change over time and apply only to observed wallets in the selected activity cohort over the past hour.",
+    "Service plans, environment, schema, retained history and checkpoints were unchanged."
+  ]
+}
