@@ -167,7 +167,7 @@ describe("retained staking yield", () => {
     const reads = vi.spyOn(reopened, "get");
     const chartReads = vi.spyOn(reopened.history, "protocolChartRows");
     await refreshProtocolCharts(reopened, finish);
-    expect(reads.mock.calls).toEqual([["summary"], ["staking-yield-window"]]);
+    expect(reads.mock.calls).toEqual([["summary"], ["paper-price"], ["staking-yield-window"]]);
     expect(chartReads.mock.calls).toEqual([["history"], ["summary"]]);
     expect((await readPaperEconomics(reopened, finish)).stakingYield).toMatchObject({
       fromMs: start,

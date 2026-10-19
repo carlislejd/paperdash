@@ -75,7 +75,7 @@ describe("saved PAPER economics", () => {
     const get = vi.spyOn(store, "get");
     await refreshProtocolCharts(store, now);
     expect(reads.mock.calls).toEqual([["history"], ["summary"]]);
-    expect(get.mock.calls).toEqual([["summary"]]);
+    expect(get.mock.calls).toEqual([["summary"], ["paper-price"]]);
     const data = await readPaperEconomics(store, now);
     expect(data).toMatchObject({
       sourceAt: now,

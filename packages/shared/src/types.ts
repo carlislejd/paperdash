@@ -500,6 +500,18 @@ export interface AnnualizedStakerYield {
   yearDays: 365;
   reason?: string;
 }
+/** Timestamped Hyperliquid Paragon perpetual reference, denominated in USDC. */
+export interface PaperPriceQuote {
+  source: "hyperliquid";
+  market: "para:PAPER";
+  basis: "perp-mid";
+  /** Exact 18-decimal prices; midpoint rounds down at the final raw unit. */
+  priceUsdRaw: Raw;
+  bidUsdRaw: Raw;
+  askUsdRaw: Raw;
+  sourceAt: number;
+  receivedAt: number;
+}
 export type ProtocolChartMetric =
   | "tvl"
   | "openPositions"
@@ -580,6 +592,8 @@ export interface PaperEconomicsResponse {
   annualized: AnnualizedStakingRevenue;
   /** Additive rollout field, independent of allocated protocol revenue. */
   stakingYield?: AnnualizedStakerYield;
+  /** Collector-owned reference quote. Its clocks age independently of rewards. */
+  paperPrice?: PaperPriceQuote | null;
   series: {
     supply: ProtocolChartSeries;
     staked: ProtocolChartSeries;

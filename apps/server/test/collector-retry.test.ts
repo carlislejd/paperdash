@@ -5,6 +5,11 @@ import { Upstream, UpstreamError } from "../src/upstream.js";
 import { CoordinationError } from "../src/coordination.js";
 import { ChangeBus } from "../src/bus.js";
 import { config } from "../src/config.js";
+vi.mock("../src/paper-price.js", () => ({
+  PAPER_PRICE_INTERVAL_MS: 10000,
+  PAPER_PRICE_KEY: "paper-price",
+  refreshPaperPrice: async () => {},
+}));
 vi.mock("../src/market-feed.js", () => ({
   MarketFeed: class {
     start() {}

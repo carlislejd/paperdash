@@ -2,8 +2,6 @@ import type { AnnualizedStakerYield } from "../../../../packages/shared/src/stak
 import type { PaperEconomicsResponse } from "../../../../packages/shared/src/types";
 import { formatRawUsd } from "./format";
 
-const SCALE = 10n ** 18n;
-
 export function stakerYieldDelayed(
   data: Pick<PaperEconomicsResponse, "sourceAt" | "receivedAt" | "stale" | "error"> | null | undefined,
   now = Date.now(),
@@ -21,18 +19,19 @@ export function stakerYieldDelayed(
 }
 
 function unsignedRaw(value: string | null | undefined): bigint | null {
-  return typeof value === "string" && /^\d+$/.test(value)
+  return typeof value === "string" && /^\d{1,78}$/.test(value)
     ? BigInt(value)
     : null;
 }
 
-/** Parse a hypothetical USDC price without passing through a floating point number. */
-export function parsePaperPrice(value: string): bigint | null {
-  const text = value.trim();
-  if (!/^(?:\d+(?:\.\d{0,18})?|\.\d{1,18})$/.test(text)) return null;
-  const [whole, fraction = ""] = text.split(".");
-  const raw = BigInt(whole || "0") * SCALE + BigInt(fraction.padEnd(18, "0"));
-  return raw > 0n ? raw : null;
+/** A compact USDC quote, with no floating-point conversion or false zero. */
+export function formatPaperPrice(raw: string | null | undefined): string {
+  const value = unsignedRaw(raw);
+  if (value === null || value <= 0n) return "—";
+  const units = (value + 5_000_000_000n) / 10_000_000_000n;
+  if (units === 0n) return "<$0.00000001";
+  const fraction = (units % 100_000_000n).toString().padStart(8, "0").replace(/0+$/, "");
+  return `$${(units / 100_000_000n).toLocaleString("en-US")}${fraction ? `.${fraction}` : ""}`;
 }
 
 /** The source clock and a complete interval must accompany an annualized rate. */
@@ -70,11 +69,11 @@ export function formatStakerYield(raw: string | null | undefined): string {
 /** Simple APR, rounded once at the display boundary to hundredths of a percent. */
 export function formatStakerApr(
   annualUsdPerPaperRaw: string | null | undefined,
-  price: string,
+  paperPriceUsdRaw: string | null | undefined,
 ): string {
   const annual = unsignedRaw(annualUsdPerPaperRaw);
-  const priceRaw = parsePaperPrice(price);
-  if (annual === null || priceRaw === null) return "—";
+  const priceRaw = unsignedRaw(paperPriceUsdRaw);
+  if (annual === null || priceRaw === null || priceRaw <= 0n) return "—";
   const hundredths = (annual * 10000n + priceRaw / 2n) / priceRaw;
   if (annual > 0n && hundredths === 0n) return "<0.01%";
   return `${(hundredths / 100n).toLocaleString("en-US")}.${(hundredths % 100n).toString().padStart(2, "0")}%`;

@@ -1606,7 +1606,7 @@ button svg {
 .overview-board .metrics-row {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   padding-top: 0;
-  align-items: center;
+  align-items: stretch;
 }
 .overview-board .metric {
   min-width: 0;

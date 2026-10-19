@@ -18,6 +18,11 @@ interface MockClient extends EventEmitter {
   disconnect: ReturnType<typeof vi.fn>;
 }
 const clients = vi.hoisted(() => [] as MockClient[]);
+vi.mock("../src/paper-price.js", () => ({
+  PAPER_PRICE_INTERVAL_MS: 10000,
+  PAPER_PRICE_KEY: "paper-price",
+  refreshPaperPrice: async () => {},
+}));
 vi.mock("../src/market-feed.js", () => ({
   MarketFeed: class {
     start() {}

@@ -33,7 +33,7 @@ The rate is unavailable for an unverified deployment, an invalid or pre-cutoff s
 
 ## Annualized staker yield
 
-The overview headline and PAPER panel show historical USDC/year per **1,000 staked PAPER**. This measures changes in `paper.accumulator`, the 1e27-scaled reward-per-share accumulator used for wallet rewards. It accounts for stake at each actual distribution, including changes between hourly observations. Lifetime allocations divided by today's stake would not measure this return.
+The overview headline shows **simple APR**, combining the observed annual USDC reward per PAPER with the Hyperliquid Paragon `para:PAPER` perpetual midpoint. The duplicate manual-price calculator has been removed. The reward numerator measures changes in `paper.accumulator`, the 1e27-scaled reward-per-share accumulator used for wallet rewards. It accounts for stake at each actual distribution, including changes between hourly observations. Lifetime allocations divided by today's stake would not measure this return.
 
 The additive `stakingYield` response contains `usdPerPaperPerYearRaw` and `earnedUsdPerPaperRaw` (18-decimal USDC per one PAPER), `fromMs`, `toMs`, `elapsedMs`, `basis: "observed-accumulator"`, and `yearDays: 365`. For accumulator endpoints A and B:
 
@@ -46,11 +46,23 @@ Integer arithmetic preserves the full accumulator delta through annualization, t
 
 The collector saves the first and latest comparable accumulator observations in the existing snapshot store for every accepted summary, including observations between slower chart publications. The first observation survives restarts and seven-day chart eviction, so the rate uses all measured time. Missing intervening polls need no interpolation: a cumulative endpoint delta captures rewards across the entire elapsed interval. A known accumulator decrease, timestamp rollback or conflicting value at the same source timestamp starts a new window. Missing or invalid source values remain unavailable, while a measured zero reward rate displays zero. Chart publication only reads this window and requires its endpoint to match the summary; a concurrent update can temporarily leave the yield unavailable until the next refresh, but cannot roll back the window.
 
-At least one elapsed hour is required before publishing an annualized number. On rollout, the UI shows that it is collecting the first hour. Older API responses can omit `stakingYield`. This read uses one bounded retained snapshot during normal collector publication, with no new upstream requests, per-viewer history reads, database migrations or RPC dependency. The headline and detail share the existing economics browser resource.
+At least one elapsed hour is required before publishing an annualized number. On rollout, the UI shows that it is collecting the first hour. Older API responses can omit `stakingYield`. This read uses one bounded retained snapshot during normal collector publication, with no new upstream requests, per-viewer history reads, database migrations or RPC dependency. The headline and PAPER charts share the existing economics browser resource.
 
 No zero **reward-per-share accumulator** at launch is assumed for this separate per-PAPER staking yield. A read-only check on October 15, 2026 (Pacific) returned identical current, nonzero `eth_call` values for block zero, the genesis block and latest, so that RPC cannot establish its historical accumulator baseline. [Captured evidence](evidence/2026-10-15-staking-genesis-verification.json) records the check. The verified zero **cumulative allocation** baseline above is a different counter; it does not imply a zero accumulator.
 
-The optional price input is a hypothetical USDC purchase price per PAPER, left blank by default. Simple APR = annual USDC per PAPER ÷ entered price × 100. It is not a live token quote or compounded APY. Staking is required to earn rewards; holding unstaked PAPER does not earn this rate. The observed average can change with revenue and staking participation, and does not include token price gains/losses, purchase fees or taxes.
+The headline uses the current best-bid/best-ask midpoint of Hyperliquid's [Paragon PAPER perpetual](https://app.hyperliquid.xyz/trade/para:PAPER) as a USDC reference price:
+
+```text
+simple APR (%) = annual USDC earned per PAPER ÷ PAPER reference price × 100
+```
+
+The optional `paperPrice` response carries `source: "hyperliquid"`, `market: "para:PAPER"`, `basis: "perp-mid"`, exact 18-decimal `priceUsdRaw`, `bidUsdRaw` and `askUsdRaw`, plus independent exchange `sourceAt` and receipt `receivedAt` clocks. Paragon's market metadata identifies USDC collateral. This is a perpetual midpoint, not an executable spot purchase quote, the oracle price, or the market's funding rate. APR uses integer arithmetic and does not compound.
+
+One collector-owned [L2 book snapshot](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#l2-book-snapshot) request refreshes the retained price every ten seconds under normal operation. Unlike the change-only BBO stream, the book response supplies a timestamped snapshot for a quiet market. Quotes require the exact market, valid positive bid/ask, a non-crossed book and valid timestamps. Failures retain the original quote and its clocks with bounded retries; neither API reads nor page views contact Hyperliquid. The existing economics publication includes the saved quote for all viewers.
+
+Missing or invalid prices make APR unavailable rather than zero. Prices older than 60 seconds are labeled delayed independently from the reward data's 30-second freshness limit. A measured zero reward rate still displays zero APR when a valid price exists. Refreshing the page cannot renew either source clock.
+
+Staking is required to earn rewards; holding unstaked PAPER does not earn this rate. The observed average can change with revenue and staking participation, and does not include token price gains/losses, purchase fees or taxes.
 
 ## Retained charts
 

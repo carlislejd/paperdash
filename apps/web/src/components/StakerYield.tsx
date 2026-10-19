@@ -1,13 +1,12 @@
-import { useId, useState } from "react";
-import type { AnnualizedStakerYield } from "../../../../packages/shared/src/staking-yield";
+import { paperPriceDelayed, validPaperPrice } from "../../../../packages/shared/src/paper-price";
 import type { PaperEconomicsResponse } from "../../../../packages/shared/src/types";
 import { useAnalytics } from "../lib/use-analytics";
 import {
+  formatPaperPrice,
   formatStakerApr,
   formatStakerYield,
   formatYieldHours,
   formatYieldTime,
-  parsePaperPrice,
   stakerYieldDelayed,
   stakerYieldRate,
 } from "../lib/staker-yield";
@@ -17,120 +16,70 @@ export function StakerYieldMetric() {
   const { data, error } = useAnalytics<PaperEconomicsResponse>(
     "/api/paper/economics",
   );
-  const stale = Boolean(error || stakerYieldDelayed(data));
+  const rewards = data?.stakingYield;
+  const rate = stakerYieldRate(rewards);
+  const quote = validPaperPrice(data?.paperPrice);
+  const rewardDelayed = Boolean(error || stakerYieldDelayed(data));
+  const priceDelayed = paperPriceDelayed(quote);
+  const delayed = rate !== null && quote !== null && (rewardDelayed || priceDelayed);
+  const collecting =
+    rewards?.elapsedMs != null &&
+    Number.isSafeInteger(rewards.elapsedMs) &&
+    rewards.elapsedMs >= 0 &&
+    rewards.elapsedMs < 3_600_000;
+
   return (
     <div className="metric metric-staker-yield">
-      <span
-        className="metric-label"
-        title="Historical annual USDC reward rate per 1,000 staked PAPER, using all observed hours including partial hours. Future rewards vary."
-      >
-        Staker yield / year
-      </span>
-      <strong>{formatStakerYield(stakerYieldRate(data?.stakingYield))}</strong>
+      <span className="metric-label">Staker yield / year</span>
+      <strong>{formatStakerApr(rate, quote?.priceUsdRaw)}</strong>
       <span className="metric-note">
-        USDC / 1K PAPER · observed rate
-        {stale && data && (
-          <span className="staker-yield-delayed">Last available</span>
-        )}
+        Simple APR · {delayed ? "last available" : "observed rate"}
       </span>
-    </div>
-  );
-}
-
-export function StakerYield({
-  data,
-  stale,
-}: {
-  data: AnnualizedStakerYield | null | undefined;
-  stale: boolean;
-}) {
-  const [price, setPrice] = useState("");
-  const id = useId();
-  const rate = stakerYieldRate(data);
-  const invalidPrice = price.trim() !== "" && parsePaperPrice(price) === null;
-  const interval = rate !== null && data?.fromMs != null && data.toMs != null;
-  const collecting =
-    data?.elapsedMs != null &&
-    Number.isSafeInteger(data.elapsedMs) &&
-    data.elapsedMs >= 0 &&
-    data.elapsedMs < 3_600_000;
-
-  return (
-    <section className="staker-yield" aria-labelledby={`${id}-heading`}>
-      <div className="staker-yield-heading">
-        <h3 id={`${id}-heading`}>Staker yield / year</h3>
-        {stale && <span className="staker-yield-delayed">Last available</span>}
-      </div>
-      <div className="staker-yield-value">
-        <strong>{formatStakerYield(rate)}</strong>
-        <span>USDC / 1,000 staked PAPER</span>
-      </div>
-      <p className="staker-yield-intro">
-        Stake PAPER to earn USDC. Historical rate; future rewards vary.
-      </p>
-      <div className="staker-yield-calculator">
-        <div className="staker-yield-price">
-          <label htmlFor={`${id}-price`}>PAPER price (USDC)</label>
-          <input
-            id={`${id}-price`}
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={80}
-            placeholder="Enter a price"
-            value={price}
-            onChange={(event) => setPrice(event.target.value)}
-            aria-invalid={invalidPrice}
-            aria-describedby={`${id}-price-note`}
-          />
-        </div>
-        <div className="staker-yield-apr" aria-live="polite" aria-atomic="true">
-          <span>Simple APR</span>
-          <strong>{formatStakerApr(rate, price)}</strong>
-        </div>
-        <p id={`${id}-price-note`} className="staker-yield-price-note">
-          {invalidPrice
-            ? "Enter a price greater than zero, with up to 18 decimal places."
-            : "Hypothetical price · APR = annual USDC per PAPER ÷ price. No compounding."}
-        </p>
-      </div>
-      <div className="staker-yield-method">
-        {interval ? (
-          <>
-            <p>
-              Observed rate ·{" "}
-              <strong>{formatYieldHours(data.elapsedMs)} hours</strong> measured
-            </p>
-            <p className="staker-yield-interval">
-              <time
-                dateTime={new Date(data.fromMs!).toISOString()}
-                title={new Date(data.fromMs!).toISOString()}
-              >
-                {formatYieldTime(data.fromMs!)}
-              </time>
-              <span aria-hidden="true"> → </span>
-              <span className="sr-only"> to </span>
-              <time
-                dateTime={new Date(data.toMs!).toISOString()}
-                title={new Date(data.toMs!).toISOString()}
-              >
-                {formatYieldTime(data.toMs!)}
-              </time>
-            </p>
-            <p>
-              USDC earned per PAPER ÷ elapsed hours × 8,760. Includes partial
-              hours; retrospective run rate.
-            </p>
-          </>
-        ) : (
+      <span className="metric-note staker-yield-price">
+        {quote ? `PAPER ${formatPaperPrice(quote.priceUsdRaw)} · perp midpoint` : "PAPER price unavailable"}
+      </span>
+      <a
+        className="metric-note staker-yield-source"
+        href="https://app.hyperliquid.xyz/trade/para:PAPER"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Hyperliquid para:PAPER <span aria-hidden="true">↗</span>
+      </a>
+      {quote && priceDelayed && <span className="metric-note staker-yield-delayed">Price delayed</span>}
+      {rate !== null && rewardDelayed && <span className="metric-note staker-yield-delayed">Rewards delayed</span>}
+      {rate === null && (
+        <span className="metric-note">
+          {collecting ? "Collecting the first hour of rewards" : "Waiting for reward observations"}
+        </span>
+      )}
+      <details className="staker-yield-method">
+        <summary>How it’s calculated</summary>
+        <div>
           <p>
-            {collecting
-              ? "Collecting the first hour of staking rewards."
-              : "Waiting for staking reward observations."}
+            Observed annual USDC earned per PAPER ÷ PAPER price. No compounding;
+            future rewards vary.
           </p>
-        )}
-      </div>
-    </section>
+          {rate !== null && rewards ? (
+            <>
+              <p>{formatStakerYield(rate)} USDC / 1,000 staked PAPER / year.</p>
+              <p>{formatYieldHours(rewards.elapsedMs)} hours measured, including partial hours.</p>
+              <p className="staker-yield-interval">
+                <time dateTime={new Date(rewards.fromMs!).toISOString()}>{formatYieldTime(rewards.fromMs!)}</time>
+                <span aria-hidden="true"> → </span><span className="sr-only"> to </span>
+                <time dateTime={new Date(rewards.toMs!).toISOString()}>{formatYieldTime(rewards.toMs!)}</time>
+              </p>
+              <p>USDC earned per PAPER ÷ elapsed hours × 8,760. Retrospective run rate.</p>
+            </>
+          ) : (
+            <p>{collecting ? "Collecting the first hour of staking rewards." : "Waiting for staking reward observations."}</p>
+          )}
+          <p>Price is the midpoint of the best bid and ask for Paragon’s PAPER perpetual on Hyperliquid.</p>
+          {quote && (
+            <p>Price as of <time dateTime={new Date(quote.sourceAt).toISOString()}>{formatYieldTime(quote.sourceAt)}</time>.</p>
+          )}
+        </div>
+      </details>
+    </div>
   );
 }

@@ -26,6 +26,7 @@ import {
   refreshAssetAnalytics,
 } from "./assets.js";
 import { MarketFeed } from "./market-feed.js";
+import { PAPER_PRICE_INTERVAL_MS, refreshPaperPrice } from "./paper-price.js";
 import { refreshMarkets } from "./market.js";
 import { retainHouseSource, refreshHouse } from "./house.js";
 import { refreshLiquidations } from "./liquidations.js";
@@ -326,6 +327,7 @@ export class Collector {
       },
     );
     this.marketFeed.start();
+    this.loop("paper-price", PAPER_PRICE_INTERVAL_MS, () => refreshPaperPrice(this.store));
     this.loop("asset-live", 5000, () => refreshMarkets(this.store));
     this.loop("asset-market", 5000, async () => {
       const source = await this.upstream.request(

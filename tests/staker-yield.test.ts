@@ -4,7 +4,7 @@ import {
   formatStakerApr,
   formatStakerYield,
   formatYieldHours,
-  parsePaperPrice,
+  formatPaperPrice,
   stakerYieldDelayed,
   stakerYieldRate,
 } from "../apps/web/src/lib/staker-yield";
@@ -72,28 +72,31 @@ describe("staker yield display", () => {
   });
 });
 
-describe("hypothetical PAPER price and simple APR", () => {
-  it("accepts only positive decimal prices with up to 18 decimals", () => {
-    expect(parsePaperPrice("0.50")).toBe(SCALE / 2n);
-    expect(parsePaperPrice(" .50 ")).toBe(SCALE / 2n);
-    expect(parsePaperPrice("1.")).toBe(SCALE);
-    expect(parsePaperPrice("0.000000000000000001")).toBe(1n);
-    expect(parsePaperPrice("9007199254740993.123456789012345678")).toBe(9007199254740993123456789012345678n);
-    for (const value of ["", " ", ".", "0", "0.00", "-0.5", "+1", "1e-3", "1,000", "Infinity", "0.0000000000000000001", "abc"])
-      expect(parsePaperPrice(value)).toBeNull();
+describe("feed-backed PAPER price and simple APR", () => {
+  it("formats the quote without floating-point loss or a false zero", () => {
+    expect(formatPaperPrice("24700000000000000")).toBe("$0.0247");
+    expect(formatPaperPrice("500000000000000000")).toBe("$0.5");
+    expect(formatPaperPrice("1")).toBe("<$0.00000001");
+    expect(formatPaperPrice("5000000000")).toBe("$0.00000001");
+    expect(formatPaperPrice("999999999999999999")).toBe("$1");
+    expect(formatPaperPrice("9007199254740993123456789012345678")).toBe("$9,007,199,254,740,993.12345679");
+    for (const value of [null, undefined, "", "0", "-1", "0.5", "1e18", "1".repeat(79)])
+      expect(formatPaperPrice(value)).toBe("—");
   });
 
-  it("computes simple APR exactly and distinguishes zero from absent input", () => {
-    expect(formatStakerApr("25000000000000000", "0.50")).toBe("5.00%");
-    expect(formatStakerApr("0", "0.50")).toBe("0.00%");
-    expect(formatStakerApr("1", "0.50")).toBe("<0.01%");
-    expect(formatStakerApr("24999999999999", "0.50")).toBe("<0.01%");
-    expect(formatStakerApr("25000000000000", "0.50")).toBe("0.01%");
-    expect(formatStakerApr((9007199254740993n * SCALE).toString(), "9007199254740993")).toBe("100.00%");
-    expect(formatStakerApr("1", "0.000000000000000001")).toBe("100.00%");
-    for (const price of ["", "0", "-1", "1e2", "no price"])
+  it("computes simple APR from raw feed values exactly, keeping zero separate from unavailable", () => {
+    const half = "500000000000000000";
+    expect(formatStakerApr("25000000000000000", half)).toBe("5.00%");
+    expect(formatStakerApr("108590000000000000", "24700000000000000")).toBe("439.64%");
+    expect(formatStakerApr("0", half)).toBe("0.00%");
+    expect(formatStakerApr("1", half)).toBe("<0.01%");
+    expect(formatStakerApr("24999999999999", half)).toBe("<0.01%");
+    expect(formatStakerApr("25000000000000", half)).toBe("0.01%");
+    expect(formatStakerApr((9007199254740993n * SCALE).toString(), (9007199254740993n * SCALE).toString())).toBe("100.00%");
+    expect(formatStakerApr("1", "1")).toBe("100.00%");
+    for (const price of [null, undefined, "", "0", "-1", "1e2", "no price", "1".repeat(79)])
       expect(formatStakerApr("25000000000000000", price)).toBe("—");
-    expect(formatStakerApr(null, "0.50")).toBe("—");
-    expect(formatStakerApr("-1", "0.50")).toBe("—");
+    expect(formatStakerApr(null, half)).toBe("—");
+    expect(formatStakerApr("-1", half)).toBe("—");
   });
 });

@@ -189,7 +189,7 @@ describe("retained hourly protocol charts", () => {
     const reads = vi.spyOn(store, "get");
     await refreshProtocolCharts(store, now);
     expect(readRows.mock.calls).toEqual([["history"], ["summary"]]);
-    expect(reads.mock.calls).toEqual([["summary"]]);
+    expect(reads.mock.calls).toEqual([["summary"], ["paper-price"]]);
     const data = await readProtocolCharts(store, now);
     expect(data.sourceAt).toBe(now);
     for (const [metric, value] of Object.entries({
