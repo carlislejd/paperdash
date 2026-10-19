@@ -1,0 +1,74 @@
+{
+  "commit": "2271106228056ea118babeb9351ed4ff14dcce07",
+  "featureCommit": "383d723afb260c55691e82f84cc525f54c6b8bcf",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/39197938592",
+    "attempt": 2,
+    "conclusion": "success",
+    "browserPassed": 282
+  },
+  "localChecks": {
+    "build": "passed",
+    "unitPassed": 1021,
+    "unitEnvironmentSkipped": 45,
+    "preferencesBrowserPassed": 6,
+    "walletCardBrowserPassed": 32,
+    "rankingsAndRelatedBrowserPassed": 30,
+    "finalLayoutAndRankingsBrowserPassed": 24
+  },
+  "frontend": {
+    "deployment": "dep-dbapjs6q1p3s73cjlqmg",
+    "status": "Live",
+    "duration": "22.2s",
+    "bundle": "assets/index-CGNnkA6Z.js"
+  },
+  "apiAndWorker": {
+    "commit": "096be0ac3637a7dfbb710888b606227ebe47b2a1",
+    "changed": false
+  },
+  "finalVerification": {
+    "checkedAt": "2026-10-19T04:18:50.258Z",
+    "ready": true,
+    "degraded": false,
+    "paperPrice": {
+      "basis": "perp-mid",
+      "market": "para:PAPER",
+      "source": "hyperliquid",
+      "sourceAt": 1792383523534,
+      "askUsdRaw": "24360000000000000",
+      "bidUsdRaw": "24249000000000000",
+      "receivedAt": 1792383523902,
+      "priceUsdRaw": "24304500000000000"
+    },
+    "checks": [
+      "New visitors default to estimates off",
+      "Enabled leaderboard reference uses shared quote",
+      "Primary P&L and rank unchanged when disabled",
+      "Preference persists across reload",
+      "Wallet shows separate P&L plus PAPER value and PAPER value",
+      "Current quotes update without page refresh",
+      "Delayed reward inputs remain explicitly labeled",
+      "Mobile wallet width and scroll width both 390 pixels",
+      "Disabling leaves zero rendered estimates",
+      "No observed browser console errors"
+    ],
+    "desktopViewport": {
+      "width": 1440,
+      "height": 1000,
+      "documentWidth": 1440
+    },
+    "mobileWallet": {
+      "width": 390,
+      "scrollWidth": 390
+    },
+    "screenshots": [
+      "production-paragon-leaderboard-2026-10-18.png",
+      "production-paragon-wallet-2026-10-18.png",
+      "production-paragon-wallet-mobile-2026-10-18.png"
+    ]
+  },
+  "ciNotes": [
+    "Initial full browser run found mobile footer movement. Header layout corrected; original regression assertion retained.",
+    "First attempt on final commit had test-only collector advisory-lock contention among parallel PostgreSQL tests. Production lease code unchanged; rerun passed."
+  ]
+}
