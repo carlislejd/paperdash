@@ -7,6 +7,7 @@ import type {
   AccountsResponse,
   AssetsResponse,
   AssetMarketResponse,
+  MarketActivity,
   Cashflow,
   DepositDailyResponse,
   LeaderboardResponse,
@@ -210,6 +211,7 @@ export function marketResponse(
   instrument = 0,
   stale = false,
   now = Date.now(),
+  activity: MarketActivity = "all",
 ): AssetMarketResponse {
   const at = now - (stale ? 120_000 : 0);
   const base = instrument === 1 ? 2_500 : 82_000;
@@ -218,6 +220,7 @@ export function marketResponse(
     priceUsd: base + (Math.sin(index / 12) * 0.0005 + index * 0.000006) * base,
   }));
   return {
+    activity,
     instrument,
     symbol: instrument === 1 ? "ETH" : "BTC",
     price: { priceUsd: points.at(-1)!.priceUsd, sourceAt: at, receivedAt: at },
@@ -234,7 +237,7 @@ export function marketResponse(
       pnlUsd: index % 3 ? null : 200,
       provenance: "public-stream" as const,
       priceUsd: points[178 - index * 6].priceUsd,
-    })),
+    })).filter((trade) => activity === "entries" ? trade.kind === "open" : activity === "exits" ? trade.kind === "close" : true),
     windowFrom: at - 3_600_000,
     windowTo: at,
     receivedAt: at,
@@ -601,7 +604,8 @@ export async function mockSources(
     const marketMatch = url.pathname.match(/^\/api\/assets\/([01])\/market$/);
     if (marketMatch) {
       await route.fulfill({
-        json: marketResponse(Number(marketMatch[1]), options.stale),
+        json: marketResponse(Number(marketMatch[1]), options.stale, Date.now(),
+          (url.searchParams.get("activity") ?? "all") as MarketActivity),
       });
       return;
     }

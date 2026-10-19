@@ -20,6 +20,9 @@ const NORMAL = 5000,
   ASSET_RECONCILE = 15000,
   RECOVERY = 30000,
   LEASE = 20000;
+const marketPath = (path: string) =>
+  /^\/api\/assets\/\d+\/market$/.test(path.split("?")[0]);
+const assetPath = (path: string) => path === "/api/assets" || marketPath(path);
 type Options = {
   liveLiquidations?: boolean;
   instrument?: number;
@@ -189,7 +192,7 @@ export class AnalyticsResources {
     // Profitable trade classification only arrives in snapshots. Price ticks
     // cannot keep this cohort current, so preserve its normal polling cadence.
     if (
-      /^\/api\/assets\/\d+\/market$/.test(path) &&
+      marketPath(path) &&
       new URLSearchParams(query).get("segment") === "profitable"
     )
       return null;
@@ -197,7 +200,7 @@ export class AnalyticsResources {
       !this.assetDelivery.connected ||
       !entry.listeners.size ||
       (entry.raw as { stale?: boolean } | null)?.stale ||
-      (entry.path === "/api/assets" &&
+      (assetPath(entry.path) &&
         this.assetSnapshotExpiry(entry) < this.env.now())
     )
       return null;
@@ -231,6 +234,9 @@ export class AnalyticsResources {
       time <= now + 30000
         ? time + maxAge
         : 0;
+    // Market history and trade coverage have their own publication clock.
+    // New quote frames cannot renew this authoritative saved snapshot.
+    if (marketPath(entry.path)) return expiry(data?.receivedAt, 20000);
     return Math.min(
       expiry(data?.receivedAt, 20000),
       expiry(data?.sourceAt, 30000),
@@ -360,10 +366,10 @@ export class AnalyticsResources {
               stale,
               ...(houseStale === undefined ? {} : { houseStale }),
             };
-    } else if (data && typeof data === "object" && entry.path === "/api/assets") {
+    } else if (data && typeof data === "object" && assetPath(entry.path)) {
       const record = data as Record<string, unknown>;
-      // Quotes are a different source: they cannot renew saved open-interest
-      // or activity clocks while the slower authoritative GET is pending.
+      // Quotes are a different source: they cannot renew saved open-interest,
+      // market coverage or activity clocks while an authoritative GET is pending.
       const stale = Boolean(
         record.stale ||
           error ||
@@ -415,12 +421,12 @@ export class AnalyticsResources {
       reason = "revision";
       at = Math.max((entry.startedAt ?? 0) + NORMAL, entry.dirtyAt ?? now);
     } else {
-      // Live quotes/trades fill the current market. OI/activity need an earlier
-      // authoritative refresh than the market's history/coverage reconciliation.
+      // Live quotes/trades fill the current market. Reconcile saved coverage,
+      // history and activity promptly, including any trades missed in a reconnect.
       const reconcile = capable || assetLease !== null;
       reason = reconcile ? "recovery" : "poll";
       const interval = reconcile
-        ? entry.path === "/api/assets"
+        ? assetPath(entry.path)
           ? ASSET_RECONCILE
           : RECOVERY
         : NORMAL;
@@ -428,7 +434,7 @@ export class AnalyticsResources {
         entry.checkedAt +
         interval +
         Math.min(interval * 0.2, 5000) * entry.jitter;
-      if (assetLease !== null && entry.path === "/api/assets")
+      if (assetLease !== null && assetPath(entry.path))
         // Keep a little network headroom before the saved source goes stale,
         // without allowing old backend snapshots to create a tight request loop.
         at = Math.max(

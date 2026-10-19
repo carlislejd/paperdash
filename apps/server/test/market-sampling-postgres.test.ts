@@ -5,11 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import { Pool } from "pg";
 import { createStore, type Store } from "../src/store.js";
 import { createPgMarket } from "../src/market-store.js";
+import { refreshMarkets } from "../src/market.js";
 import {
   sampleFixtures,
   sampleNow as now,
 } from "./market-sampling-fixtures.js";
-import { seedProfitableMarket, seedProfitFloors, segmentAccount } from "./market-segment-fixtures.js";
+import { seedProfitableMarket, seedProfitFloors, seedActivityMarket, segmentAccount } from "./market-segment-fixtures.js";
 const url = process.env.TEST_DATABASE_URL;
 
 describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
@@ -57,6 +58,9 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
       expect((await pg.market.read(0, now)).profitableByMinPnl).toEqual(
         (await sqlite.market.read(0, now)).profitableByMinPnl,
       );
+      await seedActivityMarket(pg);
+      await seedActivityMarket(sqlite);
+      expect((await pg.market.read(0, now)).activities).toEqual((await sqlite.market.read(0, now)).activities);
       // Exercise every saved floor in the large-query case, sharing one account lookup.
       await pg.following.retainAccounts([{
         ...segmentAccount(1, (100000n * 10n ** 18n).toString()),
@@ -72,7 +76,7 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
         `INSERT INTO paperdash_analytics_members SELECT 'perf-s-'||g,'perf-'||g,'public-stream' FROM generate_series(0,19999) g UNION ALL SELECT 'perf-r-'||g,'perf-'||g,'recent-api' FROM generate_series(0,19999) g`,
       );
       await pool.query(
-        `INSERT INTO paperdash_trade_observations SELECT m.id,jsonb_build_object('id',m.id,'ts',f.source_at,'wallet','0x1111111111111111111111111111111111111111','instrument',0,'side','long','leverage',10,'kind','open','notionalUsd',f.notional,'pnlUsd',NULL,'priceUsd',110000.25,'provenance',m.provenance),f.source_at,$1 FROM paperdash_analytics_members m JOIN paperdash_analytics_fingerprints f ON f.fingerprint=m.fingerprint WHERE m.id LIKE 'perf-%'`,
+        `INSERT INTO paperdash_trade_observations SELECT m.id,jsonb_build_object('id',m.id,'ts',f.source_at,'wallet','0x1111111111111111111111111111111111111111','instrument',0,'side','long','leverage',10,'kind',CASE WHEN substring(m.id from '[0-9]+$')::int%3=0 THEN 'open' WHEN substring(m.id from '[0-9]+$')::int%3=1 THEN 'close' ELSE 'liq' END,'notionalUsd',f.notional,'pnlUsd',NULL,'priceUsd',110000.25,'provenance',m.provenance),f.source_at,$1 FROM paperdash_analytics_members m JOIN paperdash_analytics_fingerprints f ON f.fingerprint=m.fingerprint WHERE m.id LIKE 'perf-%'`,
         [now],
       );
       await pool.query(
@@ -93,6 +97,10 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
       await pool.query(
         "ANALYZE paperdash_snapshots; ANALYZE paperdash_analytics_fingerprints; ANALYZE paperdash_analytics_members; ANALYZE paperdash_trade_observations",
       );
+      // Include a full retained reference history in snapshot payload measurements.
+      await pool.query(`INSERT INTO paperdash_market_prices(instrument,time,price_usd,source_at,received_at,gap_before)
+        SELECT asset,$1::bigint-g*5000,110000,$1::bigint-g*5000,$1::bigint-g*5000,0
+        FROM generate_series(0,719) g CROSS JOIN generate_series(0,1) asset`, [now]);
       const query = vi.spyOn(pool, "query");
       const start = performance.now();
       const result = await createPgMarket(pool).read(0, now);
@@ -111,6 +119,16 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
       for (const cohort of Object.values(result.profitableByMinPnl)) {
         expect(cohort.rawTrades).toHaveLength(400);
         expect(cohort.chartSamples["1h"].trades.length).toBeGreaterThanOrEqual(50);
+      }
+      for (const [activity, view] of Object.entries(result.activities)) {
+        for (const cohort of [view, ...Object.values(view.profitableByMinPnl)]) {
+          expect(cohort.rawTrades.length).toBeLessThanOrEqual(400);
+          for (const sample of Object.values(cohort.chartSamples)) {
+            expect(sample.trades.length).toBeLessThanOrEqual(62);
+            if (activity === "exits") expect(sample.trades.every((trade) => trade.kind !== "open")).toBe(true);
+            if (activity === "entries") expect(sample.trades.every((trade) => trade.kind === "open")).toBe(true);
+          }
+        }
       }
       const sampling = query.mock.calls.filter(
         ([sql]) => typeof sql === "string" && sql.startsWith("WITH recent"),
@@ -139,6 +157,18 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
       );
       if (process.env.MARKET_SAMPLE_PLAN_PATH)
         await writeFile(process.env.MARKET_SAMPLE_PLAN_PATH, planText, "utf8");
+      const put = vi.spyOn(pg, "put");
+      const refreshStart = performance.now();
+      await refreshMarkets(pg, now);
+      const refreshMs = Math.round(performance.now() - refreshStart);
+      expect(put).toHaveBeenCalledTimes(10);
+      const snapshotBytes = put.mock.calls.map(([, value]) => Buffer.byteLength(JSON.stringify(value)));
+      const retainedSizes = (await pool.query(`SELECT max(pg_column_size(payload)) AS largest,sum(pg_column_size(payload)) AS total
+        FROM paperdash_snapshots WHERE key LIKE 'market:%'`)).rows[0];
+      const maxSnapshotBytes = Math.max(...snapshotBytes);
+      const totalSnapshotBytes = snapshotBytes.reduce((sum, bytes) => sum + bytes, 0);
+      expect(maxSnapshotBytes).toBeLessThan(1000000);
+      put.mockRestore();
       console.info(
         JSON.stringify({
           test: "market-chart-sampling-local",
@@ -152,6 +182,9 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
               sample.trades.length,
             ]),
           ),
+          activityVariants: Object.keys(result.activities).length,
+          refreshMs, snapshotWrites: 10, maxSnapshotBytes, totalSnapshotBytes,
+          storedJsonbBytes: Number(retainedSizes.total), maxStoredJsonbBytes: Number(retainedSizes.largest),
           externalRequests: 0,
         }),
       );
@@ -161,5 +194,5 @@ describe.skipIf(!url)("PostgreSQL windowed trade sampling", () => {
       await admin.query(`DROP SCHEMA ${schema} CASCADE`);
       await admin.end();
     }
-  }, 20000);
+  }, 30000);
 });

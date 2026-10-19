@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   AssetMarketResponse,
   AssetPricePoint,
+  MarketActivity,
   MarketSegment,
   MarketWindow,
   TradeEvent,
 } from "../../../../packages/shared/src/types";
 import { subscribeLiveEvents } from "./live-events";
 import {
+  matchesMarketActivity,
   mergeMarketPoints,
   mergeMarketTrades,
   validPricePoint,
@@ -23,15 +25,20 @@ import {
 type LiveMarket = {
   instrument: number;
   points: AssetPricePoint[];
-  trades: TradeEvent[];
-  samples: Record<MarketWindow, TradeEvent[]>;
+  activities: Record<MarketActivity, {
+    trades: TradeEvent[];
+    samples: Record<MarketWindow, TradeEvent[]>;
+  }>;
   price: AssetMarketResponse["price"];
 };
 const emptyLive = (instrument: number): LiveMarket => ({
   instrument,
   points: [],
-  trades: [],
-  samples: { "5m": [], "15m": [], "1h": [] },
+  activities: {
+    all: { trades: [], samples: { "5m": [], "15m": [], "1h": [] } },
+    entries: { trades: [], samples: { "5m": [], "15m": [], "1h": [] } },
+    exits: { trades: [], samples: { "5m": [], "15m": [], "1h": [] } },
+  },
   price: null,
 });
 
@@ -40,9 +47,10 @@ export function useAssetMarket(
   window: MarketWindow = "15m",
   segment: MarketSegment = "all",
   minPnlUsd = 0,
+  activity: MarketActivity = "all",
 ) {
   const snapshot = useAnalytics<AssetMarketResponse>(
-    `/api/assets/${instrument}/market?window=${window}${segment === "profitable" ? `&segment=profitable${minPnlUsd > 0 ? `&minPnl=${minPnlUsd}` : ""}` : ""}`,
+    `/api/assets/${instrument}/market?window=${window}${segment === "profitable" ? `&segment=profitable${minPnlUsd > 0 ? `&minPnl=${minPnlUsd}` : ""}` : ""}&activity=${activity}`,
     { liveAsset: instrument },
   );
   const [live, setLive] = useState<LiveMarket>(() => emptyLive(instrument));
@@ -110,22 +118,24 @@ export function useAssetMarket(
               : emptyLive(instrument);
           return {
             ...current,
-            samples: Object.fromEntries(
-              (Object.keys(MARKET_WINDOWS) as MarketWindow[]).map((range) => [
-                range,
-                selectMarketSample(
-                  current.samples[range],
-                  [message.data],
-                  instrument,
-                  range,
-                ),
-              ]),
-            ) as LiveMarket["samples"],
-            trades: mergeMarketTrades(
-              current.trades,
-              [message.data],
-              instrument,
-            ),
+            // Maintain each activity before applying bounds so switching to
+            // exits cannot lose them to a burst of larger/newer entries.
+            activities: Object.fromEntries(
+              (["all", "entries", "exits"] as const).map((cohort) => {
+                const previous = current.activities[cohort];
+                if (!matchesMarketActivity(message.data, cohort))
+                  return [cohort, previous];
+                return [cohort, {
+                  samples: Object.fromEntries(
+                    (Object.keys(MARKET_WINDOWS) as MarketWindow[]).map((range) => [
+                      range,
+                      selectMarketSample(previous.samples[range], [message.data], instrument, range),
+                    ]),
+                  ),
+                  trades: mergeMarketTrades(previous.trades, [message.data], instrument),
+                }];
+              }),
+            ) as LiveMarket["activities"],
           };
         });
       }
@@ -141,10 +151,12 @@ export function useAssetMarket(
     Math.max(classificationNow, Date.now()),
     Boolean(snapshot.error),
     minPnlUsd,
+    activity,
   )
     ? market
     : null;
   const profitable = segment === "profitable";
+  const cohort = current.activities[activity];
   const points = useMemo(
     () => mergeMarketPoints(market?.points ?? [], current.points),
     [market, current.points],
@@ -152,13 +164,11 @@ export function useAssetMarket(
   const trades = useMemo(
     () =>
       mergeMarketTrades(
-        profitable
-          ? (data?.trades ?? []).filter((trade) => trade.kind === "open")
-          : (data?.trades ?? []),
-        profitable ? [] : current.trades,
+        (data?.trades ?? []).filter((trade) => matchesMarketActivity(trade, activity)),
+        profitable ? [] : cohort.trades,
         instrument,
       ),
-    [data, current.trades, instrument, profitable],
+    [data, cohort.trades, instrument, profitable, activity],
   );
   const chartSample = useMemo(() => {
     const sample = data?.chartSample;
@@ -166,16 +176,16 @@ export function useAssetMarket(
       ? {
           ...sample,
           trades: selectMarketSample(
-            profitable
-              ? sample.trades.filter((trade) => trade.kind === "open")
-              : sample.trades,
-            profitable ? [] : current.samples[window],
+            sample.trades,
+            profitable ? [] : cohort.samples[window],
             instrument,
             window,
+            Date.now(),
+            activity,
           ),
         }
       : undefined;
-  }, [data, current.samples, instrument, window, profitable]);
+  }, [data, cohort.samples, instrument, window, profitable, activity]);
   const savedPrice = market?.price ?? null;
   const price =
     current.price &&
@@ -194,6 +204,6 @@ export function useAssetMarket(
     segmentCoverage: data?.segmentCoverage,
     segmentUnavailable: profitable && !data,
     price,
-    stale: Boolean(snapshot.error) || (market?.stale ?? true),
+    stale: !data || Boolean(snapshot.error) || (market?.stale ?? true),
   };
 }

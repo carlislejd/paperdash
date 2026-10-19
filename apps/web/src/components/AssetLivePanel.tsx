@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type {
+  MarketActivity,
   MarketSegment,
   MarketWindow,
 } from "../../../../packages/shared/src/types";
@@ -18,8 +19,9 @@ export function AssetLivePanel({
 }) {
   const [window, setWindow] = useState<MarketWindow>("15m");
   const [segment, setSegment] = useState<MarketSegment>("all");
+  const [activity, setActivity] = useState<MarketActivity>("all");
   const [minPnlUsd, setMinPnlUsd] = useState(1_000);
-  const market = useAssetMarket(instrument, window, segment, minPnlUsd);
+  const market = useAssetMarket(instrument, window, segment, minPnlUsd, activity);
   return (
     <>
       <AnalyticsNotice error={market.error} hasData={Boolean(market.data)} />
@@ -33,6 +35,8 @@ export function AssetLivePanel({
         onWindowChange={setWindow}
         segment={segment}
         onSegmentChange={setSegment}
+        activity={activity}
+        onActivityChange={setActivity}
         minPnlUsd={minPnlUsd}
         onMinPnlChange={setMinPnlUsd}
         segmentCoverage={market.segmentCoverage}

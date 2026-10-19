@@ -34,6 +34,20 @@ const data = (): AssetMarketResponse => ({
 });
 
 describe("profitable market cohort acceptance", () => {
+  it("requires explicit activity metadata on both payload and profit coverage when requested", () => {
+    const value = data();
+    expect(acceptsMarketSegment(value, 0, "profitable", NOW, false, 0, "exits")).toBe(false);
+    value.activity = "exits";
+    expect(acceptsMarketSegment(value, 0, "profitable", NOW, false, 0, "exits")).toBe(false);
+    value.segmentCoverage!.activity = "exits";
+    expect(acceptsMarketSegment(value, 0, "profitable", NOW, false, 0, "exits")).toBe(true);
+    expect(acceptsMarketSegment(value, 0, "profitable", NOW, false, 0, "entries")).toBe(false);
+    value.segment = "all";
+    expect(acceptsMarketSegment(value, 0, "all", NOW, false, 0, "exits")).toBe(true);
+    expect(acceptsMarketSegment(value, 0, "all", NOW, false, 0, "all")).toBe(false);
+    delete value.activity;
+    expect(acceptsMarketSegment(value, 0, "all", NOW, false, 0, "exits")).toBe(false);
+  });
   it("accepts a recent classified cohort, including valid empty or partial coverage", () => {
     expect(acceptsMarketSegment(data(), 0, "profitable", NOW)).toBe(true);
     const empty = data();

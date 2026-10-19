@@ -1,10 +1,19 @@
 import type {
   AssetPricePoint,
+  MarketActivity,
   TradeEvent,
 } from "../../../../packages/shared/src/types";
 
 export const MARKET_WINDOW_MS = 3_600_000;
 const PRICE_BUCKET_MS = 5_000;
+
+export function matchesMarketActivity(trade: TradeEvent, activity: MarketActivity) {
+  return activity === "entries"
+    ? trade.kind === "open"
+    : activity === "exits"
+      ? trade.kind === "close" || trade.kind === "liq"
+      : ["open", "close", "liq"].includes(trade.kind);
+}
 
 export function validMarketTrade(
   trade: TradeEvent,

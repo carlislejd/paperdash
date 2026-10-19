@@ -1,0 +1,53 @@
+{
+  "scope": "Isolated local PostgreSQL 17 integration and mixed-activity stress; not a production capacity guarantee",
+  "recordedAt": "2026-10-18T18:02:16-07:00",
+  "fixture": {
+    "syntheticExecutions": 20000,
+    "sourceObservations": 40000,
+    "olderObservations": 120000,
+    "activities": [
+      "open",
+      "close",
+      "liq"
+    ],
+    "pricePointsPerInstrument": 720,
+    "instruments": 2,
+    "externalRequests": 0
+  },
+  "finalMeasurement": {
+    "readMs": 1707,
+    "refreshBothInstrumentsMs": 1428,
+    "snapshotWrites": 10,
+    "maxSerializedSnapshotBytes": 305941,
+    "totalSerializedSnapshotBytes": 1699088,
+    "maxStoredJsonbColumnBytes": 24756,
+    "totalStoredJsonbColumnBytes": 142707
+  },
+  "beforeSnapshotReferenceDedup": {
+    "maxSerializedSnapshotBytes": 397886,
+    "totalSerializedSnapshotBytes": 2166776
+  },
+  "storageNote": "pg_column_size(payload) measures retained JSONB column size, including PostgreSQL compression behavior; it is not total disk usage or WAL bytes. Logical payload values are JSON.stringify byte lengths.",
+  "checks": [
+    "SQLite/PostgreSQL activity parity",
+    "Indexed raw-trade/account/member/fingerprint lookups",
+    "Exact global top-K equivalence from entries/exits candidates",
+    "Legacy and versioned activity reference compatibility",
+    "Strict activity query and edge-cache policy",
+    "Ten snapshot writes, no extra price-history copies"
+  ],
+  "validation": {
+    "fullSuiteBeforeSnapshotReferenceDedup": {
+      "filesPassed": 107,
+      "testsPassed": 1049,
+      "postgresEnabled": true,
+      "redisEnabled": true
+    },
+    "afterSnapshotReferenceDedup": {
+      "focusedMarketTestsPassed": 23,
+      "postgresStressTestsPassed": 1,
+      "buildPassed": true
+    }
+  },
+  "temporaryServicesStopped": true
+}

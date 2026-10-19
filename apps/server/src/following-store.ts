@@ -194,12 +194,12 @@ function createFollowing(db: Db): FollowingStore {
         ? "pnl ~ '^(0|[1-9][0-9]*|-[1-9][0-9]*)$'"
         : "(pnl='0' OR (substr(pnl,1,1) BETWEEN '1' AND '9' AND pnl NOT GLOB '*[^0-9]*') OR (substr(pnl,1,1)='-' AND substr(pnl,2,1) BETWEEN '1' AND '9' AND substr(pnl,2) NOT GLOB '*[^0-9]*'))";
       // Two indexed instrument/time ranges bound this to the actual one-hour
-      // opening cohort. The cursor rotates missing accounts too, so a deleted
+      // active trading cohort. The cursor rotates missing accounts too, so a deleted
       // wallet cannot monopolize the repair lane. No historical jobs are queued.
       const rows = await db.rows<{ wallet: string }>(
         `WITH recent AS MATERIALIZED (
           SELECT DISTINCT ${wallet} AS wallet FROM ${db.prefix}trade_observations r
-          WHERE ${instrument} IN (?,?) AND r.source_at>=? AND r.source_at<=? AND ${kind}='open'
+          WHERE ${instrument} IN (?,?) AND r.source_at>=? AND r.source_at<=? AND ${kind} IN ('open','close','liq')
         ), accounts AS MATERIALIZED (
           SELECT w.wallet,${address} AS account_address,${pnl} AS pnl,s.received_at,
             CASE WHEN ${pnlString} THEN 1 ELSE 0 END AS pnl_is_string

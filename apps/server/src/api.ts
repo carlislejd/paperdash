@@ -272,10 +272,11 @@ export async function buildApi(
     const { instrument } = z
       .object({ instrument: z.enum(["0", "1"]).transform(Number) })
       .parse(req.params);
-    const { window, segment, minPnl } = z
+    const { window, segment, minPnl, activity } = z
       .object({
         window: z.enum(["5m", "15m", "1h"]).default("1h"),
         segment: z.enum(["all", "profitable"]).default("all"),
+        activity: z.enum(["all", "entries", "exits"]).optional(),
         minPnl: z.enum(["0", "1000", "10000", "100000"])
           .default("0")
           .transform((value) => Number(value) as MarketMinPnlUsd),
@@ -288,8 +289,8 @@ export async function buildApi(
     return analyticsResponse(
       req,
       reply,
-      await reads.read(`market:${instrument}:${window}:${segment}:${minPnl}`, () =>
-        readMarket(store, instrument, Date.now(), window, segment, minPnl),
+      await reads.read(`market:${instrument}:${window}:${segment}:${minPnl}:${activity ?? "legacy"}`, () =>
+        readMarket(store, instrument, Date.now(), window, segment, minPnl, activity),
       ),
     );
   });

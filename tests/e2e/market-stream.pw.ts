@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { MarketActivity } from "../../packages/shared/src/types";
 import { assetResponse, marketResponse, mockSources, overview, WALLET } from "./fixtures";
 
 async function mockEventStream(page: Page) {
@@ -70,6 +71,7 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
       new URL(route.request().url()).pathname.split("/")[3],
     );
     const response = marketResponse(instrument, false, at - 10_000);
+    response.receivedAt = await page.evaluate(() => Date.now());
     response.chartSample = {
       windowFrom: response.windowTo - 900_000,
       windowTo: response.windowTo,
@@ -133,7 +135,7 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
       },
     });
     await page.clock.fastForward(10_000);
-    expect(marketReads).toBe(initialMarketReads);
+    await expect.poll(() => marketReads).toBe(initialMarketReads + 1);
     await expect.poll(() => assetReads).toBe(initialAssetReads + 1);
   }
   const now = await page.evaluate(() => Date.now());
@@ -146,7 +148,7 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
     },
   });
   await page.clock.fastForward(5_000);
-  await expect.poll(() => marketReads).toBe(initialMarketReads + 1);
+  await expect.poll(() => marketReads).toBe(initialMarketReads + 2);
   await expect.poll(() => assetReads).toBe(initialAssetReads + 2);
   await expect(
     graph.locator('[data-trade-id="stream-integration-trade"]'),
@@ -204,6 +206,60 @@ test("asset charts share one stream, retain live arrivals across polls, and isol
   const previousReads = marketReads;
   await page.clock.fastForward(10_001);
   expect(marketReads).toBe(previousReads);
+});
+
+test("exits and liquidations arrive live, survive entry bursts, and replay only once across activity toggles", async ({ page }) => {
+  const at = Date.now();
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(new Date(at));
+  await mockEventStream(page);
+  await mockSources(page);
+  await page.route("**/api/assets/*/market*", async (route) => {
+    const url = new URL(route.request().url());
+    const activity = url.searchParams.get("activity") as MarketActivity;
+    const response = marketResponse(Number(url.pathname.split("/")[3]), false, at, activity);
+    response.trades = [];
+    response.chartSample = {
+      windowFrom: at - 900_000, windowTo: at, bucketMs: 30_000, perBucket: 2,
+      selection: "largest-notional-per-time-bucket", partial: true, trades: [],
+    };
+    await route.fulfill({ json: response });
+  });
+  await page.goto("/?view=assets&asset=0");
+  const graph = page.getByRole("region", { name: "BTC price and trades" });
+  const close = {
+    id: "live-close", ts: at - 1, wallet: WALLET, instrument: 0, side: "long",
+    kind: "close", leverage: 20, notionalUsd: 100, pnlUsd: 12.34,
+    priceUsd: 82_100, provenance: "public-stream",
+  };
+  await sendDashboard(page, { type: "trade", data: close });
+  await sendDashboard(page, { type: "trade", data: close });
+  await expect(graph.locator('[data-trade-id="live-close"]')).toHaveCount(1);
+  await sendDashboard(page, { type: "trade", data: { ...close, id: "live-liq", kind: "liq", notionalUsd: 90, pnlUsd: -30 } });
+  await sendDashboard(page, { type: "trade", data: { ...close, id: "unpriced-exit", priceUsd: null } });
+  await page.evaluate((base) => {
+    const emit = (window as unknown as { emitDashboard: (message: unknown) => void }).emitDashboard;
+    for (let i = 0; i < 500; i++) emit({ type: "trade", data: {
+      ...base, kind: "open", id: `large-entry-${i}`, ts: base.ts + 1, notionalUsd: 1_000_000 + i,
+    } });
+  }, close);
+  await graph.getByRole("button", { name: "Exits and liquidations", exact: true }).click();
+  await expect(graph.locator('[data-trade-id="live-close"]')).toHaveCount(1);
+  await expect(graph.locator('[data-trade-id="live-liq"]')).toHaveCount(1);
+  await expect(graph.locator('[data-trade-id="unpriced-exit"]')).toHaveCount(1);
+  await expect(graph.locator('[data-trade-id^="large-entry-"]')).toHaveCount(0);
+  await expect(graph.locator(".trade-graph-bubble")).toHaveCount(2);
+  await page.clock.fastForward(6_001);
+  await expect(graph.locator('[data-trade-id="live-close"]')).toHaveCount(1);
+  await graph.getByRole("button", { name: "Entries only", exact: true }).click();
+  await expect(graph.locator('[data-trade-id="live-close"]')).toHaveCount(0);
+  await expect(graph.locator('[data-trade-id="large-entry-499"]')).toHaveCount(1);
+  await graph.getByRole("button", { name: "Exits and liquidations", exact: true }).click();
+  await expect(graph.locator('[data-trade-id="live-close"]')).toHaveCount(1);
+  await page.getByRole("button", { name: "ETH Ethereum" }).click();
+  const eth = page.getByRole("region", { name: "ETH price and trades" });
+  await expect(eth.getByRole("button", { name: "Exits and liquidations", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(eth.locator('[data-trade-id="live-close"]')).toHaveCount(0);
 });
 
 test("fresh quotes stay live when trade snapshots lag and require fresh source and receipt clocks", async ({

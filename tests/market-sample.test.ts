@@ -31,6 +31,20 @@ const trade = (
 });
 
 describe("windowed chart sample reconciliation", () => {
+  it("selects exits before applying caps and includes liquidations without mixing entries", () => {
+    const rows = [
+      trade("entry-one", now - 1000, 10_000_000),
+      trade("entry-two", now - 1000, 9_000_000),
+      trade("exit", now - 1000, 200, { kind: "close" }),
+      trade("liquidation", now - 1000, 100, { kind: "liq" }),
+    ];
+    expect(selectMarketSample(rows, [], 0, "15m", now, "exits").map((t) => t.id))
+      .toEqual(["liquidation", "exit"]);
+    expect(selectMarketSample(rows, [], 0, "15m", now, "entries").map((t) => t.id))
+      .toEqual(["entry-two", "entry-one"]);
+    expect(selectMarketSample(rows, [], 0, "15m", now).map((t) => t.id))
+      .toEqual(["entry-two", "entry-one"]);
+  });
   it("retains older buckets and the largest live arrivals through a busy latest bucket", () => {
     const old = trade("old-large", now - 850_000, 10_000_000);
     let selected = [old];

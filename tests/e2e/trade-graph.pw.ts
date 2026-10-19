@@ -9,7 +9,7 @@ test("price bubbles and side feed share selection, keyboard inspection and walle
   const panel = page.getByRole("region", { name: "BTC price and trades" });
   await panel.getByRole("button", { name: "All traders", exact: true }).click();
   const chart = panel.getByRole("group", {
-    name: "BTC reference price and execution bubbles",
+    name: "BTC reference price and execution markers",
   });
   await expect(chart.getByRole("button")).toHaveCount(12);
   await expect(panel).toContainText(
@@ -19,12 +19,14 @@ test("price bubbles and side feed share selection, keyboard inspection and walle
     name: /^Closed BTC long, \$50,000\.00 notional/,
   });
   await bubble.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(bubble).toHaveAttribute("aria-pressed", "true");
   await expect(panel.locator('[data-trade-id="market-0-0"]')).toHaveClass(
     "is-active",
   );
   await expect(panel.locator(".trade-graph-inspect")).toContainText(
-    "Execution price",
+    "Exit price",
   );
   await chart.press("Home");
   await expect(panel.locator('[data-trade-id="market-0-11"]')).toHaveClass(
@@ -52,7 +54,7 @@ test("price bubbles and side feed share selection, keyboard inspection and walle
   await expect(chart).toBeVisible();
   await chart.press("Escape");
   await expect(panel.locator(".trade-graph-inspect")).toContainText(
-    "Select a bubble",
+    "Hover a marker to inspect",
   );
   await panel
     .locator('[data-trade-id="market-0-0"]')
@@ -75,7 +77,7 @@ test("pausing freezes the chart cohort while new data is buffered and resumes to
   const panel = page.getByRole("region", { name: "BTC price and trades" });
   await panel.getByRole("button", { name: "All traders", exact: true }).click();
   const chart = panel.getByRole("group", {
-    name: "BTC reference price and execution bubbles",
+    name: "BTC reference price and execution markers",
   });
   await expect(chart.getByRole("button")).toHaveCount(12);
   const initialPrice = await panel.locator(".trade-graph-price").innerText();

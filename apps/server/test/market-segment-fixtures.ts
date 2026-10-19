@@ -75,3 +75,17 @@ export async function seedProfitFloors(store: Store) {
       segmentAccount(row.n, row.pnl.toString()), now);
   }
 }
+
+/** Close-only and liquidated wallets, including unknown and losing accounts. */
+export async function seedActivityMarket(store: Store) {
+  for (const [n, pnl] of [[31, 1000], [32, 2000], [33, 3000], [35, -1], [36, 1000]] as const)
+    await store.put(`account-summary:${segmentWallet(n)}`, segmentAccount(n, (BigInt(pnl) * 10n ** 18n).toString()), now);
+  for (const trade of [
+    sampleTrade("entry", { wallet: segmentWallet(31), notionalUsd: 1e12 }),
+    sampleTrade("profitable-exit", { wallet: segmentWallet(32), kind: "close", pnlUsd: -100, notionalUsd: 2, priceUsd: 111000 }),
+    sampleTrade("profitable-liq", { wallet: segmentWallet(33), kind: "liq", pnlUsd: -200, notionalUsd: 3, priceUsd: 112000 }),
+    sampleTrade("unknown-exit", { wallet: segmentWallet(34), kind: "close", pnlUsd: 1000, notionalUsd: 1e11 }),
+    sampleTrade("losing-exit", { wallet: segmentWallet(35), kind: "close", pnlUsd: 1000, notionalUsd: 1e10 }),
+    sampleTrade("unpriced-exit", { wallet: segmentWallet(36), kind: "close", pnlUsd: 1000, notionalUsd: 1e9, priceUsd: null }),
+  ]) await store.recordTrade(trade);
+}

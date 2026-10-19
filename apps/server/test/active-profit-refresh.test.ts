@@ -180,7 +180,7 @@ describe("active trader profit refresh", () => {
     expect(directoryPage).toHaveBeenLastCalledWith("", "lastActiveTs", 0, 100, true);
   });
 
-  it("uses only the recent opening cohort and refreshes missing, stale, malformed and future accounts fairly", async () => {
+  it("uses only the recent trading cohort and refreshes missing, stale, malformed and future accounts fairly", async () => {
     const store = await setup();
     for (let n = 1; n <= 8; n++) await store.recordTrade(sampleTrade(`cohort:${n}`, {
       wallet: segmentWallet(n), ts: now - 1000, instrument: n % 2,
@@ -195,8 +195,9 @@ describe("active trader profit refresh", () => {
     await store.recordTrade(sampleTrade("old", { wallet: segmentWallet(9), ts: now - 3600001 }));
     await store.recordTrade(sampleTrade("future", { wallet: segmentWallet(10), ts: now + 1 }));
     await store.recordTrade(sampleTrade("closed", { wallet: segmentWallet(11), ts: now - 1000, kind: "close" }));
+    await store.recordTrade(sampleTrade("liquidated", { wallet: segmentWallet(13), ts: now - 1000, kind: "liq" }));
     await store.recordTrade(sampleTrade("left-bound", { wallet: segmentWallet(12), ts: now - 3600000 }));
-    expect(await store.following.profitRefreshCandidates("", now)).toEqual([3, 4, 5, 6, 7, 8, 12].map(segmentWallet));
-    expect(await store.following.profitRefreshCandidates(segmentWallet(6), now)).toEqual([7, 8, 12, 3, 4, 5, 6].map(segmentWallet));
+    expect(await store.following.profitRefreshCandidates("", now)).toEqual([3, 4, 5, 6, 7, 8, 11, 12, 13].map(segmentWallet));
+    expect(await store.following.profitRefreshCandidates(segmentWallet(6), now)).toEqual([7, 8, 11, 12, 13, 3, 4, 5, 6].map(segmentWallet));
   });
 });

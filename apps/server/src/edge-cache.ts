@@ -12,6 +12,12 @@ const snapshots = new Set([
       ...["all", "profitable"].map(
         (segment) => `/api/assets/${instrument}/market?window=${window}&segment=${segment}`,
       ),
+      ...["all", "entries", "exits"].flatMap((activity) => [
+        `/api/assets/${instrument}/market?window=${window}&activity=${activity}`,
+        `/api/assets/${instrument}/market?window=${window}&segment=all&activity=${activity}`,
+        `/api/assets/${instrument}/market?window=${window}&segment=profitable&activity=${activity}`,
+        ...marketMinPnlUsd.map((floor) => `/api/assets/${instrument}/market?window=${window}&segment=profitable&minPnl=${floor}&activity=${activity}`),
+      ]),
       ...marketMinPnlUsd.filter((floor) => floor > 0).map(
         (floor) => `/api/assets/${instrument}/market?window=${window}&segment=profitable&minPnl=${floor}`,
       ),

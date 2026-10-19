@@ -39,7 +39,7 @@ function deadline(error: unknown, failures: number, now: number): number {
 /**
  * Exclusive collector only: one source lookup per two-second turn, under the
  * existing shared request gate. Four turns batch 100 recent-active accounts;
- * the fifth repairs an observed opener that mutable directory paging missed.
+ * the fifth repairs an observed trader that mutable directory paging missed.
  * No viewer is needed, and the durable cursor immediately covers the retained
  * cohort after deployment/restart. Source failures may extend the cadence.
  */

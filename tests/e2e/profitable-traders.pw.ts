@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import type {
   AssetMarketResponse,
+  MarketActivity,
   MarketWindow,
   TradeEvent,
 } from "../../packages/shared/src/types";
@@ -35,13 +36,16 @@ function response(
   trades = profitable
     ? profitableEntries()
     : [{ ...entry("large-losing-entry", 10_000_000), wallet: losingWallet }],
+  activity: MarketActivity = "all",
 ): AssetMarketResponse {
   return {
     ...marketResponse(0, false, NOW),
+    activity,
     segment: profitable ? "profitable" : "all",
     ...(profitable
       ? {
           segmentCoverage: {
+            activity,
             basis: "positive-lifetime-realized-trading-pnl" as const,
             minPnlUsd: 1000 as const,
             classifiedAt: NOW,
@@ -116,7 +120,8 @@ test("profitable entries include small trades, explain current classification, a
     const window = url.searchParams.get("window") as MarketWindow;
     const profitable = url.searchParams.get("segment") === "profitable";
     // A defensive close row must not slip through the entry-only client view.
-    const data = response(profitable, window);
+    const activity = url.searchParams.get("activity") as MarketActivity;
+    const data = response(profitable, window, undefined, activity);
     if (profitable) data.trades.push({ ...entry("unexpected-close"), kind: "close" });
     await route.fulfill({ json: data });
   });
@@ -125,6 +130,7 @@ test("profitable entries include small trades, explain current classification, a
   const segment = panel.getByRole("button", { name: "Profitable traders", exact: true });
   await expect(segment).toHaveAttribute("aria-pressed", "false");
   await expect(panel.locator('[data-trade-id="large-losing-entry"]')).toHaveCount(1);
+  await panel.getByRole("button", { name: "Entries only", exact: true }).click();
   await segment.click();
   await expect(panel.getByRole("combobox", { name: "Minimum realized profit" })).toHaveValue("1000");
   await expect(panel.locator('[data-trade-id="small-profitable-entry"]')).toHaveCount(1);
@@ -132,7 +138,7 @@ test("profitable entries include small trades, explain current classification, a
   await expect(panel.locator('[data-trade-id="unexpected-close"]')).toHaveCount(0);
   await expect(panel).toContainText("$50");
   await expect(panel).toContainText("Rewards and unrealized P&L excluded");
-  await expect(panel).toContainText("not profitability at entry");
+  await expect(panel).toContainText("not profitability at the time of the trade");
   const coverage = panel.getByLabel("Trader profit coverage", { exact: true });
   await expect(coverage).toContainText("Profit checked for 2 of 3 wallets");
   await expect(coverage).toContainText("Opening wallets · past hour · 66.7%");
@@ -146,7 +152,7 @@ test("profitable entries include small trades, explain current classification, a
   await panel.getByRole("button", { name: "Resume live chart", exact: true }).click();
   for (const window of ["5m", "1h", "15m"]) {
     await panel.getByRole("button", { name: window, exact: true }).click();
-    await expect.poll(() => requests).toContain(`?window=${window}&segment=profitable&minPnl=1000`);
+    await expect.poll(() => requests).toContain(`?window=${window}&segment=profitable&minPnl=1000&activity=entries`);
     await expect(panel.getByRole("button", { name: window, exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(panel.locator('[data-trade-id="small-profitable-entry"]')).toHaveCount(1);
   }
@@ -243,7 +249,7 @@ for (const state of [
   { name: "partially checked", observed: 515, checked: 3, percent: "0.6%", count: "0 confirmed", incomplete: true },
   { name: "almost fully checked", observed: 10_000, checked: 9_999, percent: "99.9%", count: "0 confirmed", incomplete: true },
   { name: "fully checked with no qualifiers", observed: 515, checked: 515, percent: "100%", count: "0 confirmed", incomplete: false },
-  { name: "no observed opening wallets", observed: 0, checked: 0, percent: null, count: "0 confirmed", incomplete: false },
+  { name: "no observed trading wallets", observed: 0, checked: 0, percent: null, count: "0 confirmed", incomplete: false },
 ]) {
   test(`profit coverage makes ${state.name} distinct from zero profitable traders`, async ({ page }) => {
     await setup(page);
@@ -269,7 +275,7 @@ for (const state of [
     await panel.getByRole("button", { name: "Profitable traders", exact: true }).click();
     const coverage = panel.getByLabel("Trader profit coverage", { exact: true });
     await expect(coverage).toContainText(`Profit checked for ${state.checked.toLocaleString()} of ${state.observed.toLocaleString()} wallets`);
-    await expect(coverage).toContainText("Opening wallets · past hour");
+    await expect(coverage).toContainText("Trading wallets · past hour");
     await expect(panel.locator(".trade-graph-feed h4")).toContainText(state.count);
     await expect(panel.locator(".trade-graph-feed-heading small")).toHaveText("Trade coverage delayed");
     await expect(panel).not.toContainText("Classification delayed");
@@ -285,18 +291,18 @@ for (const state of [
     if (state.incomplete) {
       await expect(coverage).toContainText("unknown");
       await expect(coverage).toContainText("excluded; more may qualify");
-      await expect(empty).toContainText("No confirmed entries");
+      await expect(empty).toContainText("No confirmed trades");
       await expect(empty).toContainText("this is not a complete count");
       await expect(empty).not.toContainText("Try a lower profit minimum");
     } else if (state.observed) {
-      await expect(coverage).toContainText("All observed opening wallets checked");
-      await expect(empty).toContainText("No observed entries");
+      await expect(coverage).toContainText("All observed trading wallets checked");
+      await expect(empty).toContainText("No observed trades");
       await expect(empty).toContainText("Try a lower profit minimum");
     } else {
-      await expect(empty).toHaveText("No wallet openings observed in the past hour.");
+      await expect(empty).toHaveText("No trading wallets observed in the past hour.");
     }
     await panel.getByRole("button", { name: "5m", exact: true }).click();
-    await expect(coverage).toContainText("Opening wallets · past hour");
+    await expect(coverage).toContainText("Trading wallets · past hour");
     await expect(panel.locator(".trade-graph-feed")).toContainText("Selected across 5m");
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
     if (state.name === "partially checked") await panel.screenshot({ path: test.info().outputPath("partial-profit-coverage.png") });
@@ -328,7 +334,7 @@ test("coverage and confirmed entries update when active wallet profit checks fin
   checked = true;
   await page.clock.fastForward(5_001);
   await expect(coverage).toContainText("Profit checked for 3 of 3 wallets");
-  await expect(coverage).toContainText("All observed opening wallets checked");
+  await expect(coverage).toContainText("All observed trading wallets checked");
   await expect(panel.locator(".trade-graph-feed h4")).toContainText("1 confirmed");
   await expect(panel.locator('[data-trade-id="newly-classified-entry"]')).toHaveCount(1);
   await expect(panel.locator(".trade-graph-feed-empty")).toHaveCount(0);
@@ -408,7 +414,7 @@ test("profit minimum and chart window survive asset switches and trader toggles"
     await expect(minimum).toHaveValue("10000");
     await expect(profitable).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("button", { name: "1h", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect.poll(() => requests).toContain(`/api/assets/${instrument}/market?window=1h&segment=profitable&minPnl=10000`);
+    await expect.poll(() => requests).toContain(`/api/assets/${instrument}/market?window=1h&segment=profitable&minPnl=10000&activity=all`);
     await expect(page.locator(`[data-trade-id="qualified-${instrument}"]`)).toHaveCount(1);
     await expect(page.locator(`[data-trade-id="qualified-${1 - instrument}"]`)).toHaveCount(0);
   }

@@ -1,5 +1,6 @@
 import type {
   AssetMarketResponse,
+  MarketActivity,
   MarketSegment,
 } from "../../../../packages/shared/src/types";
 
@@ -11,8 +12,10 @@ export function acceptsMarketSegment(
   now = Date.now(),
   failed = false,
   minPnlUsd = 0,
+  activity?: MarketActivity,
 ): data is AssetMarketResponse {
   if (!data || data.instrument !== instrument) return false;
+  if (activity !== undefined && data.activity !== activity) return false;
   if (segment === "all") return !data.segment || data.segment === "all";
   const coverage = data.segmentCoverage;
   if (
@@ -21,6 +24,7 @@ export function acceptsMarketSegment(
     !Array.isArray(data.trades) ||
     !Array.isArray(data.points) ||
     !coverage ||
+    (activity !== undefined && coverage.activity !== activity) ||
     (coverage.minPnlUsd ?? 0) !== minPnlUsd ||
     coverage.basis !== "positive-lifetime-realized-trading-pnl" ||
     coverage.maxAccountAgeMs !== 300_000 ||

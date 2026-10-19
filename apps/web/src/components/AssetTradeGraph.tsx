@@ -8,6 +8,7 @@ import {
 } from "react";
 import type {
   AssetMarketResponse,
+  MarketActivity,
   MarketSegment,
   MarketTradeSample,
   MarketWindow,
@@ -39,6 +40,8 @@ export interface AssetTradeGraphProps {
   chartSample?: MarketTradeSample;
   window: MarketWindow;
   onWindowChange: (window: MarketWindow) => void;
+  activity: MarketActivity;
+  onActivityChange: (activity: MarketActivity) => void;
   segment: MarketSegment;
   onSegmentChange: (segment: MarketSegment) => void;
   minPnlUsd: number;
@@ -60,6 +63,44 @@ const action = (trade: TradeEvent) =>
     : trade.kind === "close"
       ? "Closed"
       : "Liquidated";
+const activityLabels = {
+  all: { noun: "trades", heading: "activity", wallets: "trading" },
+  entries: { noun: "entries", heading: "entries", wallets: "opening" },
+  exits: { noun: "exits", heading: "exits", wallets: "exiting" },
+} as const;
+const realizedPnl = (trade: TradeEvent) =>
+  typeof trade.pnlUsd === "number" && Number.isFinite(trade.pnlUsd)
+    ? `${trade.pnlUsd > 0 ? "+" : ""}${formatUsd(trade.pnlUsd)}`
+    : "Unavailable";
+
+/** Diamond and circle enclose the same area for the same observed notional. */
+function TradeMarker({ kind, radius }: { kind: TradeEvent["kind"]; radius: number }) {
+  if (kind === "open") return <circle className="trade-graph-shape" r={radius} />;
+  const diagonal = radius * Math.sqrt(Math.PI / 2);
+  const cross = diagonal * 0.34;
+  return (
+    <>
+      <path
+        className="trade-graph-shape"
+        d={`M0,${-diagonal} L${diagonal},0 L0,${diagonal} L${-diagonal},0 Z`}
+      />
+      {kind === "liq" && (
+        <path
+          className="trade-graph-liquidation-cross"
+          d={`M${-cross},${-cross} L${cross},${cross} M${-cross},${cross} L${cross},${-cross}`}
+        />
+      )}
+    </>
+  );
+}
+
+function LegendMarker({ kind }: { kind: TradeEvent["kind"] }) {
+  return (
+    <svg viewBox="-8 -8 16 16" width="14" height="14" aria-hidden="true">
+      <TradeMarker kind={kind} radius={4.5} />
+    </svg>
+  );
+}
 const clockLabel = (time: number) =>
   new Date(time).toLocaleTimeString(undefined, {
     hour: "2-digit",
@@ -126,7 +167,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
     setSelectedId(null);
     setHoveredId(null);
     if (feedRef.current) feedRef.current.scrollTop = 0;
-  }, [instrument, range, props.segment, props.minPnlUsd]);
+  }, [instrument, range, props.activity, props.segment, props.minPnlUsd]);
 
   useEffect(() => {
     // A pause belongs to one asset; returning to it must not revive old data.
@@ -253,6 +294,11 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
   const profitRequirement = data.minPnlUsd > 0
     ? `with at least ${formatUsd(data.minPnlUsd, true)} realized profit`
     : "with positive realized profit";
+  const activityLabel = activityLabels[data.activity];
+  const priceLabel = (trade: TradeEvent) =>
+    trade.kind === "open" ? "Entry price" : "Exit price";
+  const tradeDescription = (trade: TradeEvent) =>
+    `${action(trade)} ${symbol} ${trade.side}, ${formatUsd(trade.notionalUsd)} notional, ${priceLabel(trade).toLowerCase()} ${graphExecutionPrice(trade) === null ? "unavailable" : formatUsd(graphExecutionPrice(trade))}${trade.kind === "open" ? "" : `, realized P&L ${realizedPnl(trade)}`}, wallet ${shortAddress(trade.wallet)}`;
 
   const selectTrade = (trade: PricedTrade) => {
     setSelectedId(trade.id);
@@ -268,6 +314,10 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
           behavior: "auto",
         });
     }
+  };
+  const openTradeWallet = (trade: PricedTrade) => {
+    selectTrade(trade);
+    onWallet(trade.wallet);
   };
 
   return (
@@ -332,6 +382,28 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
       </div>
       <div className="trade-graph-toolbar">
         <div className="trade-graph-trader-filter">
+          <span className="trade-graph-filter-label">Activity</span>
+          <div
+            className="trade-graph-ranges"
+            role="group"
+            aria-label="Trade activity"
+          >
+            {(["all", "entries", "exits"] as const).map((activity) => (
+              <button
+                key={activity}
+                type="button"
+                aria-label={activity === "all" ? "Entries and exits" : activity === "entries" ? "Entries only" : "Exits and liquidations"}
+                aria-pressed={props.activity === activity}
+                disabled={paused}
+                title={paused ? "Resume the chart to change its activity" : activity === "exits" ? "Closes and liquidations" : undefined}
+                onClick={() => props.onActivityChange(activity)}
+              >
+                {activity === "all" ? "Both" : activity === "entries" ? "Entries" : "Exits"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="trade-graph-trader-filter">
           <span className="trade-graph-filter-label">Traders</span>
           <div
             className="trade-graph-ranges"
@@ -380,21 +452,28 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
           {data.segment === "profitable"
             ? coverage
               ? coverage.observedWallets === 0
-                ? "No opening wallets observed · past hour"
+                ? `No ${activityLabel.wallets} wallets observed · past hour`
                 : coverage.classifiedWallets === 0
                   ? "Profit checks pending · past hour"
                   : `${coverage.profitableWallets.toLocaleString()} confirmed qualifying ${coverage.profitableWallets === 1 ? "wallet" : "wallets"} · past hour`
               : "Checking trader profitability…"
-            : "All observed opens, closes & liquidations"}
+            : data.activity === "all" ? "All observed entries, exits & liquidations" : data.activity === "entries" ? "Observed entries" : "Observed exits, including liquidations"}
         </span>
       </div>
       <div className="trade-graph-layout">
         <div className="trade-graph-main">
-          <div className="trade-graph-legend">
-            <span className="reference">Reference</span>
-            <span className="long">Long</span>
-            <span className="short">Short</span>
-            <small>Bubble area ≈ notional</small>
+          <div className="trade-graph-legend" aria-label="Chart legend">
+            <div className="trade-graph-legend-kinds">
+              <span className="reference">Reference</span>
+              <span><LegendMarker kind="open" />Entry</span>
+              <span><LegendMarker kind="close" />Exit</span>
+              <span><LegendMarker kind="liq" />Liquidation</span>
+            </div>
+            <div className="trade-graph-legend-sides">
+              <span className="long">Long</span>
+              <span className="short">Short</span>
+              <small>Color = position side · area ≈ notional</small>
+            </div>
           </div>
           <div ref={chartRef} className="trade-graph-canvas">
             {axis ? (
@@ -405,9 +484,17 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                 height={height}
                 role="group"
                 tabIndex={0}
-                aria-label={`${symbol} reference price and execution bubbles`}
+                aria-label={`${symbol} reference price and execution markers`}
                 aria-describedby={descriptionId}
                 onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    const selected = plotted.find((trade) => trade.id === selectedId);
+                    if (selected) {
+                      event.preventDefault();
+                      openTradeWallet(selected);
+                    }
+                    return;
+                  }
                   if (event.key === "Escape") {
                     setSelectedId(null);
                     setHoveredId(null);
@@ -487,10 +574,11 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                   {[...plotted].reverse().map((trade) => (
                     <g
                       key={trade.id}
-                      className={`trade-graph-bubble ${trade.side} ${activeId === trade.id ? "is-active" : ""}`}
+                      className={`trade-graph-bubble ${trade.side} trade-graph-${trade.kind} ${activeId === trade.id ? "is-active" : ""}`}
+                      data-trade-kind={trade.kind}
                       role="button"
                       tabIndex={-1}
-                      aria-label={`${action(trade)} ${symbol} ${trade.side}, ${formatUsd(trade.notionalUsd)} notional, wallet ${shortAddress(trade.wallet)}`}
+                      aria-label={tradeDescription(trade)}
                       aria-pressed={activeId === trade.id}
                       style={{
                         transform: `translate(${x(trade.ts)}px,${y(graphExecutionPrice(trade)!)}px)`,
@@ -498,18 +586,23 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                       onPointerEnter={() => setHoveredId(trade.id)}
                       onPointerLeave={() => setHoveredId(null)}
                       onFocus={() => selectTrade(trade)}
-                      onClick={() => selectTrade(trade)}
+                      onClick={() => openTradeWallet(trade)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          openTradeWallet(trade);
+                        }
+                      }}
                     >
                       <circle
                         className="trade-graph-hit"
                         r={Math.max(
-                          12,
-                          graphBubbleRadius(trade.notionalUsd, largest),
+                          16,
+                          graphBubbleRadius(trade.notionalUsd, largest) * (trade.kind === "open" ? 1 : Math.sqrt(Math.PI / 2)),
                         )}
                       />
-                      <circle
-                        r={graphBubbleRadius(trade.notionalUsd, largest)}
-                      />
+                      <TradeMarker kind={trade.kind} radius={graphBubbleRadius(trade.notionalUsd, largest)} />
                     </g>
                   ))}
                   {latest && (
@@ -575,18 +668,22 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                   <small>Notional</small>
                 </span>
                 <span>
-                  {formatUsd(graphExecutionPrice(active))}
-                  <small>Execution price</small>
+                  {graphExecutionPrice(active) === null ? "Unavailable" : formatUsd(graphExecutionPrice(active))}
+                  <small>{priceLabel(active)}</small>
                 </span>
+                {active.kind !== "open" && <span>
+                  {realizedPnl(active)}
+                  <small>Realized P&L</small>
+                </span>}
               </>
             ) : (
               <span className="trade-graph-select-hint">
-                Select a bubble or a trade to inspect it.
+                Hover a marker to inspect. Click a marker to open its wallet.
               </span>
             )}
           </div>
           <p className="trade-graph-note" id={descriptionId}>
-            Line: Hyperliquid bid/ask midpoint · bubbles: execution price.
+            Line: Hyperliquid bid/ask midpoint · markers: execution price.
             {sampled
               ? ` Up to 2 largest observed priced trades per ${data.chartSample!.bucketMs / 1000}s across ${data.window}.`
               : " Recent observations only; full-window trade sampling is not available."}
@@ -595,21 +692,26 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
               : ""}
             <span className="sr-only">
               {" "}
-              Arrow keys select trades; Escape clears selection.
+              Arrow keys inspect trades; Escape clears selection. Activate a
+              marker with Enter or Space to open its wallet.
             </span>
           </p>
           {data.segment === "profitable" && (
             <p className="trade-graph-note trade-graph-segment-note">
-              New entries by wallets with {data.minPnlUsd > 0
+              {data.activity === "entries" ? "Entries" : data.activity === "exits" ? "Exits, including liquidations," : "Entries and exits"} by wallets with {data.minPnlUsd > 0
                 ? `at least ${formatUsd(data.minPnlUsd, true)} in lifetime realized trading profit.`
                 : "positive lifetime realized trading P&L."}{" "}
               Rewards and unrealized P&L excluded. Classification uses the latest
-              retained account snapshot, not profitability at entry.
+              retained account snapshot, not profitability at the time of the trade.
               {coverage
-                ? ` Classified ${relativeTime(coverage.classifiedAt)}. Account snapshots were at most 5 minutes old when classified. Entries update with each classified snapshot.`
-                : " Classification unavailable; entries are hidden until a recent snapshot is available."}
+                ? ` Classified ${relativeTime(coverage.classifiedAt)}. Account snapshots were at most 5 minutes old when classified. Trades update with each classified snapshot.`
+                : " Classification unavailable; trades are hidden until a recent snapshot is available."}
             </p>
           )}
+          {data.activity !== "entries" && <p className="trade-graph-note">
+            Exits include closes and liquidations. Color identifies the position side;
+            realized P&L is shown only when supplied by the trade source.
+          </p>}
           {!prices.length && axis && (
             <p className="trade-graph-note">
               Reference price history is unavailable. Only priced executions are
@@ -624,10 +726,10 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
           <div className="trade-graph-feed-heading">
             <h4>
               {data.segment === "profitable"
-                ? "Profitable trader entries"
+                ? `Profitable trader ${activityLabel.heading}`
                 : sampled
-                  ? "Largest observed trades"
-                  : "Recent observed trades"}{" "}
+                  ? `Largest observed ${activityLabel.noun}`
+                  : `Recent observed ${activityLabel.noun}`}{" "}
               <span>{data.segment === "profitable"
                 ? data.segmentUnavailable
                   ? "Unavailable"
@@ -659,11 +761,11 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                   Profit checked for {coverage.classifiedWallets.toLocaleString()} of {coverage.observedWallets.toLocaleString()} wallets
                 </strong>
                 <span>
-                  Opening wallets · past hour{coveragePercent !== null ? ` · ${coveragePercent}%` : ""}
+                  {activityLabel.wallets[0].toUpperCase() + activityLabel.wallets.slice(1)} wallets · past hour{coveragePercent !== null ? ` · ${coveragePercent}%` : ""}
                 </span>
                 {coverage.observedWallets > 0 && (
                   <progress
-                    aria-label="Profit checked for opening wallets in the past hour"
+                    aria-label={`Profit checked for ${activityLabel.wallets} wallets in the past hour`}
                     value={coverage.classifiedWallets}
                     max={coverage.observedWallets}
                   />
@@ -672,12 +774,12 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                   {coverage.unknownWallets > 0
                     ? `${coverage.unknownWallets.toLocaleString()} unknown ${coverage.unknownWallets === 1 ? "wallet" : "wallets"} excluded; more may qualify.`
                     : coverage.observedWallets > 0
-                      ? "All observed opening wallets checked."
-                      : "No opening wallets observed in the past hour."}
+                      ? `All observed ${activityLabel.wallets} wallets checked.`
+                      : `No ${activityLabel.wallets} wallets observed in the past hour.`}
                 </span>
               </> : <>
                 <strong>Profit coverage unavailable</strong>
-                <span>Entries are hidden until a recent classification is available.</span>
+                <span>Trades are hidden until a recent classification is available.</span>
               </>}
             </div>
           )}
@@ -699,7 +801,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                   className="trade-graph-feed-wallet"
                   onFocus={() => setSelectedId(trade.id)}
                   onClick={() => onWallet(trade.wallet)}
-                  aria-label={`View wallet ${shortAddress(trade.wallet)}, ${action(trade).toLowerCase()} ${trade.side}`}
+                  aria-label={`View wallet, ${tradeDescription(trade)}`}
                 >
                   <Avatar address={trade.wallet} />
                   <span>
@@ -708,6 +810,12 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                       {action(trade)} {trade.side} ·{" "}
                       {trade.leverage.toLocaleString()}×
                     </small>
+                    <small className="trade-graph-feed-detail">
+                      {priceLabel(trade)} {graphExecutionPrice(trade) === null ? "unavailable" : formatUsd(graphExecutionPrice(trade))}
+                    </small>
+                    {trade.kind !== "open" && <small className="trade-graph-feed-detail">
+                      P&L {realizedPnl(trade).toLowerCase()}
+                    </small>}
                   </span>
                 </button>
                 <button
@@ -715,7 +823,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                   className="trade-graph-feed-value"
                   onFocus={() => setSelectedId(trade.id)}
                   onClick={() => selectTrade(trade)}
-                  aria-label={`Inspect ${action(trade).toLowerCase()} ${trade.side} trade ${trade.id}`}
+                  aria-label={`Inspect ${action(trade).toLowerCase()} ${trade.side} trade ${trade.id}, ${priceLabel(trade).toLowerCase()} ${graphExecutionPrice(trade) === null ? "unavailable" : formatUsd(graphExecutionPrice(trade))}${trade.kind === "open" ? "" : `, realized P&L ${realizedPnl(trade)}`}`}
                   aria-pressed={activeId === trade.id}
                 >
                   <strong>{formatUsd(trade.notionalUsd, true)}</strong>
@@ -731,13 +839,13 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                   ? "Waiting for a recent trader classification."
                   : data.segment === "profitable"
                     ? coverage?.observedWallets === 0
-                      ? "No wallet openings observed in the past hour."
+                      ? `No ${activityLabel.wallets} wallets observed in the past hour.`
                       : coverage && coverage.unknownWallets > 0
-                        ? `No confirmed entries from wallets ${profitRequirement} in this window. Profit is still unknown for ${coverage.unknownWallets.toLocaleString()} observed ${coverage.unknownWallets === 1 ? "wallet" : "wallets"}, so this is not a complete count.`
-                        : `No observed entries from wallets ${profitRequirement} in this window. Try a lower profit minimum or a wider window.`
+                        ? `No confirmed ${activityLabel.noun} from wallets ${profitRequirement} in this window. Profit is still unknown for ${coverage.unknownWallets.toLocaleString()} observed ${coverage.unknownWallets === 1 ? "wallet" : "wallets"}, so this is not a complete count.`
+                        : `No observed ${activityLabel.noun} from wallets ${profitRequirement} in this window. Try a lower profit minimum or a wider window.`
                     : sampled
-                      ? "No sampled trades in the selected window."
-                      : "No recent observed trades in the selected window."}
+                      ? `No sampled ${activityLabel.noun} in the selected window.`
+                      : `No recent observed ${activityLabel.noun} in the selected window.`}
               </li>
             )}
           </ul>
@@ -747,7 +855,7 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
               : capped
                 ? `${trades.length} recent trades shown · `
                 : ""}
-            Observed {data.segment === "profitable" ? "entries" : "trades"} only · history may be incomplete
+            Observed {activityLabel.noun} only · history may be incomplete
             {data.receivedAt ? ` · ${relativeTime(data.receivedAt)}` : ""}
           </p>
         </aside>

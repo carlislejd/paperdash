@@ -32,3 +32,31 @@ node scripts/load/edge-cache-validation.mjs
 ```
 
 Keep infrastructure stable during a run, observe all API replicas and database activity, and retain exact release IDs plus JSON evidence. Public validation is not an instruction to run traffic continuously.
+
+## Staggered Assets viewers
+
+```sh
+node --import tsx scripts/load/local-assets-capacity.ts \
+  --clients=250 --seconds=45 --ramp-seconds=20 \
+  --output=/tmp/assets-250-local.json
+```
+
+This localhost-only harness starts separate generator, synthetic publisher, and real API processes. The publisher and API share a disposable SQLite WAL database; IPC notifications trigger the API's normal shared EventHub. The source collector and all external requests are disabled. Normal API read-cache, gzip, ETag, stream admission and shared-IP rate limits remain enabled, without a CDN.
+
+The publisher seeds 720 prices per asset, 1,200 mixed entry/close/liquidation observations, 100 classified wallets, and 300-point asset histories. It saves actual market variants through `refreshMarkets` every five seconds while publishing ten trades/second and BTC/ETH quotes each second. Viewers join over the ramp, independently select assets, windows, activities and profit floors, poll profitable snapshots every five seconds or all-trader snapshots every fifteen seconds, and read asset summaries every fifteen seconds. A fifth of viewers (up to fifty) reconnect during the final ten seconds. Bootstrap latency measures the first SSE overview; live-event latency excludes pre-join replay.
+
+The report checks stream ordering, asset identity, snapshot age, response/sample bounds, HTTP status, final advancing price clocks, and all planned reconnects. It records API and publisher CPU, RSS and event-loop delay separately, plus shared store reads, traffic and REST latency. At most 128 REST requests are in flight; reaching that bound is a reported failure, not a hidden queue. Limits are 500 viewers, ninety seconds, and a ramp no longer than half the run. Temporary storage is removed afterward. Run in a quiet window: other local tests materially distort latency.
+
+This tests socket fanout and current saved-view serving on one machine. PostgreSQL, Redis, provider ingest, Render instance failover, regional latency, browser rendering and long-duration memory stability need their separate checks. A passing local run is not a production capacity certification.
+
+## Assets browser responsiveness
+
+```sh
+npx playwright test --config=scripts/load/asset-exits-browser.config.ts
+```
+
+This builds the production frontend into ignored `.private/asset-exits-browser-build`, then serves it on localhost port 4188. All API responses and SSE messages are mocked. Each of two sequential runs delivers 100 mixed BTC/ETH trades per second plus ten price updates per asset per second for twenty seconds, switching activities and assets eight times. The initial snapshots contain 720 price points, up to 200 recent trades, and bounded chart samples.
+
+The first run uses desktop Chromium. The second uses Pixel 7 viewport/device emulation with an explicit fourfold CPU slowdown; it does not run on physical mobile hardware. Real animation remains enabled. JSON metrics and CPU profiles are written under `.private/asset-exit-browser-load`. The harness records actual delivery rate, long tasks, animation-frame gaps, quote-to-DOM latency, automation-observed click-to-next-frame latency, displayed row/marker bounds, active SSE connections, and JavaScript heap before and after explicit garbage collection.
+
+Collect comparison runs only while the host is otherwise idle; simultaneous backend load or browser suites can materially change CPU measurements. Save the result files before rerunning a baseline. These are single-viewer rendering measurements with profiling overhead and a short, synthetic workload. They do not measure network latency, real-device performance, concurrent-viewer server capacity, or long-duration memory leaks. Use the separate staggered-viewer harness for API/stream fanout.

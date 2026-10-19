@@ -1,9 +1,10 @@
 import type {
+  MarketActivity,
   MarketTradeSample,
   MarketWindow,
   TradeEvent,
 } from "../../../../packages/shared/src/types";
-import { validMarketTrade } from "./market-data";
+import { matchesMarketActivity, validMarketTrade } from "./market-data";
 
 export const MARKET_WINDOWS: Record<MarketWindow, number> = {
   "5m": 300_000,
@@ -45,6 +46,7 @@ export function selectMarketSample(
   instrument: number,
   window: MarketWindow,
   through = Date.now(),
+  activity: MarketActivity = "all",
 ): TradeEvent[] {
   const from = through - MARKET_WINDOWS[window];
   const bucketMs = MARKET_WINDOWS[window] / 30;
@@ -52,6 +54,7 @@ export function selectMarketSample(
   for (const trade of [...saved, ...live]) {
     if (
       !validMarketTrade(trade, instrument, through) ||
+      !matchesMarketActivity(trade, activity) ||
       trade.ts < from ||
       trade.ts > through ||
       !priced(trade)

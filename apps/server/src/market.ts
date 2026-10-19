@@ -4,15 +4,43 @@ import type {
   MarketWindow,
   MarketSegment,
   MarketMinPnlUsd,
+  MarketActivity,
 } from "../../../packages/shared/src/types.js";
 import { marketMinPnlUsd } from "../../../packages/shared/src/types.js";
 import { visibleTrades, type Store } from "./store.js";
 import { activityDelayed } from "./activity-health.js";
-import { PROFITABLE_SNAPSHOT_MAX_AGE_MS } from "./market-store.js";
+import { PROFITABLE_SNAPSHOT_MAX_AGE_MS, type MarketActivityData, type ProfitableMarketData } from "./market-store.js";
 
 export const marketSymbols = ["BTC", "ETH"] as const;
+interface ActivityView {
+  activity: MarketActivity;
+  trades: AssetMarketResponse["trades"];
+  chartSamples: Record<MarketWindow, MarketTradeSample>;
+  segmentCoverage?: AssetMarketResponse["segmentCoverage"];
+  tradesCapped: boolean;
+}
 interface SavedMarket extends AssetMarketResponse {
   chartSamples?: Record<MarketWindow, MarketTradeSample>;
+  /** Bounded variants share the same saved price history and publication. */
+  activityViews?: Record<MarketActivity, ActivityView | null>;
+  /** Version 1 permits null only for the activity already stored by legacy fields. */
+  activityViewsVersion?: 1;
+}
+function activityViews(
+  activities: Record<MarketActivity, MarketActivityData>,
+  minPnlUsd?: MarketMinPnlUsd,
+): Record<MarketActivity, ActivityView | null> {
+  const legacyActivity = minPnlUsd === undefined ? "all" : "entries";
+  return Object.fromEntries(Object.entries(activities).map(([activity, data]) => {
+    if (activity === legacyActivity) return [activity, null];
+    const cohort = minPnlUsd === undefined ? data : data.profitableByMinPnl[minPnlUsd];
+    const trades = visibleTrades(cohort.rawTrades, 201);
+    return [activity, {
+      activity, trades: trades.slice(0, 200), chartSamples: cohort.chartSamples,
+      tradesCapped: cohort.tradesCapped || trades.length > 200,
+      ...(minPnlUsd === undefined ? {} : { segmentCoverage: (cohort as ProfitableMarketData).coverage }),
+    }];
+  })) as Record<MarketActivity, ActivityView | null>;
 }
 const snapshotKey = (
   instrument: number,
@@ -32,6 +60,8 @@ export async function refreshMarkets(store: Store, now = Date.now()) {
       points: data.points,
       trades: visible.slice(0, 200),
       chartSamples: data.chartSamples,
+      activityViews: activityViews(data.activities),
+      activityViewsVersion: 1,
       windowFrom: Math.max(0, now - 3600000),
       windowTo: now,
       receivedAt: now,
@@ -55,6 +85,7 @@ export async function refreshMarkets(store: Store, now = Date.now()) {
           segmentCoverage: cohort.coverage,
           trades: profitable.slice(0, 200),
           chartSamples: cohort.chartSamples,
+          activityViews: activityViews(data.activities, minPnlUsd),
           coverage: {
             ...response.coverage,
             tradesCapped: cohort.tradesCapped || profitable.length > 200,
@@ -72,6 +103,7 @@ export async function readMarket(
   window: MarketWindow = "1h",
   segment: MarketSegment = "all",
   minPnlUsd: MarketMinPnlUsd = 0,
+  activity?: MarketActivity,
 ): Promise<AssetMarketResponse> {
   if (
     !Number.isInteger(instrument) ||
@@ -80,7 +112,8 @@ export async function readMarket(
     !["5m", "15m", "1h"].includes(window) ||
     !["all", "profitable"].includes(segment) ||
     !marketMinPnlUsd.includes(minPnlUsd) ||
-    (segment === "all" && minPnlUsd !== 0)
+    (segment === "all" && minPnlUsd !== 0) ||
+    (activity !== undefined && !["all", "entries", "exits"].includes(activity))
   )
     throw new Error("Unknown market instrument");
   const [saved, connection, tradesDelayed, heartbeat] = await Promise.all([
@@ -90,7 +123,26 @@ export async function readMarket(
     store.get<{ errors?: Record<string, string> }>("collector-heartbeat"),
   ]);
   if (saved) {
-    const { chartSamples, ...value } = saved.value;
+    const { chartSamples: legacySamples, activityViews, activityViewsVersion, ...legacyValue } = saved.value;
+    const encodedView = activity === undefined ? undefined : activityViews?.[activity];
+    const legacyActivity = segment === "all" ? "all" : "entries";
+    // Null is an explicit versioned reference, never a fallback for missing or
+    // malformed metadata. Fully nested pre-reference snapshots remain readable.
+    const view = encodedView === null && activityViewsVersion === 1 &&
+      activity === legacyActivity && legacySamples
+      ? {
+        activity, trades: legacyValue.trades, chartSamples: legacySamples,
+        tradesCapped: legacyValue.coverage.tradesCapped,
+        segmentCoverage: legacyValue.segmentCoverage ? { ...legacyValue.segmentCoverage, activity } : undefined,
+      } : encodedView ?? undefined;
+    const activityUnavailable = activity !== undefined && view?.activity !== activity;
+    const value = activity === undefined ? legacyValue : {
+      ...legacyValue, activity,
+      trades: activityUnavailable ? [] : view!.trades,
+      segmentCoverage: activityUnavailable ? undefined : view!.segmentCoverage,
+      coverage: { ...legacyValue.coverage, tradesCapped: view?.tradesCapped ?? false },
+    };
+    const chartSamples = activity === undefined ? legacySamples : activityUnavailable ? undefined : view?.chartSamples;
     // A stopped collector must not turn an indefinitely old classification into
     // a current profitable cohort. Price data may remain available separately.
     const classification = value.segmentCoverage;
@@ -100,6 +152,7 @@ export async function readMarket(
         !classification ||
         classification.basis !== "positive-lifetime-realized-trading-pnl" ||
         (classification.minPnlUsd ?? 0) !== minPnlUsd ||
+        (activity !== undefined && classification.activity !== activity) ||
         !Number.isSafeInteger(classification.classifiedAt) ||
         classification.classifiedAt > now ||
         now - classification.classifiedAt > PROFITABLE_SNAPSHOT_MAX_AGE_MS);
@@ -112,6 +165,7 @@ export async function readMarket(
           ? { chartSample: chartSamples[window] }
           : {}),
       stale:
+        activityUnavailable ||
         classificationExpired ||
         saved.value.stale ||
         now - saved.receivedAt > 15000 ||
@@ -127,6 +181,7 @@ export async function readMarket(
   }
   return {
     segment,
+    ...(activity === undefined ? {} : { activity }),
     instrument,
     symbol: marketSymbols[instrument],
     price: null,

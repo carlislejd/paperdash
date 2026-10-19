@@ -60,7 +60,7 @@ afterEach(() => {
 });
 
 describe("asset snapshot reconciliation", () => {
-  it("reduces two snapshot downloads from 26 to 8 in a minute while retaining authoritative history and coverage", async () => {
+  it("reduces two snapshot downloads from 26 to 10 in a minute while retaining authoritative history and coverage", async () => {
     for (const path of paths)
       resources.subscribe(path, () => {}, { liveAsset: 0 });
     await flush();
@@ -91,10 +91,10 @@ describe("asset snapshot reconciliation", () => {
       await vi.advanceTimersByTimeAsync(10000);
       quote();
     }
-    expect(read).toHaveBeenCalledTimes(8);
+    expect(read).toHaveBeenCalledTimes(10);
     expect(resources.diagnostics()).toMatchObject({
-      requests: 8,
-      recoveryRequests: 6,
+      requests: 10,
+      recoveryRequests: 8,
       pollingRequests: 0,
     });
     expect(resources.get(paths[1]).data).toMatchObject({
@@ -124,12 +124,12 @@ describe("asset snapshot reconciliation", () => {
     await vi.advanceTimersByTimeAsync(10000);
     quote();
     await vi.advanceTimersByTimeAsync(10000);
-    expect(read).toHaveBeenCalledTimes(4);
+    expect(read).toHaveBeenCalledTimes(5);
   });
 
   it("refreshes profitable classifications every five seconds despite continuous quotes while all-trader markets reconcile slowly", async () => {
     const profitablePath =
-      "/api/assets/0/market?segment=profitable&window=15m&minPnl=1000";
+      "/api/assets/0/market?segment=profitable&window=15m&minPnl=1000&activity=exits";
     publishLiveConnection(true, "overview,asset:0");
     quote();
     for (const path of [paths[1], profitablePath])
@@ -149,12 +149,12 @@ describe("asset snapshot reconciliation", () => {
     }
     expect(resources.get(profitablePath).data).not.toBe(initial);
     expect(read.mock.calls.filter(([path]) => path === paths[1])).toHaveLength(
-      2,
+      3,
     );
     expect(resources.diagnostics()).toMatchObject({
-      requests: 9,
+      requests: 10,
       pollingRequests: 6,
-      recoveryRequests: 1,
+      recoveryRequests: 2,
       resources: [
         { path: paths[1], mode: "events" },
         { path: profitablePath, mode: "poll" },
@@ -208,11 +208,11 @@ describe("asset snapshot reconciliation", () => {
         data: { version: 1, publishedAt: Date.now(), panels: {} },
       });
     }
-    expect(read).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
     expect(read).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(1);
     expect(read).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(read).toHaveBeenCalledTimes(4);
   });
 
   it("clears prior asset health when topics change and keeps query-window snapshots independent", async () => {
@@ -261,25 +261,25 @@ describe("asset snapshot reconciliation", () => {
     expect(read).toHaveBeenCalledTimes(8);
   });
 
-  it("keeps retry deadlines stronger than live recovery, refresh, remount and visibility", async () => {
+  it.each(paths)("keeps retry deadlines stronger than live recovery, refresh, remount and visibility for %s", async (path) => {
     publishLiveConnection(true, "overview,asset:0");
     quote();
-    let stop = resources.subscribe(paths[0], () => {}, { liveAsset: 0 });
+    let stop = resources.subscribe(path, () => {}, { liveAsset: 0 });
     await flush();
-    const initial = resources.get(paths[0]).data;
+    const initial = resources.get(path).data;
     read.mockRejectedValueOnce(new ApiError("Cooling down", 429, 30000));
-    resources.refresh(paths[0]);
+    resources.refresh(path);
     await flush();
-    expect(resources.get(paths[0])).toMatchObject({
+    expect(resources.get(path)).toMatchObject({
       data: { ...(initial as Record<string, unknown>), stale: true },
       error: "Cooling down",
     });
     publishLiveConnection(false);
     publishLiveConnection(true, "overview,asset:0");
     quote();
-    resources.refresh(paths[0]);
+    resources.refresh(path);
     stop();
-    stop = resources.subscribe(paths[0], () => {}, { liveAsset: 0 });
+    stop = resources.subscribe(path, () => {}, { liveAsset: 0 });
     hidden = true;
     resources.visibilityChanged();
     await vi.advanceTimersByTimeAsync(10000);
@@ -290,7 +290,7 @@ describe("asset snapshot reconciliation", () => {
     expect(read).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(1);
     expect(read).toHaveBeenCalledTimes(3);
-    expect(resources.get(paths[0]).error).toBe("");
+    expect(resources.get(path).error).toBe("");
     stop();
   });
 
@@ -330,7 +330,7 @@ describe("asset snapshot reconciliation", () => {
     quote(0, AT - 30000);
     expect(getAssetDelivery()).toBe(healthy);
     await vi.advanceTimersByTimeAsync(20001);
-    expect(read).toHaveBeenCalledTimes(3);
+    expect(read).toHaveBeenCalledTimes(4);
   });
 
   it("refreshes healthy open interest before expiry and restores fast polling when backend clocks stall despite fresh prices", async () => {
@@ -371,6 +371,90 @@ describe("asset snapshot reconciliation", () => {
     expect(read).toHaveBeenCalledTimes(6);
     expect(resources.diagnostics().resources[0].mode).toBe("poll");
   });
+
+  it("ages market trade coverage independently of continuous fresh prices and recovers only from a new snapshot", async () => {
+    const path = `${paths[1]}&activity=exits`;
+    const saved = {
+      receivedAt: AT,
+      stale: false,
+      coverage: { tradesCapped: false },
+      trades: [{ id: "saved-exit" }],
+    };
+    read.mockResolvedValue(saved);
+    publishLiveConnection(true, "overview,asset:0");
+    quote();
+    resources.subscribe(path, () => {}, { liveAsset: 0 });
+    await flush();
+    for (let second = 1; second <= 21; second++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      quote();
+    }
+    expect(resources.get(path)).toMatchObject({
+      data: { ...saved, stale: true },
+      error: "",
+    });
+    expect(saved.stale).toBe(false);
+    expect(getAssetDelivery().quotes[0]?.sourceAt).toBe(Date.now());
+    expect(resources.diagnostics().resources[0].mode).toBe("poll");
+    expect(read).toHaveBeenCalledTimes(3);
+    read.mockImplementation(async () => ({
+      ...saved,
+      receivedAt: Date.now(),
+      trades: [{ id: "saved-exit" }, { id: "recovered-exit" }],
+    }));
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(resources.get(path).data).toMatchObject({
+      receivedAt: AT + 25000,
+      stale: false,
+      trades: [{ id: "saved-exit" }, { id: "recovered-exit" }],
+    });
+    expect(resources.diagnostics().resources[0].mode).toBe("events");
+  });
+
+  it("leaves network headroom for an aged market snapshot even at maximum poll jitter", async () => {
+    unsubscribe();
+    resources.dispose();
+    resources = new AnalyticsResources({
+      read,
+      now: () => Date.now(),
+      random: () => 1,
+      hidden: () => hidden,
+    });
+    unsubscribe = subscribeAssetDelivery((delivery) =>
+      resources.setAssetDelivery(delivery),
+    );
+    read.mockResolvedValueOnce({ receivedAt: AT - 10000, stale: false });
+    publishLiveConnection(true, "overview,asset:0");
+    quote();
+    resources.subscribe(paths[1], () => {}, { liveAsset: 0 });
+    await flush();
+    await vi.advanceTimersByTimeAsync(8999);
+    quote();
+    expect(read).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(read).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(10000);
+    quote();
+    await vi.advanceTimersByTimeAsync(7999);
+    expect(read).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(read).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([undefined, -1, NaN, AT + 60000])(
+    "never renews market snapshot health from an invalid saved receipt %s",
+    async (receivedAt) => {
+      read.mockResolvedValue({ receivedAt, stale: false });
+      publishLiveConnection(true, "overview,asset:0");
+      quote();
+      resources.subscribe(paths[1], () => {}, { liveAsset: 0 });
+      await flush();
+      expect(resources.get(paths[1]).data).toMatchObject({ stale: true });
+      expect(resources.diagnostics().resources[0].mode).toBe("poll");
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(read).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("leaves headroom for an already-aged asset snapshot and keeps server stale errors on fast polling", async () => {
     read.mockResolvedValueOnce({

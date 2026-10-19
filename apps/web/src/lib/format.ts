@@ -19,18 +19,29 @@ export function rawToNumber(
   const value = Number(`${negative ? "-" : ""}${decimal}`);
   return Number.isFinite(value) ? value : null;
 }
+// Charts format many executions on each live update. Reuse the two immutable
+// formatters so rendering does not repeatedly construct locale machinery.
+const usdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  notation: "standard",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+});
+const compactUsdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  notation: "compact",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 0,
+});
+
 export function formatUsd(
   value: number | null | undefined,
   compact = false,
 ): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    notation: compact ? "compact" : "standard",
-    maximumFractionDigits: 2,
-    minimumFractionDigits: compact ? 0 : 2,
-  }).format(value);
+  return (compact ? compactUsdFormatter : usdFormatter).format(value);
 }
 export function formatRawUsd(
   raw: string | null | undefined,

@@ -1,0 +1,213 @@
+{
+  "date": "2026-10-18",
+  "change": "Reuse the two immutable standard and compact USD Intl.NumberFormat instances instead of constructing one for every formatted value.",
+  "command": "npx playwright test --config=scripts/load/asset-exits-browser.config.ts",
+  "harness": "scripts/load/asset-exits-browser.pw.ts",
+  "environment": {
+    "bundle": "local production Vite build",
+    "data": "mocked API and SSE only",
+    "viewers": 1,
+    "desktop": "Playwright Desktop Chrome / Chromium",
+    "mobile": "Playwright Pixel 7 viewport/device emulation plus explicit 4x CDP CPU throttling; not physical mobile hardware",
+    "hostCoordination": "Comparison runs waited for server load and full browser suites to stop. Initial contended exploratory measurements are excluded."
+  },
+  "workload": {
+    "durationSeconds": 20,
+    "tradesPerSecond": 100,
+    "instruments": [
+      "BTC",
+      "ETH"
+    ],
+    "quotesPerAssetPerSecond": 10,
+    "totalQuotesPerSecond": 20,
+    "trades": "Mixed entry, close, liquidation, long and short events",
+    "controls": "Eight activity/asset switches per run",
+    "savedPricePointsPerAsset": 720,
+    "savedRecentTradesMaximum": 200,
+    "savedChartSamplesMaximum": 60,
+    "animation": "enabled",
+    "cpuProfiling": "enabled"
+  },
+  "baselineCpuProfile": {
+    "function": "formatUsd",
+    "desktopPercentOfActiveSamples": 65.1,
+    "throttledPixelPercentOfActiveSamples": 54.7
+  },
+  "scenarios": [
+    {
+      "name": "desktop",
+      "before": {
+        "durationMs": 20003.4,
+        "tradeMessages": 2000,
+        "quoteMessages": 400,
+        "deliveredTradesPerSecond": 99.98,
+        "frameGapMs": {
+          "p50": 16.7,
+          "p95": 16.8,
+          "p99": 16.8,
+          "max": 33.3
+        },
+        "framesOver50Ms": 0,
+        "longTasks": {
+          "count": 0,
+          "maxMs": 0,
+          "totalMs": 0
+        },
+        "quoteToDomMs": {
+          "p50": 9.9,
+          "p95": 20.6,
+          "p99": 21.5,
+          "max": 24.3
+        },
+        "automationClickToFrameMs": {
+          "p50": 84.88,
+          "p95": 159.88,
+          "max": 159.88
+        },
+        "scriptDurationSeconds": 12.969,
+        "taskDurationSeconds": 14.907,
+        "maxMarkers": 53,
+        "maxFeedRows": 53,
+        "maxDomNodes": 1184,
+        "maxSseConnections": 1,
+        "marketRequests": 7,
+        "postGcHeapBeforeBytes": 4247348,
+        "postGcHeapAfterBytes": 6710316,
+        "postGcHeapGrowthBytes": 2462968,
+        "pageErrors": []
+      },
+      "after": {
+        "durationMs": 20002.6,
+        "tradeMessages": 2000,
+        "quoteMessages": 400,
+        "deliveredTradesPerSecond": 99.99,
+        "frameGapMs": {
+          "p50": 16.7,
+          "p95": 16.7,
+          "p99": 16.8,
+          "max": 50
+        },
+        "framesOver50Ms": 0,
+        "longTasks": {
+          "count": 0,
+          "maxMs": 0,
+          "totalMs": 0
+        },
+        "quoteToDomMs": {
+          "p50": 8.2,
+          "p95": 8.8,
+          "p99": 14.9,
+          "max": 15.2
+        },
+        "automationClickToFrameMs": {
+          "p50": 48.64,
+          "p95": 141.15,
+          "max": 141.15
+        },
+        "scriptDurationSeconds": 3.177,
+        "taskDurationSeconds": 4.956,
+        "maxMarkers": 55,
+        "maxFeedRows": 55,
+        "maxDomNodes": 1218,
+        "maxSseConnections": 1,
+        "marketRequests": 7,
+        "postGcHeapBeforeBytes": 4296728,
+        "postGcHeapAfterBytes": 6789588,
+        "postGcHeapGrowthBytes": 2492860,
+        "pageErrors": []
+      }
+    },
+    {
+      "name": "pixel-emulation-4x-cpu",
+      "before": {
+        "durationMs": 20038.5,
+        "tradeMessages": 2000,
+        "quoteMessages": 394,
+        "deliveredTradesPerSecond": 99.81,
+        "frameGapMs": {
+          "p50": 16.7,
+          "p95": 50.1,
+          "p99": 66.7,
+          "max": 116.8
+        },
+        "framesOver50Ms": 43,
+        "longTasks": {
+          "count": 7,
+          "maxMs": 117,
+          "totalMs": 486
+        },
+        "quoteToDomMs": {
+          "p50": 43.9,
+          "p95": 61,
+          "p99": 79,
+          "max": 85.6
+        },
+        "automationClickToFrameMs": {
+          "p50": 468.94,
+          "p95": 581.31,
+          "max": 581.31
+        },
+        "scriptDurationSeconds": 15.076,
+        "taskDurationSeconds": 20.453,
+        "maxMarkers": 53,
+        "maxFeedRows": 53,
+        "maxDomNodes": 1184,
+        "maxSseConnections": 1,
+        "marketRequests": 8,
+        "postGcHeapBeforeBytes": 4247608,
+        "postGcHeapAfterBytes": 6150080,
+        "postGcHeapGrowthBytes": 1902472,
+        "pageErrors": []
+      },
+      "after": {
+        "durationMs": 20004.1,
+        "tradeMessages": 2000,
+        "quoteMessages": 400,
+        "deliveredTradesPerSecond": 99.98,
+        "frameGapMs": {
+          "p50": 16.7,
+          "p95": 16.7,
+          "p99": 16.8,
+          "max": 66.6
+        },
+        "framesOver50Ms": 2,
+        "longTasks": {
+          "count": 0,
+          "maxMs": 0,
+          "totalMs": 0
+        },
+        "quoteToDomMs": {
+          "p50": 15.9,
+          "p95": 19,
+          "p99": 23.3,
+          "max": 40
+        },
+        "automationClickToFrameMs": {
+          "p50": 164.22,
+          "p95": 242.79,
+          "max": 242.79
+        },
+        "scriptDurationSeconds": 10.783,
+        "taskDurationSeconds": 17.986,
+        "maxMarkers": 55,
+        "maxFeedRows": 55,
+        "maxDomNodes": 1219,
+        "maxSseConnections": 1,
+        "marketRequests": 7,
+        "postGcHeapBeforeBytes": 4250428,
+        "postGcHeapAfterBytes": 6743068,
+        "postGcHeapGrowthBytes": 2492640,
+        "pageErrors": []
+      }
+    }
+  ],
+  "limits": [
+    "These short, local, single-viewer measurements do not measure network latency or concurrent-viewer API capacity; use the separate staggered-viewer server harness.",
+    "Pixel emulation and CPU throttling are not physical-device results. Profiling and timing instrumentation add overhead.",
+    "Click latency includes Playwright interaction/auto-wait overhead and the next animation frame, not only browser input processing.",
+    "Finite DOM/stream bounds and post-GC heap samples do not establish long-duration leak freedom; route caches and instrumentation contribute to heap growth.",
+    "Per-run distributions and exact visible sample counts vary with epoch-aligned buckets and host scheduling.",
+    "Marker wallet activation/hint changed between bundles; this benchmark toggles controls and does not activate chart markers."
+  ],
+  "rawEvidence": ".private/asset-exit-browser-load/{desktop,pixel-emulation-4x-cpu}{,-baseline}.{json,cpuprofile}"
+}
