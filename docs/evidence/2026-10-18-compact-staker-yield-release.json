@@ -1,0 +1,28 @@
+{
+  "commit": "5b4a3627eb79a4263f6aba1007518fe935f7d071",
+  "ci": "https://github.com/carlislejd/paperdash/actions/runs/39199366973",
+  "ciConclusion": "success",
+  "ciBrowserPassed": 284,
+  "localChecks": { "build": "passed", "focusedUnitPassed": 10, "focusedBrowserPassed": 12 },
+  "frontend": { "deployment": "dep-dbapq9ks728c7396shdg", "status": "Live", "duration": "19.9s" },
+  "apiAndWorkerChanged": false,
+  "liveDesktop": {
+    "viewportWidth": 1440,
+    "metricsRowWidth": 1336,
+    "beforeHeight": 164,
+    "afterHeight": 96,
+    "tooltipOpenHeight": 96,
+    "noteYPositions": [192, 192, 192, 192, 192],
+    "noteHeights": [13, 13, 13, 13, 13],
+    "priceLink": "https://app.hyperliquid.xyz/trade/para:PAPER",
+    "tooltipCalculationAndIntervalVisible": true,
+    "escapeDismissedTooltip": true
+  },
+  "liveMobile": { "viewportWidth": 390, "documentWidth": 390 },
+  "observedBrowserErrors": [],
+  "screenshots": [
+    "production-compact-staker-yield-2026-10-18.png",
+    "production-compact-staker-yield-tooltip-2026-10-18.png",
+    "production-compact-staker-yield-mobile-2026-10-18.png"
+  ]
+}
