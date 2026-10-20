@@ -1,0 +1,243 @@
+{
+  "release": "Rewards and dilution together, with coherent wallet staking-pool share",
+  "deployedCommit": "d05314003dd93b0287a86a7b737fa9448b48842a",
+  "verifiedAt": "2026-10-20T04:08:55.632Z",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/39366804520",
+    "conclusion": "success",
+    "checks": [
+      "Production build and typecheck",
+      "Unit and PostgreSQL/Redis integration tests",
+      "288 desktop/mobile browser tests",
+      "Python tests",
+      "Render Blueprint validation"
+    ]
+  },
+  "localChecks": {
+    "unitPassed": 1036,
+    "environmentDependentSkipped": 45,
+    "browserPassed": 288,
+    "build": "passed"
+  },
+  "deployments": {
+    "web": {
+      "serviceId": "srv-db4sp78473hc7390tou0",
+      "deploymentId": "dep-dbbehi67bikc7389i7rg",
+      "status": "live"
+    },
+    "api": {
+      "serviceId": "srv-db4sq6g473hc739111lg",
+      "deploymentId": "dep-dbbeg2vavr4c73djcqo0",
+      "status": "live",
+      "instances": "3 of 3"
+    },
+    "collector": {
+      "serviceId": "srv-db4sq6g473hc739111jg",
+      "deploymentId": "dep-dbbeg5navr4c73djd3d0",
+      "status": "live"
+    }
+  },
+  "liveChecks": {
+    "publicEndpoints": [
+      {
+        "path": "/health/ready",
+        "status": 200
+      },
+      {
+        "path": "/api/paper/economics",
+        "status": 200
+      },
+      {
+        "path": "/api/wallets/0x35b29bdd690f95fe35c9645f21866b04616295a7",
+        "status": 200
+      }
+    ],
+    "readiness": {
+      "ready": true,
+      "degraded": false,
+      "stream": "connected",
+      "stale": false
+    },
+    "originalAnnualBaselineMs": 1792123080000,
+    "annualRewardBaselinePreserved": true,
+    "historyStartMs": 1792467555000,
+    "dailyHistoryPreserved": true,
+    "legacyParticipationRemainsNull": true,
+    "rewardSourceClockAdvancing": true,
+    "dailyRowClockAdvancing": true,
+    "walletPairClockAdvancing": true,
+    "walletStakeMatchesAccount": true,
+    "pairedWalletAndPoolObservations": true,
+    "internalPairExcludedFromPublicSnapshot": true,
+    "desktop": {
+      "width": 1280,
+      "documentWidth": 1280
+    },
+    "mobile": {
+      "width": 390,
+      "documentWidth": 390
+    },
+    "browserErrors": [],
+    "samples": [
+      {
+        "verifiedAt": "2026-10-20T04:06:24.544Z",
+        "assertions": "passed",
+        "ready": {
+          "ready": true,
+          "degraded": false,
+          "status": {
+            "stale": false,
+            "stream": "connected",
+            "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available. active-trader-profits: Active trader directory did not provide the requested fresh page.",
+            "sourceAt": 1792469180000,
+            "receivedAt": 1792469183779,
+            "persistence": "postgres",
+            "indexedBlock": "49016049"
+          }
+        },
+        "economics": {
+          "sourceAt": 1792469173000,
+          "stale": false,
+          "stakingYield": {
+            "toMs": 1792469173000,
+            "basis": "observed-accumulator",
+            "fromMs": 1792123080000,
+            "yearDays": 365,
+            "elapsedMs": 346093000,
+            "earnedUsdPerPaperRaw": "1148128135344466",
+            "usdPerPaperPerYearRaw": "104617455066190574"
+          },
+          "stakingRewardHistory": {
+            "days": [
+              {
+                "toMs": 1792469173000,
+                "dayMs": 1792454400000,
+                "fromMs": 1792467555000,
+                "missing": false,
+                "partial": true,
+                "participation": null,
+                "earnedUsdPer1kPaperRaw": "184759488592124"
+              }
+            ],
+            "basis": "observed-accumulator",
+            "timeZone": "UTC",
+            "truncated": false,
+            "observedFromMs": 1792467555000,
+            "availableFromMs": 1792454400000
+          }
+        },
+        "wallet": {
+          "address": "0x35b29bdd690f95fe35c9645f21866b04616295a7",
+          "stakingParticipation": {
+            "walletStakedRaw": "252057160476062350514411978",
+            "totalStakedRaw": "8745157984712320385071769119",
+            "sourceAt": 1792469180000,
+            "receivedAt": 1792469183779,
+            "stale": false
+          },
+          "stakingRewards": {
+            "pendingRaw": "29862887539180497945",
+            "sourceAt": 1792469180000,
+            "receivedAt": 1792469183779,
+            "stale": false
+          },
+          "accountFreshness": {
+            "receivedAt": 1792469184676,
+            "sourceAt": 1792468265000,
+            "stale": false,
+            "refreshing": false
+          }
+        }
+      },
+      {
+        "verifiedAt": "2026-10-20T04:07:22.407Z",
+        "assertions": "passed",
+        "ready": {
+          "ready": true,
+          "degraded": false,
+          "status": {
+            "stale": false,
+            "stream": "connected",
+            "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+            "sourceAt": 1792469238000,
+            "receivedAt": 1792469241013,
+            "persistence": "postgres",
+            "indexedBlock": "49016108"
+          }
+        },
+        "economics": {
+          "sourceAt": 1792469234000,
+          "stale": false,
+          "stakingYield": {
+            "toMs": 1792469234000,
+            "basis": "observed-accumulator",
+            "fromMs": 1792123080000,
+            "yearDays": 365,
+            "elapsedMs": 346154000,
+            "earnedUsdPerPaperRaw": "1148141628541183",
+            "usdPerPaperPerYearRaw": "104600248437616637"
+          },
+          "stakingRewardHistory": {
+            "days": [
+              {
+                "toMs": 1792469234000,
+                "dayMs": 1792454400000,
+                "fromMs": 1792467555000,
+                "missing": false,
+                "partial": true,
+                "participation": null,
+                "earnedUsdPer1kPaperRaw": "198252685308735"
+              }
+            ],
+            "basis": "observed-accumulator",
+            "timeZone": "UTC",
+            "truncated": false,
+            "observedFromMs": 1792467555000,
+            "availableFromMs": 1792454400000
+          }
+        },
+        "wallet": {
+          "address": "0x35b29bdd690f95fe35c9645f21866b04616295a7",
+          "stakingParticipation": {
+            "walletStakedRaw": "252057160476062350514411978",
+            "totalStakedRaw": "8745171253112620732479900179",
+            "sourceAt": 1792469238000,
+            "receivedAt": 1792469241013,
+            "stale": false
+          },
+          "stakingRewards": {
+            "pendingRaw": "33263944389314444297",
+            "sourceAt": 1792469238000,
+            "receivedAt": 1792469241013,
+            "stale": false
+          },
+          "accountFreshness": {
+            "receivedAt": 1792469242561,
+            "sourceAt": 1792468265000,
+            "stale": false,
+            "refreshing": false
+          }
+        }
+      }
+    ]
+  },
+  "limitations": [
+    "Supply and total-staked context was not recorded at the initial daily reward endpoint. That legacy day retains its rewards but has unavailable growth comparisons. New paired intervals can begin at the next UTC day (October 21 UTC), after at least two valid observations.",
+    "The table displays the latest seven UTC days and can expand to at most 365 retained days. The single production reward day is partial; multi-day, expanded, missing, zero, negative and rollover behavior was verified with test fixtures.",
+    "Wallet share is a current coherent snapshot, not a historical wallet-share series or future reward forecast.",
+    "Existing historical trade-ingestion-gap warning remains. An active-trader directory freshness warning appeared during collector handoff and cleared by the second verified sample."
+  ],
+  "changes": {
+    "schema": false,
+    "environment": false,
+    "servicePlans": false,
+    "historyReset": false,
+    "additionalPerViewerSourceRequests": false
+  },
+  "previews": [
+    "docs/previews/production-rewards-dilution-2026-10-19.png",
+    "docs/previews/production-rewards-dilution-mobile-2026-10-19.png",
+    "docs/previews/production-wallet-pool-share-2026-10-19.png",
+    "docs/previews/production-wallet-pool-share-mobile-2026-10-19.png"
+  ]
+}
