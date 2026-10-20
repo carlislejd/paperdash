@@ -64,6 +64,16 @@ The collector persists one constant-size current-day snapshot during normal summ
 
 Publication uses two bounded collector snapshot reads; viewers reuse the shared economics response with no source request or historical scan. Older responses can omit the additive field during rollout. No database migration or new provider feed is needed. UI freshness follows the source and failed-refresh state; reopening the page does not renew observation clocks.
 
+## Rewards and dilution
+
+The daily table places observed USDC rewards per 1,000 continuously staked PAPER beside **Staked Δ** and **Supply Δ**. Each percentage is `(ending balance − starting balance) ÷ starting balance × 100`, calculated with exact raw integers before rounding for display. A zero starting balance makes its percentage unavailable; tiny nonzero changes remain visible. These are signed net changes, not mint-event totals, and they are never subtracted from USDC earnings to invent a net yield.
+
+The optional `stakingRewardHistory.days[].participation` contains `supplyFromRaw`, `supplyToRaw`, `stakedFromRaw` and `stakedToRaw`, all 18-decimal PAPER amounts. Both supply/stake endpoints come from the same accepted summaries as that row's reward accumulator endpoints and cover exactly `fromMs`–`toMs`. Do not join the older hourly-derived supply bars to reward rows by date: their measurement intervals differ. Missing or invalid totals, stake above supply, and contradictory totals at a shared source timestamp make participation unavailable without erasing valid USDC rewards.
+
+Existing accumulator-only rows retain their original rewards and show unavailable supply/stake comparisons. Capture starts prospectively; a day whose starting endpoint predates this feature cannot acquire a comparison from a later snapshot. The original annual reward baseline and daily history remain unchanged. No new upstream request, RPC, viewer-driven history scan or database migration is needed.
+
+The [official staking mechanics](https://docs.papertrade.xyz/paper/staking/) describe distributions as proportional to staked PAPER at each distribution. Increasing total stake reduces an unchanged stake's pool share, while increased USDC distributions may still increase its earnings. Supply growth changes ownership share but only affects staking participation when tokens are staked. Current wallet pool share uses a separately paired account/summary observation; see [wallet participation](WALLET_REWARDS.md). Neither display forecasts future rewards or claims that the announced minting changes are already active.
+
 ## Removed price-based valuations
 
 Following the [October 19 transferability announcement](https://x.com/papertrade_xyz/status/2112310325521399982), the dashboard no longer presents the Paragon perpetual quote as a valuation for nontransferable PAPER. The price-derived APR, optional valuation controls, dollar PAPER holdings, P&L-plus-PAPER figures and implied supply value have been removed from the overview, wallet directory, wallet drawer, leaderboards, Following and exported P&L cards. An old saved display preference has no effect.

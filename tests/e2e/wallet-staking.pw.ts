@@ -21,10 +21,11 @@ test("wallet staking shows PAPER and lifetime claimed USDC without treating pend
   });
   await expect(staking.locator("dt")).toHaveText([
     "Amount staked",
+    "Share of staked PAPER",
     "Pending rewards",
     "Claimed rewards",
   ]);
-  await expect(staking.locator("dd")).toHaveText(["9,876.54", "—", "$12.35"]);
+  await expect(staking.locator("dd")).toHaveText(["9,876.54", "—", "—", "$12.35"]);
   await expect(staking.locator("dd").first()).toHaveAttribute(
     "title",
     "9,876.54321 PAPER",
@@ -58,7 +59,7 @@ test("wallet staking keeps a genuine zero distinct from unavailable pending rewa
     name: "PAPER staking",
     exact: true,
   });
-  await expect(staking.locator("dd")).toHaveText(["0", "—", "$0.00"]);
+  await expect(staking.locator("dd")).toHaveText(["0", "—", "—", "$0.00"]);
 });
 
 test("wallet staking preserves missing snapshot values", async ({ page }) => {
@@ -68,7 +69,7 @@ test("wallet staking preserves missing snapshot values", async ({ page }) => {
     name: "PAPER staking",
     exact: true,
   });
-  await expect(staking.locator("dd")).toHaveText(["—", "—", "—"]);
+  await expect(staking.locator("dd")).toHaveText(["—", "—", "—", "—"]);
   await expect(staking).toContainText("UNAVAILABLE");
   await expect(staking).not.toContainText("$0.00");
 });
@@ -86,8 +87,8 @@ test("wallet staking uses verified pending rewards and preserves their delayed s
   await page.route(`**/api/wallets/${WALLET}`, route => route.fulfill({ json: wallet }));
   await page.goto(`/?view=wallets&wallet=${WALLET}`);
   const staking = page.getByRole("region", { name: "PAPER staking", exact: true });
-  await expect(staking.locator("dd")).toHaveText(["0", "$12.35", "$0.00"]);
-  await expect(staking.locator("dd").nth(1)).toHaveAttribute("title", "12.34567890123456789 USDC");
+  await expect(staking.locator("dd")).toHaveText(["0", "—", "$12.35", "$0.00"]);
+  await expect(staking.locator("dd").nth(2)).toHaveAttribute("title", "12.34567890123456789 USDC");
   await expect(staking).toContainText("USDC · delayed");
   await expect(staking).toContainText("Pending rewards have been distributed and are available to claim.");
   await expect(staking).not.toContainText("$99.00");
@@ -119,6 +120,13 @@ test("an older refresh keeps claimed and pending rewards paired with the saved a
       stale: false,
       refreshing: false,
     };
+    wallet.stakingParticipation = {
+      walletStakedRaw: raw(older ? 20 : 10),
+      totalStakedRaw: raw(older ? 200 : 1000),
+      receivedAt: older ? at + 15_000 : at,
+      sourceAt,
+      stale: false,
+    };
     wallet.stakingRewards = {
       pendingRaw: raw(older ? 900_000 : 200_000),
       receivedAt: older ? at + 15_000 : at,
@@ -136,6 +144,7 @@ test("an older refresh keeps claimed and pending rewards paired with the saved a
   });
   await expect(staking.locator("dd")).toHaveText([
     "10",
+    "1%",
     "$200,000.00",
     "$100,000.00",
   ]);
@@ -147,6 +156,7 @@ test("an older refresh keeps claimed and pending rewards paired with the saved a
   await expect.poll(() => reads).toBeGreaterThan(initialReads);
   await expect(staking.locator("dd")).toHaveText([
     "10",
+    "1%",
     "$200,000.00",
     "$100,000.00",
   ]);
@@ -159,6 +169,7 @@ test("an older refresh keeps claimed and pending rewards paired with the saved a
   await page.getByRole("button", { name: /^Aoi / }).click();
   await expect(staking.locator("dd")).toHaveText([
     "10",
+    "1%",
     "$200,000.00",
     "$100,000.00",
   ]);
@@ -181,4 +192,70 @@ test("an older refresh keeps claimed and pending rewards paired with the saved a
   );
   await expect(card.locator(".pnl-accessible-summary")).not.toContainText("900,000");
   expect(reads).toBe(readsAfterRefresh);
+});
+
+test("current staking share remains precise and falls when the pool grows without adding a reward forecast", async ({ page }) => {
+  const at = Math.floor(Date.now() / 1000) * 1000;
+  await page.clock.install({ time: at });
+  await page.clock.pauseAt(at);
+  await mockSources(page);
+  let phase = 0;
+  let reads = 0;
+  await page.route(`**/api/wallets/${WALLET}`, route => {
+    reads++;
+    const sourceAt = at + phase * 16_000;
+    const wallet = walletResponse(WALLET, sourceAt);
+    wallet.snapshot!.indexedThroughTimestamp = sourceAt / 1000;
+    wallet.accountFreshness = { sourceAt, receivedAt: sourceAt, stale: false, refreshing: false };
+    wallet.stale = true;
+    wallet.errors = ["Closed trades: awaiting history"];
+    wallet.snapshot!.paper.staked = "1000000000000000000";
+    wallet.stakingParticipation = {
+      walletStakedRaw: wallet.snapshot!.paper.staked,
+      totalStakedRaw: phase === 0 ? "1000000000000000000000000" : "2000000000000000000000000",
+      sourceAt, receivedAt: sourceAt, stale: phase === 2,
+    };
+    return route.fulfill({ json: wallet });
+  });
+  await page.goto(`/?view=wallets&wallet=${WALLET}`);
+  const staking = page.getByRole("region", { name: "PAPER staking", exact: true });
+  const share = staking.locator(".wd-staking-metrics > div").filter({ has: page.locator("dt", { hasText: "Share of staked PAPER" }) });
+  await expect(share.locator("dd")).toHaveText("0.0001%");
+  await expect(share).toContainText("Current snapshot");
+  await expect(share.locator("dd")).toHaveAttribute("title", /1 of 1,000,000 staked PAPER · Observed/);
+  await expect(staking).toContainText("An unchanged stake represents a smaller share when the staking pool grows.");
+  const firstReads = reads;
+  phase = 1;
+  await page.clock.runFor(16_000);
+  await expect.poll(() => reads).toBeGreaterThan(firstReads);
+  await expect(share.locator("dd")).toHaveAttribute("title", new RegExp(new Date(at + 16_000).toISOString().slice(11, 19)));
+  await expect(staking.locator("dd").first()).toHaveText("1");
+  await expect(share.locator("dd")).toHaveText("5 × 10⁻⁵%");
+  const secondReads = reads;
+  phase = 2;
+  await page.clock.runFor(16_000);
+  await expect.poll(() => reads).toBeGreaterThan(secondReads);
+  expect(await page.evaluate(() => Date.now())).toBe(at + 32000);
+  await expect(share.locator("dd")).toHaveAttribute("title", new RegExp(new Date(at + 32_000).toISOString().slice(11, 19)));
+  await expect(share).toContainText("Last available");
+  await expect(share.locator("dd")).toHaveText("5 × 10⁻⁵%");
+  expect(await page.getByRole("dialog").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await staking.screenshot({ path: `/tmp/paperclub-wallet-pool-share-${test.info().project.name}.png` });
+});
+
+test("zero staking share and an empty pool remain distinct", async ({ page }) => {
+  await mockSources(page);
+  const wallet = walletResponse();
+  wallet.stakingParticipation = {
+    walletStakedRaw: "0", totalStakedRaw: "1000000000000000000",
+    sourceAt: Date.now(), receivedAt: Date.now(), stale: false,
+  };
+  await page.route(`**/api/wallets/${WALLET}`, route => route.fulfill({ json: wallet }));
+  await page.goto(`/?view=wallets&wallet=${WALLET}`);
+  const staking = page.getByRole("region", { name: "PAPER staking", exact: true });
+  await expect(staking.locator("dd").nth(1)).toHaveText("0%");
+  wallet.stakingParticipation.totalStakedRaw = "0";
+  await page.reload();
+  await expect(staking.locator("dd").nth(1)).toHaveText("—");
+  await expect(staking.getByLabel("Staking pool share unavailable")).toBeVisible();
 });

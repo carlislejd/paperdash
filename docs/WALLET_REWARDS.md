@@ -30,6 +30,20 @@ The public `WalletResponse.stakingRewards` block contains `pendingRaw`, `receive
 
 The wallet's last account-change timestamp may remain old for an inactive account after a successful fresh check. That timestamp alone does not make the account stale. Future or inconsistent timestamps are rejected; summary age and successful observation receipts determine reward freshness.
 
+## Current share of staked PAPER
+
+The wallet's staking section places its current share of the staking pool beside its staked amount:
+
+```text
+current pool share = wallet staked PAPER / total staked PAPER × 100
+```
+
+`WalletResponse.stakingParticipation` contains `walletStakedRaw`, `totalStakedRaw`, `sourceAt`, `receivedAt`, and `stale`. Both token amounts use 18-decimal integer strings. They are captured from the same account and retained summary pair as pending rewards, with the same block and clock validation, and saved atomically inside that account snapshot. Participation remains available when reward-specific inputs such as the accumulator are missing. It adds no summary read, source request, timer, or historical wallet scan.
+
+Zero wallet stake is a valid 0% share when the pool total is positive. Missing or malformed inputs, an empty pool, or wallet stake exceeding the pool remain unavailable. Old cache entries without participation are not combined with the latest global denominator. Saved pairs age after 30 seconds, and a regressed or failed account refresh retains the original pair as last available. Formatting uses integer arithmetic; tiny positive percentages use scientific notation rather than rounding to zero.
+
+This is a current observed pool share, not a historical wallet-share series or an income forecast. An unchanged stake represents a smaller share when total staked PAPER grows; future USDC rewards also depend on the amounts distributed. The protocol's daily pool and supply changes are shown separately alongside observed rewards per 1,000 PAPER.
+
 ## Unrecovered trading loss
 
 The wallet sidepanel and all three P&L card layouts show the remaining realized trading loss after rewards:

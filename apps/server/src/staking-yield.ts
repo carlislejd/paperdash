@@ -9,16 +9,32 @@ import type { Store } from "./store.js";
 /** Retained separately from the seven-day chart cache so every measured hour
  * remains in the denominator across collector restarts and chart eviction. */
 interface YieldWindow {
-  first: StakingYieldObservation;
-  last: StakingYieldObservation;
+  first: RewardObservation;
+  last: RewardObservation;
 }
 const KEY = "staking-yield-window";
 
-function observation(summary: ProtocolSummary | null): StakingYieldObservation | null {
+/** Optional for compatibility with retained accumulator-only observations. */
+interface RewardObservation extends StakingYieldObservation {
+  participation?: { supplyRaw: string; stakedRaw: string } | null;
+}
+function validParticipation(value: RewardObservation["participation"]): value is NonNullable<RewardObservation["participation"]> {
+  return Boolean(value &&
+    typeof value.supplyRaw === "string" && typeof value.stakedRaw === "string" &&
+    /^(0|[1-9]\d{0,77})$/.test(value.supplyRaw) &&
+    /^(0|[1-9]\d{0,77})$/.test(value.stakedRaw) &&
+    BigInt(value.stakedRaw) <= BigInt(value.supplyRaw));
+}
+function observation(summary: ProtocolSummary | null): RewardObservation | null {
+  const participation = summary && {
+    supplyRaw: summary.paper.supply,
+    stakedRaw: summary.paper.staked,
+  };
   return summary?.ok === true ? {
     at: summary.source.at,
     genesis: summary.source.genesis ?? NaN,
     accumulatorRaw: summary.paper.accumulator,
+    participation: validParticipation(participation) ? participation : null,
   } : null;
 }
 
@@ -77,18 +93,20 @@ const HISTORY_KEY = "staking-reward-history";
 const HISTORY_DAYS_KEY = "staking-reward-history-days";
 interface RewardDay {
   dayMs: number;
-  first: StakingYieldObservation;
-  last: StakingYieldObservation;
+  first: RewardObservation;
+  last: RewardObservation;
   invalid: boolean;
+  /** A contradictory same-time supply/stake observation does not erase rewards. */
+  participationInvalid?: boolean;
 }
 interface RewardHistoryState {
   version: 1;
   observedFromMs: number;
-  last: StakingYieldObservation;
+  last: RewardObservation;
   day: RewardDay;
 }
 const dayOf = (at: number) => Math.floor(at / DAY) * DAY;
-const newDay = (point: StakingYieldObservation, invalid = false): RewardDay => ({
+const newDay = (point: RewardObservation, invalid = false): RewardDay => ({
   dayMs: dayOf(point.at), first: point, last: point, invalid,
 });
 
@@ -125,6 +143,14 @@ function publicDay(day: RewardDay): StakingRewardDay {
       : null,
     partial: !consistent || day.first.at !== day.dayMs || day.last.at !== day.dayMs + DAY,
     missing: !consistent,
+    participation: consistent && !day.participationInvalid &&
+      validParticipation(day.first.participation) && validParticipation(day.last.participation)
+      ? {
+        supplyFromRaw: day.first.participation.supplyRaw,
+        supplyToRaw: day.last.participation.supplyRaw,
+        stakedFromRaw: day.first.participation.stakedRaw,
+        stakedToRaw: day.last.participation.stakedRaw,
+      } : null,
   };
 }
 
@@ -139,8 +165,8 @@ export function emptyStakingRewardHistory(): StakingRewardHistory {
  * lifetime pair can seed one endpoint, never fabricate earlier daily rows. */
 async function refreshStakingRewardHistory(
   store: Pick<Store, "get" | "put">,
-  current: StakingYieldObservation,
-  legacyLast: StakingYieldObservation | undefined,
+  current: RewardObservation,
+  legacyLast: RewardObservation | undefined,
   now: number,
 ): Promise<void> {
   const saved = (await store.get<RewardHistoryState>(HISTORY_KEY))?.value;
@@ -155,8 +181,28 @@ async function refreshStakingRewardHistory(
     state = { version: 1, observedFromMs: seed.at, last: seed, day: newDay(seed) };
   }
   const previous = state.last;
-  if (saved === state && previous.at === current.at && previous.accumulatorRaw === current.accumulatorRaw)
+  if (saved === state && previous.at === current.at && previous.accumulatorRaw === current.accumulatorRaw) {
+    // Do not upgrade old endpoints with later metadata. Contradictory totals at
+    // an already observed endpoint invalidate participation, not the reward
+    // interval or its original baseline. A boundary endpoint can serve two rows.
+    const before = previous.participation;
+    const after = current.participation;
+    if (validParticipation(before) && !state.day.participationInvalid &&
+      (!validParticipation(after) || before.supplyRaw !== after.supplyRaw || before.stakedRaw !== after.stakedRaw)) {
+      const archived = archivedDays((await store.get<RewardDay[]>(HISTORY_DAYS_KEY))?.value, now);
+      const affected = archived.filter(day => day.last.at === current.at);
+      if (affected.length) {
+        for (const day of affected)
+          await store.put(`staking-reward-day:${day.dayMs}`, publicDay({ ...day, participationInvalid: true }), now);
+        await store.put(HISTORY_DAYS_KEY, archived.map(day => day.last.at === current.at
+          ? { ...day, participationInvalid: true } : day), now);
+      }
+      await store.put(HISTORY_KEY, {
+        ...state, day: { ...state.day, participationInvalid: true },
+      } satisfies RewardHistoryState, now);
+    }
     return;
+  }
   const currentDay = dayOf(current.at);
   const previousDay = dayOf(previous.at);
   const reset = current.at < previous.at ||
@@ -227,6 +273,7 @@ export async function readStakingRewardHistory(
   for (let dayMs = firstDay; dayMs <= lastDay; dayMs += DAY)
     days.push(retained.get(dayMs) ?? {
       dayMs, fromMs: null, toMs: null, earnedUsdPer1kPaperRaw: null, partial: true, missing: true,
+      participation: null,
     });
   return {
     ...emptyStakingRewardHistory(), days,

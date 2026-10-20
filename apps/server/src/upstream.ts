@@ -25,7 +25,9 @@ import {
   publicWalletSnapshot,
   readStakingSummary,
   readWalletStakingRewards,
+  readWalletStakingParticipation,
   walletStakingRewards,
+  walletStakingParticipation,
   type RetainedWalletSnapshot,
 } from "./wallet-staking.js";
 import {
@@ -838,6 +840,11 @@ export class Upstream {
                 summary,
                 receivedAt,
               ),
+              stakingParticipation: walletStakingParticipation(
+                { value, receivedAt, stale: false },
+                summary,
+                receivedAt,
+              ),
             };
           } finally {
             controller.abort();
@@ -943,6 +950,10 @@ export class Upstream {
       accountFreshness,
       marginRisk,
       stakingRewards,
+      stakingParticipation: readWalletStakingParticipation(
+        snapshot.status === "fulfilled" ? snapshot.value : null,
+        accountNow,
+      ),
       snapshot:
         snapshot.status === "fulfilled"
           ? publicWalletSnapshot(snapshot.value.value)

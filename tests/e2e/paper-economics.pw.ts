@@ -39,7 +39,7 @@ test("PAPER uses its own coherent totals and clock, shares daily changes and pre
   await expect(paper).toContainText("Pending rewards source-reported");
   await expect(paper.locator(".paper-pending")).toContainText("$324");
   await expect(paper).not.toContainText("LAST AVAILABLE");
-  await expect(paper).toContainText("Daily staking rewards");
+  await expect(paper).toContainText("Rewards & dilution");
   await expect(paper).toContainText("Earlier daily history is unavailable");
   await expect(paper).not.toContainText("Annualized reward allocations");
   await expect(paper).not.toContainText("Average daily reward allocations");
@@ -241,7 +241,7 @@ test("the trading launch allocation window preserves October 8 deposit volume an
   );
   await page.goto("/");
   const paper = page.getByRole("region", { name: "PAPER economics", exact: true });
-  await expect(paper).toContainText("Daily staking rewards");
+  await expect(paper).toContainText("Rewards & dilution");
   for (const [name, amount] of [
     ["Deposit volume / day chart card", "2,000 USDC"],
     ["First-time depositors chart card", "2 wallets"],

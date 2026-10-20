@@ -193,7 +193,7 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   ).toHaveText("-$10B");
   await expect(panel).toContainText("125.57M");
   await expect(panel).toContainText("$16.27K");
-  await expect(panel).toContainText("Daily staking rewards");
+  await expect(panel).toContainText("Rewards & dilution");
   await expect(panel).not.toContainText("Annualized reward allocations");
   const paper = panel.locator(".paper-details");
   await expect(paper.locator("h3")).toHaveText([

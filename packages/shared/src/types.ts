@@ -380,6 +380,15 @@ export interface WalletResponse {
     sourceAt: number | null;
     stale: boolean;
   };
+  /** Current stake and pool total captured together, independently of rewards.
+   * Unavailable pairs remain null; this is not historical wallet participation. */
+  stakingParticipation?: {
+    walletStakedRaw: Raw | null;
+    totalStakedRaw: Raw | null;
+    receivedAt: number | null;
+    sourceAt: number | null;
+    stale: boolean;
+  };
 }
 export type PanelKey =
   "house" | "protocol-charts" | "paper-economics" | "liquidation-stats";
@@ -585,6 +594,14 @@ export interface StakingRewardDay {
   partial: boolean;
   /** Missing or inconsistent observations; null rewards must not become zero. */
   missing: boolean;
+  /** Exact 18-decimal PAPER totals from these same reward interval endpoints.
+   * Legacy or conflicting observations remain unavailable, never backfilled. */
+  participation?: {
+    supplyFromRaw: Raw;
+    supplyToRaw: Raw;
+    stakedFromRaw: Raw;
+    stakedToRaw: Raw;
+  } | null;
 }
 export interface StakingRewardHistory {
   basis: "observed-accumulator";

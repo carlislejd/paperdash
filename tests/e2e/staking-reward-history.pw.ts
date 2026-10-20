@@ -23,6 +23,10 @@ function day(dayMs: number): StakingRewardDay {
     earnedUsdPer1kPaperRaw: "250000000000000000",
     partial: false,
     missing: false,
+    participation: {
+      supplyFromRaw: "1000000000000000000000000000", supplyToRaw: "1010000000000000000000000000",
+      stakedFromRaw: "800000000000000000000000000", stakedToRaw: "820000000000000000000000000",
+    },
   };
 }
 
@@ -32,6 +36,11 @@ test("daily staking rewards show measured amounts, partial intervals and unknown
   await mockSources(page);
   const days = Array.from({ length: 9 }, (_, index) => day(today - (8 - index) * DAY));
   days[5].earnedUsdPer1kPaperRaw = "0";
+  days[5].participation = {
+    supplyFromRaw: "1000000000000000000000000000", supplyToRaw: "1000000000000000000000000000",
+    stakedFromRaw: "800000000000000000000000000", stakedToRaw: "600000000000000000000000000",
+  };
+  days[4].participation = undefined;
   days[6] = { ...days[6], fromMs: null, toMs: null, earnedUsdPer1kPaperRaw: null, partial: true, missing: true };
   days[8] = {
     ...days[8], fromMs: today + 6 * 3_600_000, toMs: at,
@@ -46,8 +55,8 @@ test("daily staking rewards show measured amounts, partial intervals and unknown
   const panel = page.getByRole("region", { name: "Daily staking rewards", exact: true });
   const rows = panel.locator("tbody tr");
   await expect(rows).toHaveCount(7);
-  await expect(rows.first().getByRole("rowheader")).toHaveText("19 Oct");
-  await expect(rows.last().getByRole("rowheader")).toHaveText("13 Oct");
+  await expect(rows.first().getByRole("rowheader").locator("time")).toHaveText("19 Oct");
+  await expect(rows.last().getByRole("rowheader").locator("time")).toHaveText("13 Oct");
   await expect(rows.first().locator(".staking-reward-amount")).toHaveText("$0.003453");
   await expect(rows.first()).toContainText("Partial day");
   await expect(rows.first()).toContainText("06:00:00–12:34:56");
@@ -59,15 +68,28 @@ test("daily staking rewards show measured amounts, partial intervals and unknown
   await expect(rows.last()).toContainText("Full UTC day");
   await expect(panel).toContainText("Partial days are not full-day rates");
   await expect(panel).not.toContainText("Annualized");
+  await expect(panel.getByRole("heading", { name: "Rewards & dilution" })).toBeVisible();
+  await expect(rows.first().locator('[data-metric="staked"]')).toHaveText("+2.50%");
+  await expect(rows.first().locator('[data-metric="supply"]')).toHaveText("+1.00%");
+  await expect(rows.filter({ hasText: "16 Oct" }).locator('[data-metric="staked"]')).toHaveText("−25.00%");
+  await expect(rows.filter({ hasText: "16 Oct" }).locator('[data-metric="supply"]')).toHaveText("0.00%");
+  await expect(rows.filter({ hasText: "15 Oct" }).locator('[data-metric="staked"]')).toHaveText("—");
+  await expect(rows.filter({ hasText: "15 Oct" }).locator(".staking-reward-amount")).toHaveText("$0.25");
+  await expect(missing.locator('[data-metric="staked"]')).toHaveText("—");
+  await expect(panel).toContainText("Supply and staking comparisons need matching, consistent observations at both endpoints");
+  await panel.getByText("How rewards and dilution relate", { exact: true }).click();
+  await expect(panel.getByText("An unchanged stake owns a smaller share", { exact: false })).toBeVisible();
+  await expect(panel.getByRole("link", { name: "Staking mechanics" })).toHaveAttribute("href", "https://docs.papertrade.xyz/paper/staking/");
+  await panel.getByText("How rewards and dilution relate", { exact: true }).click();
   const before = reads;
   await panel.getByRole("button", { name: "Show all 9 days" }).click();
   await expect(rows).toHaveCount(9);
-  await expect(rows.last().getByRole("rowheader")).toHaveText("11 Oct");
+  await expect(rows.last().getByRole("rowheader").locator("time")).toHaveText("11 Oct");
   await expect(panel.getByRole("button", { name: "Show latest 7 days" })).toHaveAttribute("aria-expanded", "true");
   await panel.getByRole("button", { name: "Show latest 7 days" }).click();
   await expect(rows).toHaveCount(7);
   expect(reads).toBe(before);
-  await panel.screenshot({ path: `/tmp/paperclub-staking-reward-history-${testInfo.project.name}.png` });
+  await panel.screenshot({ path: `/tmp/paperclub-rewards-dilution-${testInfo.project.name}.png` });
   await page.getByRole("region", { name: "House and PAPER statistics" }).screenshot({ path: `/tmp/paperclub-house-reward-history-${testInfo.project.name}.png` });
   for (const width of testInfo.project.name === "desktop" ? [1440, 1024, 720, 320] : [393]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -96,7 +118,7 @@ test("the first UTC midnight keeps a one-sample day unknown and failed refresh m
   const panel = page.getByRole("region", { name: "Daily staking rewards", exact: true });
   await expect(panel.locator("tbody tr")).toHaveCount(2);
   await expect(panel.locator("tbody tr").last()).toContainText("12:00:00–20 Oct 00:00:03");
-  await expect(panel.locator("tbody tr").first().getByRole("rowheader")).toHaveText("20 Oct");
+  await expect(panel.locator("tbody tr").first().getByRole("rowheader").locator("time")).toHaveText("20 Oct");
   await expect(panel.locator("tbody tr").first().locator(".staking-reward-amount")).toHaveText("—");
   await expect(panel.locator(".staking-reward-history-status")).toContainText("Updated · Just now");
   failure = true;

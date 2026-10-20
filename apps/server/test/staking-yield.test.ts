@@ -262,6 +262,10 @@ describe("retained staking yield", () => {
 
 const DAY = 24 * HOUR;
 const dayStart = Math.floor((VERIFIED_PROTOCOL_GENESIS + 3 * DAY) / DAY) * DAY;
+const unchangedParticipation = {
+  supplyFromRaw: summary().paper.supply, supplyToRaw: summary().paper.supply,
+  stakedFromRaw: summary().paper.staked, stakedToRaw: summary().paper.staked,
+};
 
 describe("retained daily rewards per 1K staked PAPER", () => {
   async function record(store: Store, at: number, accumulator: bigint) {
@@ -285,6 +289,7 @@ describe("retained daily rewards per 1K staked PAPER", () => {
       days: [{
         dayMs: dayStart, fromMs: lastAt, toMs: lastAt + 2_000,
         earnedUsdPer1kPaperRaw: "999", partial: true, missing: false,
+        participation: null,
       }],
     });
   });
@@ -301,8 +306,8 @@ describe("retained daily rewards per 1K staked PAPER", () => {
     });
     await record(store, dayStart + DAY, initialAccumulator);
     expect((await readStakingRewardHistory(store, dayStart + DAY)).days).toEqual([
-      { dayMs: dayStart, fromMs: dayStart, toMs: dayStart + DAY, earnedUsdPer1kPaperRaw: "0", partial: false, missing: false },
-      { dayMs: dayStart + DAY, fromMs: dayStart + DAY, toMs: dayStart + DAY, earnedUsdPer1kPaperRaw: null, partial: true, missing: true },
+      { dayMs: dayStart, fromMs: dayStart, toMs: dayStart + DAY, earnedUsdPer1kPaperRaw: "0", partial: false, missing: false, participation: unchangedParticipation },
+      { dayMs: dayStart + DAY, fromMs: dayStart + DAY, toMs: dayStart + DAY, earnedUsdPer1kPaperRaw: null, partial: true, missing: true, participation: null },
     ]);
   });
 
@@ -314,8 +319,8 @@ describe("retained daily rewards per 1K staked PAPER", () => {
     await record(store, dayStart + DAY + HOUR, initialAccumulator + 5n * rewardPerHour);
     const { days } = await readStakingRewardHistory(store, dayStart + DAY + HOUR);
     expect(days).toEqual([
-      { dayMs: dayStart, fromMs: dayStart + 20_000, toMs: dayStart + DAY + 10_000, earnedUsdPer1kPaperRaw: "4000000000000000000", partial: true, missing: false },
-      { dayMs: dayStart + DAY, fromMs: dayStart + DAY + 10_000, toMs: dayStart + DAY + HOUR, earnedUsdPer1kPaperRaw: "1000000000000000000", partial: true, missing: false },
+      { dayMs: dayStart, fromMs: dayStart + 20_000, toMs: dayStart + DAY + 10_000, earnedUsdPer1kPaperRaw: "4000000000000000000", partial: true, missing: false, participation: unchangedParticipation },
+      { dayMs: dayStart + DAY, fromMs: dayStart + DAY + 10_000, toMs: dayStart + DAY + HOUR, earnedUsdPer1kPaperRaw: "1000000000000000000", partial: true, missing: false, participation: unchangedParticipation },
     ]);
     expect((await store.get(`staking-reward-day:${dayStart}`))?.value).toEqual(days[0]);
   });
@@ -353,13 +358,13 @@ describe("retained daily rewards per 1K staked PAPER", () => {
     await record(store, dayStart + 3 * HOUR, initialAccumulator + 5n * rewardPerHour);
     await record(store, dayStart + 4 * HOUR, initialAccumulator + 11n * rewardPerHour);
     expect((await readStakingRewardHistory(store, dayStart + 4 * HOUR)).days[0]).toMatchObject({
-      earnedUsdPer1kPaperRaw: null, missing: true,
+      earnedUsdPer1kPaperRaw: null, missing: true, participation: null,
     });
     await record(store, dayStart + DAY, initialAccumulator + 12n * rewardPerHour);
     await record(store, dayStart + DAY + HOUR, initialAccumulator + 13n * rewardPerHour);
     const { days } = await readStakingRewardHistory(store, dayStart + DAY + HOUR);
     expect(days[0].missing).toBe(true);
-    expect(days[1]).toMatchObject({ earnedUsdPer1kPaperRaw: "1000000000000000000", missing: false });
+    expect(days[1]).toMatchObject({ earnedUsdPer1kPaperRaw: "1000000000000000000", missing: false, participation: unchangedParticipation });
   });
 
   it("invalidates the prior date's approximate endpoint when the clock rolls back across that endpoint", async () => {
@@ -371,8 +376,8 @@ describe("retained daily rewards per 1K staked PAPER", () => {
     const rollback = dayStart + DAY + 10_000;
     await refreshStakerYield(store, summary(rollback, initialAccumulator + rewardPerHour), dayStart + DAY + 60_000);
     const { days } = await readStakingRewardHistory(store, dayStart + DAY + 60_000);
-    expect(days[0]).toMatchObject({ earnedUsdPer1kPaperRaw: null, missing: true });
-    expect(days[1]).toMatchObject({ fromMs: rollback, earnedUsdPer1kPaperRaw: null, missing: true });
+    expect(days[0]).toMatchObject({ earnedUsdPer1kPaperRaw: null, missing: true, participation: null });
+    expect(days[1]).toMatchObject({ fromMs: rollback, earnedUsdPer1kPaperRaw: null, missing: true, participation: null });
     expect((await store.get(`staking-reward-day:${dayStart}`))?.value).toMatchObject({ earnedUsdPer1kPaperRaw: null, missing: true });
   });
 
@@ -386,7 +391,7 @@ describe("retained daily rewards per 1K staked PAPER", () => {
     const reopened = await createStore({ dataDir: directory, databaseUrl: "" });
     stores.push(reopened);
     expect((await readStakingRewardHistory(reopened, dayStart + DAY)).days[0]).toMatchObject({
-      earnedUsdPer1kPaperRaw: "1000000000000000000", partial: false,
+      earnedUsdPer1kPaperRaw: "1000000000000000000", partial: false, participation: unchangedParticipation,
     });
     // Memory store makes the long retention exercise independent of disk speed.
     const bounded = await memory();
@@ -398,11 +403,130 @@ describe("retained daily rewards per 1K staked PAPER", () => {
     expect(history.observedFromMs).toBe(dayStart);
     expect(history.truncated).toBe(true);
     expect((await bounded.get(`staking-reward-day:${dayStart}`))?.value).toMatchObject({
-      earnedUsdPer1kPaperRaw: "1000000000000000000", partial: false,
+      earnedUsdPer1kPaperRaw: "1000000000000000000", partial: false, participation: unchangedParticipation,
     });
     const writes = vi.spyOn(bounded, "put");
     await record(bounded, dayStart + 366 * DAY + 2_000, initialAccumulator + 366n * rewardPerHour);
     expect(writes.mock.calls.map(([key]) => key)).toEqual(["staking-reward-history", "staking-yield-window"]);
     expect(JSON.stringify(writes.mock.calls[0][1]).length).toBeLessThan(1_000);
+  });
+
+  it("uses exact PAPER totals from the reward interval endpoints, including decreases and zero baselines", async () => {
+    const store = await memory();
+    const firstAt = dayStart + 12_345;
+    const first = summary(firstAt);
+    first.paper.supply = "0";
+    first.paper.staked = "0";
+    await refreshStakerYield(store, first, firstAt);
+    const nextAt = firstAt + HOUR;
+    const next = summary(nextAt, initialAccumulator + rewardPerHour);
+    next.paper.supply = "900719925474099300000000000000001";
+    next.paper.staked = "800719925474099300000000000000007";
+    await refreshStakerYield(store, next, nextAt);
+    expect((await readStakingRewardHistory(store, nextAt)).days[0]).toMatchObject({
+      fromMs: firstAt, toMs: nextAt, earnedUsdPer1kPaperRaw: "1000000000000000000",
+      participation: {
+        supplyFromRaw: "0", supplyToRaw: next.paper.supply,
+        stakedFromRaw: "0", stakedToRaw: next.paper.staked,
+      },
+    });
+    // A lower future total is a valid signed change, not a reward-counter reset.
+    const another = await memory();
+    await refreshStakerYield(another, next, nextAt);
+    const lastAt = nextAt + HOUR;
+    const last = summary(lastAt, initialAccumulator + 2n * rewardPerHour);
+    last.paper.staked = "0";
+    const annual = await refreshStakerYield(another, last, lastAt);
+    expect(annual.fromMs).toBe(nextAt);
+    expect((await readStakingRewardHistory(another, lastAt)).days[0]).toMatchObject({
+      fromMs: nextAt, toMs: lastAt, missing: false,
+      participation: {
+        supplyFromRaw: next.paper.supply, supplyToRaw: last.paper.supply,
+        stakedFromRaw: next.paper.staked, stakedToRaw: "0",
+      },
+    });
+  });
+
+  it("keeps daily rewards when same-time PAPER totals conflict, including a shared midnight endpoint", async () => {
+    const store = await memory();
+    await record(store, dayStart, initialAccumulator);
+    const midnight = dayStart + DAY;
+    await record(store, midnight, initialAccumulator + rewardPerHour);
+    const conflicted = summary(midnight, initialAccumulator + rewardPerHour);
+    conflicted.paper.staked = "1";
+    await refreshStakerYield(store, conflicted, midnight);
+    await record(store, midnight + HOUR, initialAccumulator + 2n * rewardPerHour);
+    const history = await readStakingRewardHistory(store, midnight + HOUR);
+    expect(history.observedFromMs).toBe(dayStart);
+    expect(history.days).toHaveLength(2);
+    for (const day of history.days)
+      expect(day).toMatchObject({ earnedUsdPer1kPaperRaw: "1000000000000000000", missing: false, participation: null });
+    expect((await store.get(`staking-reward-day:${dayStart}`))?.value)
+      .toMatchObject({ earnedUsdPer1kPaperRaw: "1000000000000000000", participation: null });
+    const annual = (await store.get<{ first: { at: number } }>("staking-yield-window"))?.value;
+    expect(annual?.first.at).toBe(dayStart);
+    // The following day's own non-conflicting pair can publish again.
+    await record(store, midnight + DAY, initialAccumulator + 3n * rewardPerHour);
+    await record(store, midnight + DAY + HOUR, initialAccumulator + 4n * rewardPerHour);
+    expect((await readStakingRewardHistory(store, midnight + DAY + HOUR)).days[2])
+      .toMatchObject({ missing: false, participation: unchangedParticipation });
+  });
+
+  it("retains conflicting first endpoints instead of silently replacing them with matching-time totals", async () => {
+    const store = await memory();
+    await record(store, dayStart, initialAccumulator);
+    const changed = summary(dayStart);
+    changed.paper.supply = "2000000000000000000000";
+    await refreshStakerYield(store, changed, dayStart);
+    await record(store, dayStart + HOUR, initialAccumulator + rewardPerHour);
+    expect((await readStakingRewardHistory(store, dayStart + HOUR)).days[0]).toMatchObject({
+      fromMs: dayStart, toMs: dayStart + HOUR, earnedUsdPer1kPaperRaw: "1000000000000000000",
+      missing: false, participation: null,
+    });
+  });
+
+  it("leaves malformed or impossible PAPER endpoints unavailable without losing valid rewards", async () => {
+    for (const [supply, staked] of [["01", "0"], ["1", "2"], ["-1", "0"], ["1", "-1"], ["0", "1"], ["1e18", "0"]]) {
+      const store = await memory();
+      const first = summary(dayStart);
+      first.paper.supply = supply;
+      first.paper.staked = staked;
+      await refreshStakerYield(store, first, dayStart);
+      await record(store, dayStart + HOUR, initialAccumulator + rewardPerHour);
+      expect((await readStakingRewardHistory(store, dayStart + HOUR)).days[0])
+        .toMatchObject({ earnedUsdPer1kPaperRaw: "1000000000000000000", missing: false, participation: null });
+    }
+  });
+
+  it("preserves legacy daily rows and the annual baseline across reopen without inventing participation", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "paperdash-legacy-reward-participation-"));
+    directories.push(directory);
+    const firstStore = await createStore({ dataDir: directory, databaseUrl: "" });
+    const point = (at: number, accumulator: bigint) => ({ at, genesis: VERIFIED_PROTOCOL_GENESIS, accumulatorRaw: accumulator.toString() });
+    const first = point(dayStart, initialAccumulator);
+    const last = point(dayStart + DAY, initialAccumulator + rewardPerHour);
+    const older = point(dayStart - DAY, initialAccumulator - rewardPerHour);
+    await firstStore.put("staking-yield-window", { first: older, last }, last.at);
+    await firstStore.put("staking-reward-history", {
+      version: 1, observedFromMs: dayStart, last,
+      day: { dayMs: last.at, first: last, last, invalid: false },
+    }, last.at);
+    await firstStore.put("staking-reward-history-days", [{ dayMs: dayStart, first, last, invalid: false }], last.at);
+    await firstStore.close();
+    const reopened = await createStore({ dataDir: directory, databaseUrl: "" });
+    stores.push(reopened);
+    // Seeing the same legacy endpoint again cannot backfill newly captured totals.
+    await record(reopened, last.at, initialAccumulator + rewardPerHour);
+    await record(reopened, last.at + HOUR, initialAccumulator + 2n * rewardPerHour);
+    let history = await readStakingRewardHistory(reopened, last.at + HOUR);
+    expect(history.observedFromMs).toBe(dayStart);
+    expect(history.days).toHaveLength(2);
+    expect(history.days[0]).toMatchObject({ fromMs: dayStart, toMs: last.at, earnedUsdPer1kPaperRaw: "1000000000000000000", participation: null });
+    expect(history.days[1]).toMatchObject({ fromMs: last.at, toMs: last.at + HOUR, earnedUsdPer1kPaperRaw: "1000000000000000000", participation: null });
+    const annual = await refreshStakerYield(reopened, summary(last.at + DAY, initialAccumulator + 3n * rewardPerHour), last.at + DAY);
+    expect(annual.fromMs).toBe(older.at);
+    await record(reopened, last.at + DAY + HOUR, initialAccumulator + 4n * rewardPerHour);
+    history = await readStakingRewardHistory(reopened, last.at + DAY + HOUR);
+    expect(history.days[2]).toMatchObject({ fromMs: last.at + DAY, missing: false, participation: unchangedParticipation });
   });
 });

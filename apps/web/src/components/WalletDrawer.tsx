@@ -16,6 +16,7 @@ import type {
 } from "../../../../packages/shared/src/types";
 import { fetchJson } from "../lib/api";
 import { walletAccountClock as accountClock } from "../lib/wallet-account-clock";
+import { walletStakingShare } from "../lib/wallet-staking-share";
 import { useFollowing } from "../lib/use-following";
 import { FOLLOWING_LIMIT } from "../lib/following-storage";
 import { mergeHistory } from "../lib/wallet-history";
@@ -850,6 +851,9 @@ export function WalletDrawer({
             next.stakingRewards = current.stakingRewards
               ? { ...current.stakingRewards, stale: true }
               : undefined;
+            next.stakingParticipation = current.stakingParticipation
+              ? { ...current.stakingParticipation, stale: true }
+              : undefined;
             // Derived bands must remain attached to the snapshot they describe.
             next.marginRisk = riskMatchesSnapshot(
               current.marginRisk,
@@ -870,6 +874,7 @@ export function WalletDrawer({
           accountFreshness: next.accountFreshness,
           marginRisk: next.marginRisk,
           stakingRewards: next.stakingRewards,
+          stakingParticipation: next.stakingParticipation,
           stale: next.stale,
           // cacheWallet preserves failed bounded heads, never appended pages.
           portfolio: next.portfolio,
@@ -1058,6 +1063,7 @@ export function WalletDrawer({
       : displayName?.trim() || null;
   const snapshot = wallet?.snapshot;
   const accountFreshness = accountClock(wallet, Boolean(error));
+  const stakingShare = walletStakingShare(wallet, Date.now(), accountFreshness.stale);
   const paperOwned = totalPaper(wallet);
   const availableBalance = formatRawUsd(snapshot?.balance ?? null);
   const paperOwnedDisplay = paperAmount(paperOwned);
@@ -1463,6 +1469,18 @@ export function WalletDrawer({
                       <span>PAPER</span>
                     </div>
                     <div>
+                      <dt>Share of staked PAPER</dt>
+                      <dd
+                        aria-label={!stakingShare ? "Staking pool share unavailable" : undefined}
+                        title={stakingShare
+                          ? `${exactAmount(stakingShare.walletStakedRaw)} of ${exactAmount(stakingShare.totalStakedRaw)} staked PAPER · Observed ${new Date(stakingShare.sourceAt!).toISOString().replace("T", " ").replace(".000Z", " UTC")}`
+                          : undefined}
+                      >
+                        {stakingShare?.label ?? "—"}
+                      </dd>
+                      <span>{!stakingShare ? "Unavailable" : stakingShare.stale ? "Last available" : "Current snapshot"}</span>
+                    </div>
+                    <div>
                       <dt>Pending rewards</dt>
                       <dd
                         aria-label={
@@ -1498,6 +1516,10 @@ export function WalletDrawer({
                       <span>USDC · lifetime</span>
                     </div>
                   </dl>
+                  <p className="wd-staking-note">
+                    An unchanged stake represents a smaller share when the staking pool grows.
+                    Rewards also depend on USDC distributions.
+                  </p>
                   <p className="wd-staking-note">
                     Rewards are paid in USDC.{" "}
                     {pendingRewards === null

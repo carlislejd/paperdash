@@ -5,6 +5,7 @@ import type {
 } from "../../../../packages/shared/src/types";
 import { formatRawToken, relativeTime } from "../lib/format";
 import { formatChartTime, validChartTime } from "../lib/chart-data";
+import { participationChanges } from "../lib/reward-dilution";
 import "./staking-reward-history.css";
 
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -89,11 +90,12 @@ export function StakingRewardHistory({
   const hasClock = validChartTime(sourceAt);
   const delayed = stale || (hasClock && (now - sourceAt > 60_000 || sourceAt > now + 30_000));
   const observedFrom = history?.observedFromMs;
+  const missingParticipation = visible.some(day => rewardValue(day) !== null && !participationChanges(day.participation));
 
   return (
     <section className="staking-reward-history" aria-label="Daily staking rewards">
       <div className="staking-reward-history-heading">
-        <h3>Daily staking rewards</h3>
+        <h3>Rewards &amp; dilution</h3>
         <span className={delayed ? "staking-reward-history-status is-stale" : "staking-reward-history-status"}>
           {hasClock ? (
             <>
@@ -106,14 +108,19 @@ export function StakingRewardHistory({
         </span>
       </div>
       <p className="staking-reward-history-description">
-        USDC earned per 1,000 staked PAPER · actual observations
+        Daily USDC earned per 1,000 staked PAPER
       </p>
       {days.length ? (
         <>
           <table id={tableId}>
-            <caption className="sr-only">Actual observed staking rewards per 1,000 continuously staked PAPER, by UTC day. Partial days cover only the stated interval.</caption>
+            <caption className="sr-only">Actual observed staking rewards per 1,000 continuously staked PAPER, with total staked and supply changes over the same interval, by UTC day. Partial days cover only the stated interval.</caption>
             <thead>
-              <tr><th scope="col">Day (UTC)</th><th scope="col">USDC / 1K</th><th scope="col">Coverage</th></tr>
+              <tr>
+                <th scope="col">Day (UTC)</th>
+                <th scope="col">USDC / 1K</th>
+                <th scope="col" title="Net percentage change in the total staking pool over this reward interval">Staked Δ</th>
+                <th scope="col" title="Net percentage change in total PAPER supply over this reward interval">Supply Δ</th>
+              </tr>
             </thead>
             <tbody>
               {visible.map(day => {
@@ -121,19 +128,26 @@ export function StakingRewardHistory({
                 const interval = intervalLabel(day);
                 const partial = day.partial ||
                   day.fromMs !== day.dayMs || day.toMs !== day.dayMs + DAY_MS;
+                const changes = raw === null ? null : participationChanges(day.participation);
                 return (
                   <tr key={day.dayMs} data-missing={raw === null} data-partial={partial}>
                     <th scope="row">
                       <time dateTime={new Date(day.dayMs).toISOString().slice(0, 10)} title={formatChartTime(day.dayMs)}>
                         {dateFormatter.format(day.dayMs)}
                       </time>
+                      <span className="staking-reward-coverage" title={interval === null ? undefined : `${formatChartTime(day.fromMs)} → ${formatChartTime(day.toMs)}`}>
+                        <span>{raw === null ? "Unavailable" : partial ? "Partial day" : "Full UTC day"}</span>
+                        {interval && partial && <small>{interval}</small>}
+                      </span>
                     </th>
                     <td className="staking-reward-amount" title={raw === null ? "Rewards unavailable" : `${formatRawToken(raw)} USDC per 1,000 staked PAPER`}>
                       {raw === null ? "—" : amountLabel(raw)}
                     </td>
-                    <td className="staking-reward-coverage" title={interval === null ? undefined : `${formatChartTime(day.fromMs)} → ${formatChartTime(day.toMs)}`}>
-                      <span>{raw === null ? "Unavailable" : partial ? "Partial day" : "Full UTC day"}</span>
-                      {interval && partial && <small>{interval}</small>}
+                    <td className="staking-reward-change" data-metric="staked" title={changes?.staked.title ?? "Matched staking-pool history unavailable"}>
+                      {changes?.staked.label ?? "—"}
+                    </td>
+                    <td className="staking-reward-change" data-metric="supply" title={changes?.supply.title ?? "Matched supply history unavailable"}>
+                      {changes?.supply.label ?? "—"}
                     </td>
                   </tr>
                 );
@@ -149,6 +163,7 @@ export function StakingRewardHistory({
             {history?.truncated ? "Last 365 UTC days available in this view. " : ""}
             {validChartTime(observedFrom) ? `Tracking since ${formatChartTime(observedFrom)}. ` : ""}
             Daily history before tracking began is unavailable. Partial days are not full-day rates.
+            {missingParticipation && " Supply and staking comparisons need matching, consistent observations at both endpoints."}
           </p>
         </>
       ) : (
@@ -156,6 +171,20 @@ export function StakingRewardHistory({
           {loading ? "Loading daily reward history." : "Daily reward tracking is starting. Earlier daily history is unavailable."}
         </p>
       )}
+      <details className="staking-reward-explanation">
+        <summary>How rewards and dilution relate</summary>
+        <p>
+          An unchanged stake owns a smaller share when the staking pool grows.
+          USDC rewards also depend on how much the protocol distributes.
+          Supply growth affects ownership share; it only affects the staking pool when PAPER is staked.
+        </p>
+        <p>
+          Staked Δ and Supply Δ are net percentage changes over the stated reward interval,
+          not mint totals or deductions from USDC earned. Missing comparisons stay unavailable.
+          These observations do not predict future rewards.{" "}
+          <a href="https://docs.papertrade.xyz/paper/staking/" target="_blank" rel="noreferrer">Staking mechanics ↗</a>
+        </p>
+      </details>
     </section>
   );
 }

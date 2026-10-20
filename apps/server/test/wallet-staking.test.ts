@@ -7,8 +7,10 @@ import { walletSchema } from "../src/schemas.js";
 import { createStore, type Saved, type Store } from "../src/store.js";
 import {
   readWalletStakingRewards,
+  readWalletStakingParticipation,
   readStakingSummary,
   walletStakingRewards,
+  walletStakingParticipation,
 } from "../src/wallet-staking.js";
 import { RequestGate, Upstream } from "../src/upstream.js";
 import { LocalCoordinator } from "../src/coordination.js";
@@ -49,7 +51,7 @@ const summary = (): Saved<ProtocolSummary> => ({
     balances: { tvl: "0", margin: "0", lp: "0", reserve: "0", queue: "0" },
     activity: { volume: "0", open: 0 },
     fees: { pending: "0", lifetime: "0" },
-    paper: { supply: "0", staked: "0", accumulator: (10n ** 27n).toString() },
+    paper: { supply: "0", staked: usd(1000000n), accumulator: (10n ** 27n).toString() },
   },
 });
 const stores: Store[] = [];
@@ -207,15 +209,22 @@ describe("wallet staking rewards", () => {
       });
       expect(wallet.snapshot?.paper.rewardDebt).toBe(usd(60000n));
       expect(wallet.snapshot).not.toHaveProperty("stakingRewards");
+      expect(wallet.snapshot).not.toHaveProperty("stakingParticipation");
+      expect(wallet.stakingParticipation).toEqual({
+        walletStakedRaw: usd(100000n), totalStakedRaw: usd(1000000n),
+        receivedAt: at, sourceAt: at, stale: false,
+      });
       expect(fetcher).toHaveBeenCalledTimes(1);
       // A newer accumulator must not accrue against this cached, obsolete stake.
       clock.mockReturnValue(at + 2000);
       const newer = summary();
       newer.value.paper.accumulator = (2n * 10n ** 27n).toString();
+      newer.value.paper.staked = usd(2000000n);
       newer.value.source.at = at + 2000;
       await store.put("summary", newer.value, at + 2000);
       const cached = await client.wallet(address);
       expect(cached.stakingRewards).toEqual(wallet.stakingRewards);
+      expect(cached.stakingParticipation).toEqual(wallet.stakingParticipation);
       expect(fetcher).toHaveBeenCalledTimes(1);
       // The next real account observation captures the changed stake and summary together.
       clock.mockReturnValue(at + 31000);
@@ -224,6 +233,10 @@ describe("wallet staking rewards", () => {
       account.accountRevision++;
       const refreshed = await client.wallet(address);
       expect(refreshed.stakingRewards?.pendingRaw).toBe(usd(110000n));
+      expect(refreshed.stakingParticipation).toMatchObject({
+        walletStakedRaw: usd(200000n), totalStakedRaw: usd(2000000n),
+        receivedAt: at + 2000, sourceAt: at + 2000,
+      });
       expect(fetcher).toHaveBeenCalledTimes(2);
     } finally {
       await client.close();
@@ -243,5 +256,64 @@ describe("wallet staking rewards", () => {
     const newer = summary();
     newer.receivedAt = at + 1;
     expect(walletStakingRewards(account, newer, at + 1).pendingRaw).toBeNull();
+  });
+});
+
+describe("current staking participation", () => {
+  it("pairs exact wallet and pool amounts independently of missing reward inputs", () => {
+    const account = observed();
+    const protocol = summary();
+    delete account.value.paper.rewardDebt;
+    delete protocol.value.paper.accumulator;
+    expect(walletStakingRewards(account, protocol, at).pendingRaw).toBeNull();
+    expect(walletStakingParticipation(account, protocol, at)).toEqual({
+      walletStakedRaw: usd(100000n), totalStakedRaw: usd(1000000n),
+      receivedAt: at, sourceAt: at, stale: false,
+    });
+    account.value.paper.staked = "1";
+    protocol.value.paper.staked = "9".repeat(78);
+    expect(walletStakingParticipation(account, protocol, at).walletStakedRaw).toBe("1");
+    account.value.paper.staked = "0";
+    expect(walletStakingParticipation(account, protocol, at).walletStakedRaw).toBe("0");
+  });
+
+  it("keeps missing, invalid and impossible pool observations unknown", () => {
+    expect(walletStakingParticipation(null, summary(), at).walletStakedRaw).toBeNull();
+    expect(walletStakingParticipation(observed(), null, at).walletStakedRaw).toBeNull();
+    for (const invalid of [undefined, "-1", "0", "01", "1.5", "1e18", "9".repeat(79), usd(1n)]) {
+      const protocol = summary();
+      Object.assign(protocol.value.paper, { staked: invalid });
+      expect(walletStakingParticipation(observed(), protocol, at).totalStakedRaw).toBeNull();
+    }
+    for (const invalid of [undefined, "-1", "01", "1.5", "1e18", "9".repeat(79)]) {
+      const account = observed();
+      Object.assign(account.value.paper, { staked: invalid });
+      expect(walletStakingParticipation(account, summary(), at).walletStakedRaw).toBeNull();
+    }
+    const behind = summary();
+    behind.value.source.block = "99";
+    expect(walletStakingParticipation(observed(), behind, at).totalStakedRaw).toBeNull();
+    const newer = summary();
+    newer.receivedAt++;
+    expect(walletStakingParticipation(observed(), newer, at + 1).totalStakedRaw).toBeNull();
+    const later = observed();
+    later.value.indexedThroughBlock = 101;
+    later.value.walletRevision = 99;
+    expect(walletStakingParticipation(later, summary(), at).totalStakedRaw).toBe(usd(1000000n));
+  });
+
+  it("does not synthesize old cached pairs and retains their independent age", () => {
+    expect(readWalletStakingParticipation(observed(), at).totalStakedRaw).toBeNull();
+    const account = observed();
+    const paired = { ...account, value: {
+      ...account.value, stakingParticipation: walletStakingParticipation(account, summary(), at),
+    } };
+    expect(readWalletStakingParticipation(paired, at + 30001)).toMatchObject({
+      walletStakedRaw: usd(100000n), totalStakedRaw: usd(1000000n),
+      sourceAt: at, receivedAt: at, stale: true,
+    });
+    expect(readWalletStakingParticipation({ ...paired, error: "refresh failed" }, at).stale).toBe(true);
+    paired.value.paper.staked = usd(200000n);
+    expect(readWalletStakingParticipation(paired, at).totalStakedRaw).toBeNull();
   });
 });

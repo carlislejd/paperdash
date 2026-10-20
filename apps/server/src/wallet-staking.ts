@@ -8,8 +8,12 @@ import type { Cached } from "./upstream.js";
 import { PublicReadCache } from "./public-read-cache.js";
 
 type Rewards = NonNullable<WalletResponse["stakingRewards"]>;
-/** Internal cache envelope: its rewards are captured atomically with this account. */
-export type RetainedWalletSnapshot = WalletSnapshot & { stakingRewards?: Rewards };
+type Participation = NonNullable<WalletResponse["stakingParticipation"]>;
+/** Internal cache envelope: derived staking values stay with this account. */
+export type RetainedWalletSnapshot = WalletSnapshot & {
+  stakingRewards?: Rewards;
+  stakingParticipation?: Participation;
+};
 const unsigned = (value: unknown): value is string =>
   typeof value === "string" && /^(0|[1-9]\d{0,77})$/.test(value);
 const clock = (value: unknown): value is number =>
@@ -32,13 +36,12 @@ function summaryCache(store: Pick<Store, "get">) {
   return cache;
 }
 
-/** Derive claimable USDC from one wallet state and the saved global accumulator.
- * The accumulator is scaled by 1e27; wallet rewards remain 18-decimal USDC. */
-export function walletStakingRewards(
+/** Shared account/summary coherence; neither reward inputs nor pool size affect it. */
+function pairedStakingObservation(
   snapshot: Cached<WalletSnapshot> | null,
   summary: Saved<ProtocolSummary> | null,
-  now = Date.now(),
-): Rewards {
+  now: number,
+) {
   const sourceAt = clock(summary?.value?.source?.at)
     ? summary.value.source.at
     : null;
@@ -46,25 +49,12 @@ export function walletStakingRewards(
     clock(snapshot?.receivedAt) && clock(summary?.receivedAt)
       ? Math.min(snapshot.receivedAt, summary.receivedAt)
       : null;
-  const unavailable: Rewards = {
-    pendingRaw: null,
-    sourceAt,
-    receivedAt,
-    stale: true,
-  };
-  const paper = snapshot?.value.paper;
-  const accumulator = summary?.value?.paper?.accumulator;
   const summaryBlock = summary?.value?.source?.block;
   const indexedBlock = snapshot?.value.indexedThroughBlock;
   const accountBlock = snapshot?.value.walletRevision ?? indexedBlock;
   const accountSourceAt = (snapshot?.value.indexedThroughTimestamp ?? NaN) * 1000;
   if (
     summary?.value.ok !== true ||
-    !paper ||
-    !unsigned(paper.staked) ||
-    !unsigned(paper.pendingBase) ||
-    !unsigned(paper.rewardDebt) ||
-    !unsigned(accumulator) ||
     !unsigned(summaryBlock) ||
     !clock(indexedBlock) ||
     !clock(accountBlock) ||
@@ -86,7 +76,34 @@ export function walletStakingRewards(
     accountSourceAt > snapshot!.receivedAt + 30000 ||
     accountSourceAt > sourceAt + 30000
   )
-    return unavailable;
+    return { sourceAt, receivedAt, valid: false, stale: true };
+  return {
+    sourceAt,
+    receivedAt,
+    valid: true,
+    stale:
+      snapshot!.stale ||
+      Boolean(snapshot!.error) ||
+      now - receivedAt > 30000 ||
+      now - sourceAt > 30000,
+  };
+}
+
+/** Derive claimable USDC from one wallet state and the saved global accumulator.
+ * The accumulator is scaled by 1e27; wallet rewards remain 18-decimal USDC. */
+export function walletStakingRewards(
+  snapshot: Cached<WalletSnapshot> | null,
+  summary: Saved<ProtocolSummary> | null,
+  now = Date.now(),
+): Rewards {
+  const observation = pairedStakingObservation(snapshot, summary, now);
+  const { sourceAt, receivedAt, stale } = observation;
+  const unavailable: Rewards = { pendingRaw: null, sourceAt, receivedAt, stale: true };
+  const paper = snapshot?.value.paper;
+  const accumulator = summary?.value?.paper?.accumulator;
+  if (!observation.valid || !paper || !unsigned(paper.staked) ||
+    !unsigned(paper.pendingBase) || !unsigned(paper.rewardDebt) ||
+    !unsigned(accumulator)) return unavailable;
   const accrued = (BigInt(paper.staked) * BigInt(accumulator)) / 10n ** 27n;
   const debt = BigInt(paper.rewardDebt);
   // A regressed accumulator or mismatched account state is unknown, never zero.
@@ -95,12 +112,27 @@ export function walletStakingRewards(
     pendingRaw: (BigInt(paper.pendingBase) + accrued - debt).toString(),
     sourceAt,
     receivedAt,
-    stale:
-      snapshot!.stale ||
-      Boolean(snapshot!.error) ||
-      now - receivedAt > 30000 ||
-      now - sourceAt > 30000,
+    stale,
   };
+}
+
+/** Pair current wallet stake with the same observed summary used for rewards. */
+export function walletStakingParticipation(
+  snapshot: Cached<WalletSnapshot> | null,
+  summary: Saved<ProtocolSummary> | null,
+  now = Date.now(),
+): Participation {
+  const observation = pairedStakingObservation(snapshot, summary, now);
+  const { sourceAt, receivedAt, stale } = observation;
+  const unavailable: Participation = {
+    walletStakedRaw: null, totalStakedRaw: null, sourceAt, receivedAt, stale: true,
+  };
+  const walletStakedRaw = snapshot?.value.paper?.staked;
+  const totalStakedRaw = summary?.value.paper?.staked;
+  if (!observation.valid || !unsigned(walletStakedRaw) || !unsigned(totalStakedRaw) ||
+    BigInt(totalStakedRaw) === 0n || BigInt(walletStakedRaw) > BigInt(totalStakedRaw))
+    return unavailable;
+  return { walletStakedRaw, totalStakedRaw, sourceAt, receivedAt, stale };
 }
 
 /** Capture this saved observation before opening the existing account stream. */
@@ -144,6 +176,25 @@ export function readWalletStakingRewards(
 }
 
 export function publicWalletSnapshot(snapshot: RetainedWalletSnapshot): WalletSnapshot {
-  const { stakingRewards: _pairedRewards, ...account } = snapshot;
+  const { stakingRewards: _pairedRewards, stakingParticipation: _pairedParticipation, ...account } = snapshot;
   return account;
+}
+
+/** Read only the retained pair, never today's denominator against an old stake. */
+export function readWalletStakingParticipation(
+  snapshot: Cached<RetainedWalletSnapshot> | null,
+  now = Date.now(),
+): Participation {
+  const pair = snapshot?.value.stakingParticipation;
+  if (!pair || !unsigned(pair.walletStakedRaw) || !unsigned(pair.totalStakedRaw) ||
+    pair.walletStakedRaw !== snapshot?.value.paper?.staked ||
+    BigInt(pair.totalStakedRaw) === 0n || BigInt(pair.walletStakedRaw) > BigInt(pair.totalStakedRaw) ||
+    !clock(pair.receivedAt) || !clock(pair.sourceAt) || !clock(now) ||
+    pair.receivedAt > now + 30000 || pair.sourceAt > now + 30000)
+    return { walletStakedRaw: null, totalStakedRaw: null, receivedAt: null, sourceAt: null, stale: true };
+  return {
+    ...pair,
+    stale: pair.stale || snapshot!.stale || Boolean(snapshot!.error) ||
+      now - pair.receivedAt > 30000 || now - pair.sourceAt > 30000,
+  };
 }
