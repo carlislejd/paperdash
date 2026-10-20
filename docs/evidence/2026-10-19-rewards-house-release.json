@@ -1,0 +1,223 @@
+{
+  "release": "Observed staking rewards, expandable daily history and house health",
+  "deployedCommit": "60ea67f24ea6296378f5b5e6e9e265c4b205799d",
+  "verifiedAt": "2026-10-20T03:40:17.933Z",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/39364478255",
+    "conclusion": "success",
+    "checks": [
+      "Production build and typecheck",
+      "Unit and PostgreSQL/Redis integration tests",
+      "284 desktop/mobile browser tests",
+      "Python tests",
+      "Render Blueprint validation"
+    ]
+  },
+  "deployments": {
+    "web": {
+      "serviceId": "srv-db4sp78473hc7390tou0",
+      "deploymentId": "dep-dbbe2v0m7kps73eleqrg",
+      "status": "live"
+    },
+    "api": {
+      "serviceId": "srv-db4sq6g473hc739111lg",
+      "deploymentId": "dep-dbbe31dg1s2s738kdlb0",
+      "status": "live",
+      "instances": "3 of 3"
+    },
+    "collector": {
+      "serviceId": "srv-db4sq6g473hc739111jg",
+      "deploymentId": "dep-dbbe42jrjlhs73dulrd0",
+      "status": "live"
+    }
+  },
+  "liveChecks": {
+    "publicEndpointStatus": [
+      {
+        "path": "/health/ready",
+        "status": 200
+      },
+      {
+        "path": "/api/paper/economics",
+        "status": 200
+      },
+      {
+        "path": "/api/house",
+        "status": 200
+      },
+      {
+        "path": "/api/assets/0/market",
+        "status": 200
+      }
+    ],
+    "readiness": {
+      "ready": true,
+      "degraded": false,
+      "stream": "connected",
+      "stale": false
+    },
+    "annualRewardBaselinePreserved": true,
+    "originalAnnualBaselineMs": 1792123080000,
+    "retiredPriceAbsent": true,
+    "dailyHistoryRecording": true,
+    "historyStartMs": 1792467555000,
+    "initialDayCount": 1,
+    "initialDayPartial": true,
+    "rewardSourceClockAdvancing": true,
+    "dailyRowClockAdvancing": true,
+    "houseAccountingReconciled": true,
+    "desktop": {
+      "width": 1280,
+      "documentWidth": 1280,
+      "paragonVisible": false
+    },
+    "mobile": {
+      "width": 390,
+      "documentWidth": 390
+    },
+    "browserErrors": [],
+    "samples": [
+      {
+        "verifiedAt": "2026-10-20T03:39:39.222Z",
+        "statuses": [
+          {
+            "path": "/health/ready",
+            "status": 200
+          },
+          {
+            "path": "/api/paper/economics",
+            "status": 200
+          },
+          {
+            "path": "/api/house",
+            "status": 200
+          },
+          {
+            "path": "/api/assets/0/market",
+            "status": 200
+          }
+        ],
+        "economics": {
+          "sourceAt": 1792467565000,
+          "stale": false,
+          "stakingYield": {
+            "toMs": 1792467565000,
+            "basis": "observed-accumulator",
+            "fromMs": 1792123080000,
+            "yearDays": 365,
+            "elapsedMs": 344485000,
+            "earnedUsdPerPaperRaw": "1147959613090140",
+            "usdPerPaperPerYearRaw": "105090364916935926"
+          },
+          "stakingRewardHistory": {
+            "days": [
+              {
+                "toMs": 1792467565000,
+                "dayMs": 1792454400000,
+                "fromMs": 1792467555000,
+                "missing": false,
+                "partial": true,
+                "earnedUsdPer1kPaperRaw": "16237234266211"
+              }
+            ],
+            "basis": "observed-accumulator",
+            "timeZone": "UTC",
+            "truncated": false,
+            "observedFromMs": 1792467555000,
+            "availableFromMs": 1792454400000
+          }
+        },
+        "house": {
+          "sourceAt": 1792467569961,
+          "stale": false,
+          "lpRaw": "4923389096726271000000000",
+          "fundsRaw": "4009530282849667300000000",
+          "openPnlRaw": "-913858813876603700000000",
+          "queueDebtRaw": "0"
+        },
+        "asset": {
+          "stale": true
+        },
+        "assertions": "passed"
+      },
+      {
+        "verifiedAt": "2026-10-20T03:40:17.933Z",
+        "statuses": [
+          {
+            "path": "/health/ready",
+            "status": 200
+          },
+          {
+            "path": "/api/paper/economics",
+            "status": 200
+          },
+          {
+            "path": "/api/house",
+            "status": 200
+          },
+          {
+            "path": "/api/assets/0/market",
+            "status": 200
+          }
+        ],
+        "economics": {
+          "sourceAt": 1792467607000,
+          "stale": false,
+          "stakingYield": {
+            "toMs": 1792467607000,
+            "basis": "observed-accumulator",
+            "fromMs": 1792123080000,
+            "yearDays": 365,
+            "elapsedMs": 344527000,
+            "earnedUsdPerPaperRaw": "1147959613090140",
+            "usdPerPaperPerYearRaw": "105077553742988713"
+          },
+          "stakingRewardHistory": {
+            "days": [
+              {
+                "toMs": 1792467607000,
+                "dayMs": 1792454400000,
+                "fromMs": 1792467555000,
+                "missing": false,
+                "partial": true,
+                "earnedUsdPer1kPaperRaw": "16237234266211"
+              }
+            ],
+            "basis": "observed-accumulator",
+            "timeZone": "UTC",
+            "truncated": false,
+            "observedFromMs": 1792467555000,
+            "availableFromMs": 1792454400000
+          }
+        },
+        "house": {
+          "sourceAt": 1792467612079,
+          "stale": false,
+          "lpRaw": "4924842065533703000000000",
+          "fundsRaw": "4054821894420745500000000",
+          "openPnlRaw": "-870020171112957500000000",
+          "queueDebtRaw": "0"
+        },
+        "asset": {
+          "stale": true
+        },
+        "assertions": "passed"
+      }
+    ]
+  },
+  "limitations": [
+    "Daily per-token reward history was not previously retained. The table starts with the observed interval beginning at rollout, not an estimated historical backfill.",
+    "The table shows the latest seven UTC days by default with an expand control when more rows exist; the bounded response holds up to 365 days. Older closed days remain archived.",
+    "The pre-existing unresolved trade-ingestion-gap warning remains; asset aggregate stale status is not a new rollout failure."
+  ],
+  "changes": {
+    "schema": false,
+    "environment": false,
+    "servicePlans": false,
+    "historyReset": false
+  },
+  "previews": [
+    "docs/previews/production-rewards-house-2026-10-19.png",
+    "docs/previews/production-daily-staking-rewards-mobile-2026-10-19.png"
+  ]
+}
