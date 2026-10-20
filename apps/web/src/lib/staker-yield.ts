@@ -24,16 +24,6 @@ function unsignedRaw(value: string | null | undefined): bigint | null {
     : null;
 }
 
-/** A compact USDC quote, with no floating-point conversion or false zero. */
-export function formatPaperPrice(raw: string | null | undefined): string {
-  const value = unsignedRaw(raw);
-  if (value === null || value <= 0n) return "—";
-  const units = (value + 5_000_000_000n) / 10_000_000_000n;
-  if (units === 0n) return "<$0.00000001";
-  const fraction = (units % 100_000_000n).toString().padStart(8, "0").replace(/0+$/, "");
-  return `$${(units / 100_000_000n).toLocaleString("en-US")}${fraction ? `.${fraction}` : ""}`;
-}
-
 /** The source clock and a complete interval must accompany an annualized rate. */
 export function stakerYieldRate(
   value: AnnualizedStakerYield | null | undefined,
@@ -64,19 +54,6 @@ export function formatStakerYield(raw: string | null | undefined): string {
   if (perThousand > 0n && perThousand < 5_000_000_000_000_000n)
     return "<$0.01";
   return formatRawUsd(perThousand.toString());
-}
-
-/** Simple APR, rounded once at the display boundary to hundredths of a percent. */
-export function formatStakerApr(
-  annualUsdPerPaperRaw: string | null | undefined,
-  paperPriceUsdRaw: string | null | undefined,
-): string {
-  const annual = unsignedRaw(annualUsdPerPaperRaw);
-  const priceRaw = unsignedRaw(paperPriceUsdRaw);
-  if (annual === null || priceRaw === null || priceRaw <= 0n) return "—";
-  const hundredths = (annual * 10000n + priceRaw / 2n) / priceRaw;
-  if (annual > 0n && hundredths === 0n) return "<0.01%";
-  return `${(hundredths / 100n).toLocaleString("en-US")}.${(hundredths % 100n).toString().padStart(2, "0")}%`;
 }
 
 export function formatYieldHours(

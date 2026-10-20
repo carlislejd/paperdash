@@ -112,7 +112,7 @@ test("a shared chart link opens directly and closes without retaining its query"
   expect(new URL(page.url()).searchParams.has("chart")).toBe(false);
 });
 
-test("legacy TVL and House funds links still open after LP balance takes the featured chart", async ({
+test("legacy TVL and LP balance links still open with House funds as the featured chart", async ({
   page,
 }) => {
   await mockSources(page);
@@ -130,8 +130,8 @@ test("legacy TVL and House funds links still open after LP balance takes the fea
     name: "House funds chart card",
     exact: true,
   });
-  await expect(lp).not.toHaveClass(/pc-chart-card--compact/);
-  await expect(funds).toHaveClass(/pc-chart-card--compact/);
+  await expect(lp).toHaveClass(/pc-chart-card--compact/);
+  await expect(funds).not.toHaveClass(/pc-chart-card--compact/);
   await funds
     .getByRole("button", { name: "Expand House funds chart", exact: true })
     .click();
@@ -144,6 +144,16 @@ test("legacy TVL and House funds links still open after LP balance takes the fea
     page.getByRole("dialog", { name: "House funds", exact: true }),
   ).toBeVisible();
   expect(new URL(page.url()).searchParams.get("chart")).toBe("house-funds");
+  await page.keyboard.press("Escape");
+  await page.goto("/?view=overview&chart=house-lp");
+  await expect(
+    page.getByRole("dialog", { name: "LP balance", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.goto("/?view=overview&chart=house-queue-debt");
+  await expect(
+    page.getByRole("dialog", { name: "Queued payouts", exact: true }),
+  ).toBeVisible();
 });
 
 test("a missing directory position count shows source open notional and preserves wallet access", async ({

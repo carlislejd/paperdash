@@ -9,7 +9,6 @@ import {
   shortAddress,
 } from "../lib/format";
 import { Avatar } from "./Avatar";
-import { ParagonEstimate, ParagonToggle } from "./ParagonValuation";
 import "./following.css";
 
 export function FollowingView({
@@ -79,9 +78,6 @@ export function FollowingView({
             Refresh
           </button>
         )}
-      </div>
-      <div className="following-valuation-controls">
-        <ParagonToggle />
       </div>
       {query && (
         <div className="search-summary">
@@ -175,13 +171,6 @@ export function FollowingView({
                             </span>
                           </span>
                         </button>
-                        <ParagonEstimate
-                          paperRaw={account?.paperTotal}
-                          label="PAPER value"
-                          holdingsDelayed={old}
-                          receivedAt={row?.receivedAt ?? null}
-                          compact
-                        />
                       </td>
                       <td className="numeric following-balance">
                         {formatRawUsd(account?.currentBalance)}

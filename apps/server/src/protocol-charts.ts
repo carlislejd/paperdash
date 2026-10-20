@@ -14,9 +14,7 @@ import {
   annualizedStakerYield,
   VERIFIED_PROTOCOL_GENESIS,
 } from "../../../packages/shared/src/staking-yield.js";
-import { readStakerYield } from "./staking-yield.js";
-import { validPaperPrice } from "../../../packages/shared/src/paper-price.js";
-import { PAPER_PRICE_KEY } from "./paper-price.js";
+import { emptyStakingRewardHistory, readStakerYield, readStakingRewardHistory } from "./staking-yield.js";
 import { VERIFIED_TRADING_WINDOW } from "../../../packages/shared/src/trading-launch.js";
 import type { ProtocolChartObservation } from "./history-store.js";
 import { protocolHistorySchema } from "./schemas.js";
@@ -224,7 +222,7 @@ function emptyEconomics(): PaperEconomicsResponse {
     stakeRatioBps: null,
     annualized: annualizedStakingRevenue(null),
     stakingYield: annualizedStakerYield(null, null),
-    paperPrice: null,
+    stakingRewardHistory: emptyStakingRewardHistory(),
     series: {
       supply: emptySeries("paperSupply"),
       staked: emptySeries("paperStaked"),
@@ -506,12 +504,11 @@ export async function refreshProtocolCharts(
   store: Context & Pick<Store, "depositMetrics">,
   now = Date.now(),
 ): Promise<PanelPublication[]> {
-  const [histories, summaries, summary, deposits, paperPrice] = await Promise.all([
+  const [histories, summaries, summary, deposits] = await Promise.all([
     store.history.protocolChartRows("history"),
     store.history.protocolChartRows("summary"),
     store.get<ProtocolSummary>("summary"),
     retainedDepositCharts(store, now),
-    store.get(PAPER_PRICE_KEY),
   ]);
   const sourceAt = summary?.value.source.at ?? null;
   const current = summary?.value ?? null;
@@ -560,7 +557,7 @@ export async function refreshProtocolCharts(
     stakeRatioBps: stakeRatioBps(current),
     annualized: annualizedStakingRevenue(current, now),
     stakingYield: await readStakerYield(store, current, now),
-    paperPrice: validPaperPrice(paperPrice?.value),
+    stakingRewardHistory: await readStakingRewardHistory(store, now),
     series: {
       supply: data.series.paperSupply,
       staked: data.series.paperStaked,

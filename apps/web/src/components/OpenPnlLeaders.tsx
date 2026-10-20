@@ -7,7 +7,6 @@ import {
   shortAddress,
 } from "../lib/format";
 import { Avatar } from "./Avatar";
-import { ParagonEstimate } from "./ParagonValuation";
 
 export function OpenPnlLeaders({
   onWallet,
@@ -68,13 +67,6 @@ export function OpenPnlLeaders({
                   >
                     {formatRawUsd(account.currentOpenNotional, true)} open notional
                   </small>
-                  <ParagonEstimate
-                    paperRaw={account.paperTotal}
-                    label="PAPER value"
-                    holdingsDelayed={delayed}
-                    receivedAt={data?.receivedAt ?? null}
-                    compact
-                  />
                 </span>
                 <span className="open-pnl-value">
                   <span

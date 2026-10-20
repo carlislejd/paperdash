@@ -153,7 +153,7 @@ describe("Paragon PAPER reference prices", () => {
     await rejection;
   });
 
-  it("serves the shared saved quote with independent freshness and no viewer upstream work", async () => {
+  it("does not publish a retired saved quote or let its delay affect reward freshness", async () => {
     const store = await memory();
     const summary: ProtocolSummary = {
       ok: true, source: { at: now, block: "1", genesis: VERIFIED_PROTOCOL_GENESIS },
@@ -170,9 +170,8 @@ describe("Paragon PAPER reference prices", () => {
     const fetcher = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("must not fetch"));
     const results = await Promise.all(Array.from({ length: 20 }, () => readPaperEconomics(store, now)));
     for (const result of results) {
-      expect(result.paperPrice).toEqual(quote);
+      expect(result.paperPrice).toBeUndefined();
       expect(result.stale).toBe(false);
-      expect(paperPriceDelayed(result.paperPrice, now)).toBe(true);
     }
     expect(new Set(reads.mock.calls.map(([key]) => key))).toEqual(new Set(["paper-economics", "collector-heartbeat"]));
     expect(fetcher).not.toHaveBeenCalled();

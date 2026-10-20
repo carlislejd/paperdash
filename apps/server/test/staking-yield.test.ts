@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import type { ProtocolSummary } from "../../../packages/shared/src/types.js";
 import { VERIFIED_PROTOCOL_GENESIS } from "../../../packages/shared/src/staking-yield.js";
 import { createStore, type Store } from "../src/store.js";
-import { refreshStakerYield } from "../src/staking-yield.js";
+import { readStakingRewardHistory, refreshStakerYield } from "../src/staking-yield.js";
 import { Collector } from "../src/collector.js";
 import { Upstream } from "../src/upstream.js";
 import { ChangeBus } from "../src/bus.js";
@@ -167,7 +167,7 @@ describe("retained staking yield", () => {
     const reads = vi.spyOn(reopened, "get");
     const chartReads = vi.spyOn(reopened.history, "protocolChartRows");
     await refreshProtocolCharts(reopened, finish);
-    expect(reads.mock.calls).toEqual([["summary"], ["paper-price"], ["staking-yield-window"]]);
+    expect(reads.mock.calls).toEqual([["summary"], ["staking-yield-window"], ["staking-reward-history"], ["staking-reward-history-days"]]);
     expect(chartReads.mock.calls).toEqual([["history"], ["summary"]]);
     expect((await readPaperEconomics(reopened, finish)).stakingYield).toMatchObject({
       fromMs: start,
@@ -257,5 +257,152 @@ describe("retained staking yield", () => {
     const zero = await refreshStakerYield(store, summary(start + HOUR), start + HOUR);
     expect(zero.usdPerPaperPerYearRaw).toBe("0");
     expect(zero.earnedUsdPerPaperRaw).toBe("0");
+  });
+});
+
+const DAY = 24 * HOUR;
+const dayStart = Math.floor((VERIFIED_PROTOCOL_GENESIS + 3 * DAY) / DAY) * DAY;
+
+describe("retained daily rewards per 1K staked PAPER", () => {
+  async function record(store: Store, at: number, accumulator: bigint) {
+    await refreshStakerYield(store, summary(at, accumulator), at);
+  }
+
+  it("seeds only the legacy last endpoint and preserves sub-per-PAPER raw precision", async () => {
+    const store = await memory();
+    const lastAt = dayStart + 12 * HOUR;
+    const huge = 10n ** 70n;
+    const point = (at: number, raw: bigint) => ({ at, genesis: VERIFIED_PROTOCOL_GENESIS, accumulatorRaw: raw.toString() });
+    await store.put("staking-yield-window", {
+      first: point(lastAt - 2 * DAY, huge - 10n ** 30n),
+      last: point(lastAt, huge),
+    }, lastAt);
+    await record(store, lastAt + 2_000, huge + 999_999_999n);
+    expect(await readStakingRewardHistory(store, lastAt + 2_000)).toMatchObject({
+      observedFromMs: lastAt,
+      availableFromMs: dayStart,
+      truncated: false,
+      days: [{
+        dayMs: dayStart, fromMs: lastAt, toMs: lastAt + 2_000,
+        earnedUsdPer1kPaperRaw: "999", partial: true, missing: false,
+      }],
+    });
+  });
+
+  it("requires two endpoints, keeps a measured zero, and recognizes exact UTC days", async () => {
+    const store = await memory();
+    await record(store, dayStart, initialAccumulator);
+    expect((await readStakingRewardHistory(store, dayStart)).days[0]).toMatchObject({
+      earnedUsdPer1kPaperRaw: null, missing: true, partial: true,
+    });
+    await record(store, dayStart + HOUR, initialAccumulator);
+    expect((await readStakingRewardHistory(store, dayStart + HOUR)).days[0]).toMatchObject({
+      earnedUsdPer1kPaperRaw: "0", missing: false, partial: true,
+    });
+    await record(store, dayStart + DAY, initialAccumulator);
+    expect((await readStakingRewardHistory(store, dayStart + DAY)).days).toEqual([
+      { dayMs: dayStart, fromMs: dayStart, toMs: dayStart + DAY, earnedUsdPer1kPaperRaw: "0", partial: false, missing: false },
+      { dayMs: dayStart + DAY, fromMs: dayStart + DAY, toMs: dayStart + DAY, earnedUsdPer1kPaperRaw: null, partial: true, missing: true },
+    ]);
+  });
+
+  it("shares approximate midnight endpoints without overlap or invented normalization", async () => {
+    const store = await memory();
+    await record(store, dayStart + 20_000, initialAccumulator);
+    await record(store, dayStart + DAY - 10_000, initialAccumulator + 3n * rewardPerHour);
+    await record(store, dayStart + DAY + 10_000, initialAccumulator + 4n * rewardPerHour);
+    await record(store, dayStart + DAY + HOUR, initialAccumulator + 5n * rewardPerHour);
+    const { days } = await readStakingRewardHistory(store, dayStart + DAY + HOUR);
+    expect(days).toEqual([
+      { dayMs: dayStart, fromMs: dayStart + 20_000, toMs: dayStart + DAY + 10_000, earnedUsdPer1kPaperRaw: "4000000000000000000", partial: true, missing: false },
+      { dayMs: dayStart + DAY, fromMs: dayStart + DAY + 10_000, toMs: dayStart + DAY + HOUR, earnedUsdPer1kPaperRaw: "1000000000000000000", partial: true, missing: false },
+    ]);
+    expect((await store.get(`staking-reward-day:${dayStart}`))?.value).toEqual(days[0]);
+  });
+
+  it("leaves missing days unknown and never assigns a multi-day outage delta to the next day", async () => {
+    const store = await memory();
+    const first = dayStart + 12 * HOUR;
+    await record(store, first, initialAccumulator);
+    await record(store, first + HOUR, initialAccumulator + rewardPerHour);
+    const resume = first + 3 * DAY;
+    await record(store, resume, initialAccumulator + 100n * rewardPerHour);
+    await record(store, resume + HOUR, initialAccumulator + 101n * rewardPerHour);
+    const { days } = await readStakingRewardHistory(store, resume + HOUR);
+    expect(days).toHaveLength(4);
+    expect(days[0]).toMatchObject({ earnedUsdPer1kPaperRaw: "1000000000000000000", toMs: first + HOUR, partial: true });
+    for (const missing of days.slice(1, 3))
+      expect(missing).toMatchObject({ fromMs: null, toMs: null, earnedUsdPer1kPaperRaw: null, partial: true, missing: true });
+    expect(days[3]).toMatchObject({ fromMs: resume, earnedUsdPer1kPaperRaw: "1000000000000000000", partial: true, missing: false });
+  });
+
+  it("does not bridge a missed midnight merely because the two samples are on adjacent dates", async () => {
+    const store = await memory();
+    await record(store, dayStart + HOUR, initialAccumulator);
+    await record(store, dayStart + 23 * HOUR, initialAccumulator + rewardPerHour);
+    await record(store, dayStart + DAY + 20_000, initialAccumulator + 10n * rewardPerHour);
+    const { days } = await readStakingRewardHistory(store, dayStart + DAY + 20_000);
+    expect(days[0]).toMatchObject({ toMs: dayStart + 23 * HOUR, earnedUsdPer1kPaperRaw: "1000000000000000000", partial: true });
+    expect(days[1]).toMatchObject({ fromMs: dayStart + DAY + 20_000, earnedUsdPer1kPaperRaw: null, missing: true });
+  });
+
+  it("keeps reset days unknown even if the counter later exceeds its prior high", async () => {
+    const store = await memory();
+    await record(store, dayStart + HOUR, initialAccumulator);
+    await record(store, dayStart + 2 * HOUR, initialAccumulator + 10n * rewardPerHour);
+    await record(store, dayStart + 3 * HOUR, initialAccumulator + 5n * rewardPerHour);
+    await record(store, dayStart + 4 * HOUR, initialAccumulator + 11n * rewardPerHour);
+    expect((await readStakingRewardHistory(store, dayStart + 4 * HOUR)).days[0]).toMatchObject({
+      earnedUsdPer1kPaperRaw: null, missing: true,
+    });
+    await record(store, dayStart + DAY, initialAccumulator + 12n * rewardPerHour);
+    await record(store, dayStart + DAY + HOUR, initialAccumulator + 13n * rewardPerHour);
+    const { days } = await readStakingRewardHistory(store, dayStart + DAY + HOUR);
+    expect(days[0].missing).toBe(true);
+    expect(days[1]).toMatchObject({ earnedUsdPer1kPaperRaw: "1000000000000000000", missing: false });
+  });
+
+  it("invalidates the prior date's approximate endpoint when the clock rolls back across that endpoint", async () => {
+    const store = await memory();
+    await record(store, dayStart + HOUR, initialAccumulator);
+    await record(store, dayStart + DAY - 10_000, initialAccumulator + rewardPerHour);
+    await record(store, dayStart + DAY + 30_000, initialAccumulator + 2n * rewardPerHour);
+    await record(store, dayStart + DAY + 60_000, initialAccumulator + 3n * rewardPerHour);
+    const rollback = dayStart + DAY + 10_000;
+    await refreshStakerYield(store, summary(rollback, initialAccumulator + rewardPerHour), dayStart + DAY + 60_000);
+    const { days } = await readStakingRewardHistory(store, dayStart + DAY + 60_000);
+    expect(days[0]).toMatchObject({ earnedUsdPer1kPaperRaw: null, missing: true });
+    expect(days[1]).toMatchObject({ fromMs: rollback, earnedUsdPer1kPaperRaw: null, missing: true });
+    expect((await store.get(`staking-reward-day:${dayStart}`))?.value).toMatchObject({ earnedUsdPer1kPaperRaw: null, missing: true });
+  });
+
+  it("persists daily history across restarts and bounds publication without deleting older completed days", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "paperdash-reward-history-"));
+    directories.push(directory);
+    const firstStore = await createStore({ dataDir: directory, databaseUrl: "" });
+    await record(firstStore, dayStart, initialAccumulator);
+    await record(firstStore, dayStart + DAY, initialAccumulator + rewardPerHour);
+    await firstStore.close();
+    const reopened = await createStore({ dataDir: directory, databaseUrl: "" });
+    stores.push(reopened);
+    expect((await readStakingRewardHistory(reopened, dayStart + DAY)).days[0]).toMatchObject({
+      earnedUsdPer1kPaperRaw: "1000000000000000000", partial: false,
+    });
+    // Memory store makes the long retention exercise independent of disk speed.
+    const bounded = await memory();
+    for (let day = 0; day <= 366; day++)
+      await record(bounded, dayStart + day * DAY, initialAccumulator + BigInt(day) * rewardPerHour);
+    const history = await readStakingRewardHistory(bounded, dayStart + 366 * DAY);
+    expect(history.days).toHaveLength(365);
+    expect(history.availableFromMs).toBe(dayStart + 2 * DAY);
+    expect(history.observedFromMs).toBe(dayStart);
+    expect(history.truncated).toBe(true);
+    expect((await bounded.get(`staking-reward-day:${dayStart}`))?.value).toMatchObject({
+      earnedUsdPer1kPaperRaw: "1000000000000000000", partial: false,
+    });
+    const writes = vi.spyOn(bounded, "put");
+    await record(bounded, dayStart + 366 * DAY + 2_000, initialAccumulator + 366n * rewardPerHour);
+    expect(writes.mock.calls.map(([key]) => key)).toEqual(["staking-reward-history", "staking-yield-window"]);
+    expect(JSON.stringify(writes.mock.calls[0][1]).length).toBeLessThan(1_000);
   });
 });

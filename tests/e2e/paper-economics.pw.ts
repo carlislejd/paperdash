@@ -39,14 +39,11 @@ test("PAPER uses its own coherent totals and clock, shares daily changes and pre
   await expect(paper).toContainText("Pending rewards source-reported");
   await expect(paper.locator(".paper-pending")).toContainText("$324");
   await expect(paper).not.toContainText("LAST AVAILABLE");
-  await expect(paper).toContainText("Annualized reward allocations");
-  await expect(paper).toContainText("Average daily reward allocations");
-  await expect(paper).toContainText("Oct 10, 2026, 14:00 UTC");
-  await expect(paper).toContainText("$0.00 prelaunch baseline");
+  await expect(paper).toContainText("Daily staking rewards");
+  await expect(paper).toContainText("Earlier daily history is unavailable");
+  await expect(paper).not.toContainText("Annualized reward allocations");
+  await expect(paper).not.toContainText("Average daily reward allocations");
   await expect(paper).not.toContainText("protocol age");
-  await expect(paper).toContainText(
-    "Historical run rate, not APY or a forecast",
-  );
   await expect(
     paper.getByRole("region", { name: "PAPER supply chart card" }),
   ).toContainText("12:24 UTC");
@@ -197,7 +194,7 @@ test("an older API rollout leaves PAPER unavailable rather than borrowing House 
   ).toHaveText(["—", "—", "—"]);
 });
 
-test("legacy or incomplete allocation metadata never receives a trading-launch rate label", async ({ page }) => {
+test("legacy allocation rates cannot substitute for missing actual staking reward history", async ({ page }) => {
   const at = Date.UTC(2026, 9, 13, 12, 25);
   await page.clock.install({ time: at });
   await mockSources(page);
@@ -218,21 +215,18 @@ test("legacy or incomplete allocation metadata never receives a trading-launch r
   });
   await page.goto("/");
   const paper = page.getByRole("region", { name: "PAPER economics", exact: true });
-  const rates = paper.locator(".annualized-revenue");
-  for (const next of ["legacy", "missing-baseline"] as const) {
+  const history = paper.getByRole("region", { name: "Daily staking rewards", exact: true });
+  for (const next of ["legacy", "missing-baseline", "corrected"] as const) {
     if (mode !== next) {
       mode = next;
       await page.reload();
     }
-    await expect(rates.locator("strong")).toHaveText(["—", "—"]);
-    await expect(rates).toContainText("Waiting for verified trading-window allocation totals");
-    await expect(rates).not.toContainText("Since trading launch");
+    await expect(history.getByRole("table")).toHaveCount(0);
+    await expect(history).toContainText("Earlier daily history is unavailable");
+    await expect(paper).not.toContainText("Since trading launch");
+    await expect(paper).not.toContainText("Annualized reward allocations");
     await expect(paper.locator(".paper-details")).toContainText("$16.27K");
   }
-  mode = "corrected";
-  await page.reload();
-  await expect(rates).toContainText("Since trading launch on Oct 10, 2026, 14:00 UTC");
-  await expect(rates.locator("strong").first()).not.toHaveText("—");
 });
 
 test("the trading launch allocation window preserves October 8 deposit volume and first depositors", async ({ page }) => {
@@ -247,7 +241,7 @@ test("the trading launch allocation window preserves October 8 deposit volume an
   );
   await page.goto("/");
   const paper = page.getByRole("region", { name: "PAPER economics", exact: true });
-  await expect(paper).toContainText("Since trading launch on Oct 10, 2026, 14:00 UTC");
+  await expect(paper).toContainText("Daily staking rewards");
   for (const [name, amount] of [
     ["Deposit volume / day chart card", "2,000 USDC"],
     ["First-time depositors chart card", "2 wallets"],
@@ -259,7 +253,7 @@ test("the trading launch allocation window preserves October 8 deposit volume an
     await expect(chart.locator(".pc-chart-inspect")).toContainText("8 Oct 2026, 00:00 UTC");
     await expect(chart.locator(".pc-chart-inspect")).toContainText(amount);
   }
-  await paper.locator(".annualized-revenue").screenshot({
+  await paper.locator(".paper-details").screenshot({
     path: `/tmp/paperclub-trading-launch-${test.info().project.name}.png`,
   });
 });

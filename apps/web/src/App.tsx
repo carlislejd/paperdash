@@ -30,7 +30,6 @@ import { useFollowing } from "./lib/use-following";
 import { FOLLOWING_LIMIT } from "./lib/following-storage";
 import { FollowingView } from "./components/FollowingView";
 import { StakerYieldMetric } from "./components/StakerYield";
-import { ParagonEstimate, ParagonToggle } from "./components/ParagonValuation";
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
@@ -542,13 +541,6 @@ function App() {
                   }) ?? "—"}
                 </strong>
                 <span className="metric-note">PAPER · total supply</span>
-                <ParagonEstimate
-                  paperRaw={summary?.paper.supply}
-                  label="Implied supply value"
-                  compact
-                  holdingsDelayed={Boolean(sourceOld || error)}
-                  receivedAt={data?.status.receivedAt ?? null}
-                />
               </div>
             </div>
             <div className="board-status">
@@ -568,7 +560,6 @@ function App() {
                 </span>
               </span>
             </div>
-            {section === "overview" && <div className="overview-valuation-controls"><ParagonToggle /></div>}
             {error && (
               <p className="inline-notice" role="status">
                 {data ? "Showing the last available snapshot. " : ""}
@@ -648,7 +639,6 @@ function App() {
                 </select>
               </div>
             </div>
-            <div className="directory-valuation-controls"><ParagonToggle /></div>
             {query && (
               <div className="search-summary">
                 <span>
@@ -791,14 +781,6 @@ function App() {
                                       </span>
                                     </span>
                                   </button>
-                                  <div className="directory-paragon-value">
-                                    <ParagonEstimate
-                                      paperRaw={account.paperTotal}
-                                      compact
-                                      holdingsDelayed={Boolean(accounts?.stale || accountsError)}
-                                      receivedAt={accounts?.receivedAt ?? null}
-                                    />
-                                  </div>
                                 </td>
                                 <td className="numeric table-balance">
                                   {formatRawUsd(account.currentBalance)}

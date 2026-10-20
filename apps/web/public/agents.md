@@ -136,7 +136,9 @@ The market endpoint also accepts `segment=all|profitable`, defaulting to `all`. 
 
 Wallet staking: `snapshot.paper.staked` is staked PAPER; `snapshot.lifetime.paperRewardsClaimedRaw` is claimed USDC rewards. `stakingRewards.pendingRaw` is the observed pending USDC calculation from a coherent account/accumulator pair; inspect its receipt/source clocks and `stale`. Missing pending is unavailable, not zero. Do not interpret `snapshot.paper.pendingBase` as the total pending/claimable balance.
 
-Wallet UI and P&L cards show PAPER break-even as `max(0, -(lifetime realized trading P&L + claimed rewards + pending rewards)) / (staked + unstaked PAPER)`, in USDC per PAPER. This excludes open P&L and is not a market quote or acquisition cost basis. With a positive PAPER balance and a known nonnegative combined result, show **Cost recovered**. Zero PAPER or missing required data leaves the result unavailable. Retained stale values are labeled Last available. Tiny positive values must not round to zero.
+Wallet UI and P&L cards show unrecovered trading loss as `max(0, -(lifetime realized trading P&L + claimed rewards + verified pending rewards))`, in USDC. This excludes open P&L and any value assigned to PAPER holdings. Missing rewards remain unavailable, not zero; retained stale inputs are labeled Last available. Tiny positive losses must not round to zero. Paragon valuations and PAPER break-even sale prices are no longer displayed.
+
+The overview staking headline is historical annualized USDC rewards per 1,000 staked PAPER, based on observed accumulator changes, not percent APR. `stakingRewardHistory` supplies observed UTC daily USDC rewards per 1,000 staked PAPER with actual interval bounds and partial/missing flags. Earlier daily per-token history is not fabricated from protocol allocations or the lifetime rate.
 
 ### Wallet margin at risk
 

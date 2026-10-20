@@ -89,9 +89,9 @@ test("wallet leads with combined performance and keeps zero balances in account 
   await expect(performance).toContainText("+$1,250.00");
   await expect(performance).toContainText("+$500.00");
   await expect(performance).toContainText("Claimed + pending · USDC");
-  const breakEven = drawer.getByRole("region", { name: "PAPER break-even", exact: true });
-  await expect(breakEven.locator("dd")).toHaveText("Cost recovered");
-  await expect(breakEven).toContainText("USDC per PAPER");
+  const lossRecovery = drawer.getByRole("region", { name: "Unrecovered trading loss", exact: true });
+  await expect(lossRecovery.locator("dd")).toHaveText("$0.00");
+  await expect(lossRecovery).toContainText("USDC after rewards");
   const balances = drawer.locator(".wd-metrics");
   await expect(balances).toContainText("Available balance");
   await expect(balances).toContainText("Total PAPER owned");
@@ -142,20 +142,20 @@ test("unavailable pending rewards do not become zero or a partial total", async 
   await expect(performance).toContainText("Claimed +$300.00 · pending unavailable");
   await expect(performance).not.toContainText("$0.00");
   await expect(performance).not.toContainText("+$1,550.00");
-  const breakEven = drawer.getByRole("region", { name: "PAPER break-even", exact: true });
-  await expect(breakEven.locator("dd")).toHaveText("—");
-  await expect(breakEven).toContainText("Pending rewards unavailable");
+  const lossRecovery = drawer.getByRole("region", { name: "Unrecovered trading loss", exact: true });
+  await expect(lossRecovery.locator("dd")).toHaveText("—");
+  await expect(lossRecovery).toContainText("Pending rewards unavailable");
 });
 
-test("the PAPER break-even labels delayed account or reward values as last available", async ({ page }) => {
+test("the Unrecovered trading loss labels delayed account or reward values as last available", async ({ page }) => {
   const drawer = await openWallet(page, { onRead(wallet) {
     wallet.snapshot!.lifetime.realizedPnlRaw = raw(-1000);
     wallet.snapshot!.paper = { balance: raw(40_000), staked: raw(60_000) };
     wallet.stakingRewards!.stale = true;
   } });
-  const breakEven = drawer.getByRole("region", { name: "PAPER break-even", exact: true });
-  await expect(breakEven.locator("dd")).toHaveText("$0.005000");
-  await expect(breakEven).toContainText("USDC per PAPER · last available");
+  const lossRecovery = drawer.getByRole("region", { name: "Unrecovered trading loss", exact: true });
+  await expect(lossRecovery.locator("dd")).toHaveText("$500.00");
+  await expect(lossRecovery).toContainText("USDC after rewards · last available");
 });
 
 test("live updates keep one wallet summary and preserve account disclosure until the wallet changes", async ({

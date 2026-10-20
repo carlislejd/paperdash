@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { AnnualizedStakerYield } from "../packages/shared/src/staking-yield";
 import {
-  formatStakerApr,
   formatStakerYield,
   formatYieldHours,
-  formatPaperPrice,
   stakerYieldDelayed,
   stakerYieldRate,
 } from "../apps/web/src/lib/staker-yield";
@@ -69,34 +67,5 @@ describe("staker yield display", () => {
     expect(formatYieldHours(4_813_200_000)).toBe("1,337");
     for (const value of [null, undefined, 0, -1, Infinity, 0.5])
       expect(formatYieldHours(value)).toBe("—");
-  });
-});
-
-describe("feed-backed PAPER price and simple APR", () => {
-  it("formats the quote without floating-point loss or a false zero", () => {
-    expect(formatPaperPrice("24700000000000000")).toBe("$0.0247");
-    expect(formatPaperPrice("500000000000000000")).toBe("$0.5");
-    expect(formatPaperPrice("1")).toBe("<$0.00000001");
-    expect(formatPaperPrice("5000000000")).toBe("$0.00000001");
-    expect(formatPaperPrice("999999999999999999")).toBe("$1");
-    expect(formatPaperPrice("9007199254740993123456789012345678")).toBe("$9,007,199,254,740,993.12345679");
-    for (const value of [null, undefined, "", "0", "-1", "0.5", "1e18", "1".repeat(79)])
-      expect(formatPaperPrice(value)).toBe("—");
-  });
-
-  it("computes simple APR from raw feed values exactly, keeping zero separate from unavailable", () => {
-    const half = "500000000000000000";
-    expect(formatStakerApr("25000000000000000", half)).toBe("5.00%");
-    expect(formatStakerApr("108590000000000000", "24700000000000000")).toBe("439.64%");
-    expect(formatStakerApr("0", half)).toBe("0.00%");
-    expect(formatStakerApr("1", half)).toBe("<0.01%");
-    expect(formatStakerApr("24999999999999", half)).toBe("<0.01%");
-    expect(formatStakerApr("25000000000000", half)).toBe("0.01%");
-    expect(formatStakerApr((9007199254740993n * SCALE).toString(), (9007199254740993n * SCALE).toString())).toBe("100.00%");
-    expect(formatStakerApr("1", "1")).toBe("100.00%");
-    for (const price of [null, undefined, "", "0", "-1", "1e2", "no price", "1".repeat(79)])
-      expect(formatStakerApr("25000000000000000", price)).toBe("—");
-    expect(formatStakerApr(null, half)).toBe("—");
-    expect(formatStakerApr("-1", half)).toBe("—");
   });
 });

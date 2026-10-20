@@ -1,11 +1,9 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { PAPER_BREAK_EVEN_NOTE } from "../../apps/web/src/lib/wallet-performance";
-import { PARAGON_CARD_NOTE } from "../../apps/web/src/lib/wallet-pnl-card";
+import { LOSS_RECOVERY_NOTE } from "../../apps/web/src/lib/wallet-performance";
 import {
   mockSources,
-  paperEconomicsResponse,
   positionMetricsResponse,
   walletResponse,
   WALLET,
@@ -13,7 +11,7 @@ import {
 
 const raw = (value: number) => (BigInt(value) * 10n ** 18n).toString();
 const standardCardSummary =
-  "+$1,750.00 total P&L · +$1,250.00 realized trading P&L · +$500.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned · Cost recovered PAPER break-even (USDC per PAPER)";
+  "+$1,750.00 total P&L · +$1,250.00 realized trading P&L · +$500.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned · $0.00 Unrecovered trading loss (USDC after rewards)";
 type CardCanvasDiagnostic = {
   id: number;
   width: number;
@@ -38,28 +36,13 @@ async function setup(
     rewardsWin?: boolean;
     missingPending?: boolean;
     losses?: boolean;
-    paragon?: boolean;
-    missingParagon?: boolean;
   } = {},
 ) {
   const at = Math.floor(Date.now() / 1000) * 1000;
   await page.clock.install({ time: at });
   await page.clock.pauseAt(at);
   await mockSources(page);
-  const state = { changed: false, walletReads: 0, metricReads: 0, priceReads: 0 };
-  if (options.paragon) await page.route("**/api/paper/economics", (route) => {
-    state.priceReads++;
-    return route.fulfill({ json: {
-      ...paperEconomicsResponse(at),
-      paperPrice: options.missingParagon ? null : {
-        source: "hyperliquid", market: "para:PAPER", basis: "perp-mid",
-        priceUsdRaw: state.changed ? "50000000000000000" : "25000000000000000",
-        bidUsdRaw: state.changed ? "49000000000000000" : "24000000000000000",
-        askUsdRaw: state.changed ? "51000000000000000" : "26000000000000000",
-        sourceAt: at, receivedAt: at,
-      },
-    } });
-  });
+  const state = { changed: false, walletReads: 0, metricReads: 0 };
   await page.addInitScript(() => {
     const target = window as CardDiagnosticWindow;
     target.cardText = [];
@@ -386,10 +369,10 @@ test("all three card layouts export exactly the preview with hidden identity and
   expect(labels.join(" ")).not.toContain(WALLET);
   expect(labels).toContain("TOTAL P&L");
   expect(labels).toContain("Lifetime realized trading + rewards");
-  expect(labels).toContain("PAPER BREAK-EVEN");
-  expect(labels).toContain("Cost recovered");
-  expect(labels).toContain("USDC per PAPER");
-  expect(labels).toContain(PAPER_BREAK_EVEN_NOTE);
+  expect(labels).toContain("UNRECOVERED LOSS");
+  expect(labels).toContain("$0.00");
+  expect(labels).toContain("USDC after rewards");
+  expect(labels).toContain(LOSS_RECOVERY_NOTE);
   expect(labels).toContain("TRADING P&L");
   expect(labels).toContain("REWARDS");
   expect(labels).toContain("Claimed + pending · USDC");
@@ -782,7 +765,7 @@ test("an unavailable account and legacy highlights stay unknown on the rendered 
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · — total P&L · — realized trading P&L · — rewards (Claimed + pending unavailable) · — PAPER owned · — PAPER break-even (Account snapshot unavailable)",
+    "WALLET HIDDEN · — total P&L · — realized trading P&L · — rewards (Claimed + pending unavailable) · — PAPER owned · — Unrecovered trading loss (Account snapshot unavailable)",
   );
   await expect(dialog.locator(".pnl-accessible-summary dd")).toHaveText(
     [
@@ -790,7 +773,7 @@ test("an unavailable account and legacy highlights stay unknown on the rendered 
       "—",
       "— · Claimed + pending unavailable",
       "—",
-      `— · Account snapshot unavailable. ${PAPER_BREAK_EVEN_NOTE}`,
+      `— · Account snapshot unavailable. ${LOSS_RECOVERY_NOTE}`,
       ...Array(6).fill("—"),
     ],
   );
@@ -812,7 +795,7 @@ test("claimed and pending rewards turn a trading loss into positive total P&L", 
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · +$100,000.00 total P&L · −$200,000.00 realized trading P&L · +$300,000.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned · Cost recovered PAPER break-even (USDC per PAPER)",
+    "WALLET HIDDEN · +$100,000.00 total P&L · −$200,000.00 realized trading P&L · +$300,000.00 rewards (Claimed + pending · USDC) · 6,154,000.00 PAPER owned · $0.00 Unrecovered trading loss (USDC after rewards)",
   );
   await expect(dialog.locator(".pnl-accessible-summary dd").nth(0)).toHaveText(
     "+$100,000.00 · Lifetime realized trading + rewards",
@@ -842,7 +825,7 @@ test("unavailable pending rewards preserve the known trading and claimed amounts
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · — total P&L · +$1,250.00 realized trading P&L · — rewards (Claimed +$300.00 · pending unavailable) · 6,154,000.00 PAPER owned · — PAPER break-even (Pending rewards unavailable)",
+    "WALLET HIDDEN · — total P&L · +$1,250.00 realized trading P&L · — rewards (Claimed +$300.00 · pending unavailable) · 6,154,000.00 PAPER owned · — Unrecovered trading loss (Pending rewards unavailable)",
   );
   const labels = await page.evaluate(
     () => (window as CardDiagnosticWindow).cardText,
@@ -865,7 +848,7 @@ test("large negative P&L and PAPER totals remain exact in the compact export", a
   );
   await expect(dialog.locator(".pnl-preview img")).toHaveAttribute(
     "alt",
-    "WALLET HIDDEN · −$10,000,000,000.00 total P&L · −$10,000,000,000.00 realized trading P&L · $0.00 rewards (Claimed + pending · USDC) · 90,000,000,000.00 PAPER owned · $0.111111 PAPER break-even (USDC per PAPER)",
+    "WALLET HIDDEN · −$10,000,000,000.00 total P&L · −$10,000,000,000.00 realized trading P&L · $0.00 rewards (Claimed + pending · USDC) · 90,000,000,000.00 PAPER owned · $10,000,000,000.00 Unrecovered trading loss (USDC after rewards)",
   );
   const labels = await page.evaluate(
     () => (window as unknown as { cardText: string[] }).cardText,
@@ -884,33 +867,33 @@ test("large negative P&L and PAPER totals remain exact in the compact export", a
   ).saveAs(`/tmp/paperclub-pnl-test-large-${test.info().project.name}.png`);
 });
 
-test("the drawer and each frozen card show the same reward-adjusted PAPER break-even", async ({ page }, testInfo) => {
+test("the drawer and each frozen card show the same reward-adjusted Unrecovered trading loss", async ({ page }, testInfo) => {
   const state = await setup(page, { losses: true });
-  const breakEven = page.getByRole("region", { name: "PAPER break-even", exact: true });
-  await expect(breakEven.locator("dd")).toHaveText("$0.006000");
-  await expect(breakEven).toContainText("USDC per PAPER");
-  await expect(breakEven).toContainText(PAPER_BREAK_EVEN_NOTE);
-  await breakEven.scrollIntoViewIfNeeded();
-  await page.locator(".wd-drawer").screenshot({ path: `/tmp/paperclub-break-even-wallet-${testInfo.project.name}.png` });
+  const lossRecovery = page.getByRole("region", { name: "Unrecovered trading loss", exact: true });
+  await expect(lossRecovery.locator("dd")).toHaveText("$600.00");
+  await expect(lossRecovery).toContainText("USDC after rewards");
+  await expect(lossRecovery).toContainText(LOSS_RECOVERY_NOTE);
+  await lossRecovery.scrollIntoViewIfNeeded();
+  await page.locator(".wd-drawer").screenshot({ path: `/tmp/paperclub-loss-recovery-wallet-${testInfo.project.name}.png` });
   const dialog = await openCard(page);
   for (const layout of ["Gallery", "Spotlight", "Portrait"]) {
     await dialog.getByRole("button", { name: new RegExp(`^${layout}`) }).click();
     await waitForSharePreview(page, dialog);
-    await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$0\.006000 PAPER break-even \(USDC per PAPER\)/);
-    await expect(dialog.locator(".pnl-accessible-summary")).toContainText("$0.006000 · USDC per PAPER");
+    await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$600\.00 Unrecovered trading loss \(USDC after rewards\)/);
+    await expect(dialog.locator(".pnl-accessible-summary")).toContainText("$600.00 · USDC after rewards");
     const event = page.waitForEvent("download");
     await dialog.getByRole("button", { name: "Download PNG" }).click();
-    await (await event).saveAs(`/tmp/paperclub-break-even-${layout.toLowerCase()}-${testInfo.project.name}.png`);
+    await (await event).saveAs(`/tmp/paperclub-loss-recovery-${layout.toLowerCase()}-${testInfo.project.name}.png`);
   }
   const readsBefore = state.walletReads;
   state.changed = true;
   await page.clock.runFor(16_100);
   await expect.poll(() => state.walletReads).toBeGreaterThan(readsBefore);
-  await expect(breakEven.locator("dd")).toHaveText("Cost recovered");
-  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$0\.006000 PAPER break-even/);
+  await expect(lossRecovery.locator("dd")).toHaveText("$0.00");
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$600\.00 Unrecovered trading loss/);
   await dialog.getByRole("button", { name: "Update card" }).click();
   await waitForSharePreview(page, dialog);
-  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /Cost recovered PAPER break-even/);
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$0\.00 Unrecovered trading loss/);
 });
 
 test("a failed live refresh stays last available when captured on the card", async ({ page }) => {
@@ -922,72 +905,31 @@ test("a failed live refresh stays last available when captured on the card", asy
   // failed refresh itself must mark both presentations as last available.
   await page.clock.runFor(15_100);
   await expect(page.locator(".wd-error")).toContainText("This wallet could not be refreshed");
-  const breakEven = page.getByRole("region", { name: "PAPER break-even", exact: true });
-  await expect(breakEven.locator("dd")).toHaveText("$0.006000");
-  await expect(breakEven).toContainText("USDC per PAPER · last available");
+  const lossRecovery = page.getByRole("region", { name: "Unrecovered trading loss", exact: true });
+  await expect(lossRecovery.locator("dd")).toHaveText("$600.00");
+  await expect(lossRecovery).toContainText("USDC after rewards · last available");
   const dialog = await openCard(page);
   await waitForSharePreview(page, dialog);
-  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$0\.006000 PAPER break-even \(USDC per PAPER · last available\)/);
+  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\$600\.00 Unrecovered trading loss \(USDC after rewards · last available\)/);
   const labels = await page.evaluate(() => (window as CardDiagnosticWindow).cardText);
-  expect(labels).toContain("USDC per PAPER · last available");
+  expect(labels).toContain("USDC after rewards · last available");
 });
 
-test("Paragon estimates remain secondary and capture the same quote across all card layouts", async ({ page }, testInfo) => {
-  const state = await setup(page, { losses: true, paragon: true });
+test("obsolete saved Paragon preferences never affect wallet numbers or exported cards", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("paperclub:paragon-estimates:v1", "1"));
+  await setup(page, { losses: true });
   const wallet = page.locator(".wd-drawer");
-  const toggle = wallet.getByRole("checkbox", { name: "Show Paragon estimates" });
-  await expect(toggle).not.toBeChecked();
+  await expect(wallet.locator(".wd-performance-value")).toHaveText("−$600.00");
+  await expect(wallet.getByRole("checkbox", { name: "Show Paragon estimates" })).toHaveCount(0);
   await expect(wallet.locator(".paragon-estimate")).toHaveCount(0);
-  await expect(wallet.locator(".wd-performance-value")).toHaveText("−$600.00");
-  await toggle.check();
-  await expect(wallet.locator(".wd-performance-copy .paragon-estimate")).toContainText("P&L + PAPER value · ≈ $1,900.00");
-  await expect(wallet.locator(".wd-metrics .paragon-estimate")).toContainText("PAPER value · ≈ $2,500.00");
-  await expect(wallet.locator(".wd-performance-value")).toHaveText("−$600.00");
-  await wallet.screenshot({ path: `/tmp/paperclub-paragon-wallet-${testInfo.project.name}.png` });
   const dialog = await openCard(page);
   for (const layout of ["Gallery", "Spotlight", "Portrait"]) {
     await dialog.getByRole("button", { name: new RegExp(`^${layout}`) }).click();
     await waitForSharePreview(page, dialog);
-    await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /−\$600\.00 total P&L.*\+\$1,900\.00 P&L \+ PAPER value \(Paragon premarket price.*\$2,500\.00 PAPER value/);
-    await expect(dialog.locator(".pnl-accessible-summary")).toContainText("+$1,900.00 (Paragon premarket price)");
-    await expect(dialog.locator(".pnl-accessible-summary")).toContainText("PAPER $0.025 USDC");
-    const labels = await page.evaluate(() => (window as CardDiagnosticWindow).cardText);
-    expect(labels).toContain("P&L + PAPER value  +$1,900.00");
-    expect(labels).toContain("PAPER value  $2,500.00");
-    expect(labels).toContain("(Paragon premarket price)");
-    expect(labels).toContain(PARAGON_CARD_NOTE);
-    expect(await dialog.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
-    const download = page.waitForEvent("download");
-    await dialog.getByRole("button", { name: "Download PNG" }).click();
-    await (await download).saveAs(`/tmp/paperclub-paragon-${layout.toLowerCase()}-${testInfo.project.name}.png`);
+    await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /−\$600\.00 total P&L/);
+    await expect(dialog.locator(".pnl-preview img")).not.toHaveAttribute("alt", /Paragon|premarket|PAPER value|break-even/i);
+    await expect(dialog.locator(".pnl-accessible-summary")).not.toContainText("Paragon");
   }
-  const pricesBefore = state.priceReads;
-  state.changed = true;
-  await page.clock.runFor(31_100);
-  await expect.poll(() => state.priceReads).toBeGreaterThan(pricesBefore);
-  await expect(wallet.locator(".wd-performance-copy .paragon-estimate")).toContainText("P&L + PAPER value · ≈ $5,400.00");
-  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\+\$1,900\.00 P&L \+ PAPER value/);
-  await expect(dialog.locator(".pnl-accessible-summary")).toContainText("PAPER $0.025 USDC");
-  const readsBeforeUpdate = { wallet: state.walletReads, metrics: state.metricReads, price: state.priceReads };
-  await dialog.getByRole("button", { name: "Update card" }).click();
-  await waitForSharePreview(page, dialog);
-  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /\+\$400\.00 total P&L.*\+\$5,400\.00 P&L \+ PAPER value \(Paragon premarket price; last available estimate\)/);
-  await expect(dialog.locator(".pnl-accessible-summary")).toContainText("PAPER $0.05 USDC");
-  expect({ wallet: state.walletReads, metrics: state.metricReads, price: state.priceReads }).toEqual(readsBeforeUpdate);
-});
-
-test("a missing Paragon quote is visibly unavailable on the captured card", async ({ page }, testInfo) => {
-  await setup(page, { losses: true, paragon: true, missingParagon: true });
-  await page.locator(".wd-drawer").getByRole("checkbox", { name: "Show Paragon estimates" }).check();
-  await expect(page.locator(".wd-performance-copy .paragon-estimate")).toContainText("Price unavailable");
-  const dialog = await openCard(page);
-  await waitForSharePreview(page, dialog);
-  await expect(dialog.locator(".pnl-preview img")).toHaveAttribute("alt", /−\$600\.00 total P&L.*— P&L \+ PAPER value \(Paragon premarket price; estimate unavailable\)/);
-  await expect(dialog.locator(".pnl-accessible-summary")).toContainText("Paragon price unavailable");
   const labels = await page.evaluate(() => (window as CardDiagnosticWindow).cardText);
-  expect(labels).toContain("Estimate unavailable");
-  expect(labels).toContain("P&L + PAPER value  —");
-  const download = page.waitForEvent("download");
-  await dialog.getByRole("button", { name: "Download PNG" }).click();
-  await (await download).saveAs(`/tmp/paperclub-paragon-unavailable-${testInfo.project.name}.png`);
+  expect(labels.join(" ")).not.toMatch(/Paragon|premarket|PAPER value|break-even/i);
 });

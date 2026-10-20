@@ -575,6 +575,29 @@ export interface ProtocolChartsResponse {
   error?: string;
 }
 
+export interface StakingRewardDay {
+  /** UTC date assigned to this measured interval. Boundary samples may be approximate. */
+  dayMs: number;
+  fromMs: number | null;
+  toMs: number | null;
+  /** Actual observed USDC per 1,000 staked PAPER, 18 decimals; never annualized. */
+  earnedUsdPer1kPaperRaw: Raw | null;
+  partial: boolean;
+  /** Missing or inconsistent observations; null rewards must not become zero. */
+  missing: boolean;
+}
+export interface StakingRewardHistory {
+  basis: "observed-accumulator";
+  timeZone: "UTC";
+  /** Ascending dates, including explicit unknown gaps; at most 365 UTC days. */
+  days: StakingRewardDay[];
+  /** First retained accumulator endpoint, not an assumed protocol-launch zero. */
+  observedFromMs: number | null;
+  /** First date in this bounded response. Older completed days remain stored. */
+  availableFromMs: number | null;
+  truncated: boolean;
+}
+
 export interface PaperEconomicsResponse {
   panelRevision?: string;
   sourceAt: number | null;
@@ -592,6 +615,8 @@ export interface PaperEconomicsResponse {
   annualized: AnnualizedStakingRevenue;
   /** Additive rollout field, independent of allocated protocol revenue. */
   stakingYield?: AnnualizedStakerYield;
+  /** Collector-owned daily observed rewards; unavailable before capture began. */
+  stakingRewardHistory?: StakingRewardHistory;
   /** Collector-owned reference quote. Its clocks age independently of rewards. */
   paperPrice?: PaperPriceQuote | null;
   series: {

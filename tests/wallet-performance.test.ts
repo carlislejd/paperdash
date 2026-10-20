@@ -16,29 +16,29 @@ function losingWallet() {
   return wallet;
 }
 
-describe("PAPER break-even", () => {
-  it("offsets lifetime realized losses with claimed and pending rewards, over all owned PAPER", () => {
+describe("Unrecovered trading loss", () => {
+  it("offsets lifetime realized losses with claimed and pending USDC rewards", () => {
     const wallet = losingWallet();
     expect(walletPerformance(wallet, at)).toMatchObject({
-      paperBreakEven: "$0.006000",
-      paperBreakEvenStatus: "price",
-      paperBreakEvenNote: "USDC per PAPER",
+      unrecoveredLoss: "$600.00",
+      unrecoveredLossStatus: "loss",
+      unrecoveredLossNote: "USDC after rewards",
     });
     // Changes to deposits or an open position cannot change the realized basis.
     wallet.snapshot!.lifetime.depositedRaw = raw(1_000_000);
     wallet.snapshot!.openPositions = [];
-    expect(walletPerformance(wallet, at).paperBreakEven).toBe("$0.006000");
+    expect(walletPerformance(wallet, at).unrecoveredLoss).toBe("$600.00");
   });
 
   it("uses the exact recovery threshold, even one raw unit below it", () => {
     const wallet = losingWallet();
     const remaining = BigInt(raw(750));
     wallet.stakingRewards!.pendingRaw = (remaining - 1n).toString();
-    expect(walletPerformance(wallet, at)).toMatchObject({ paperBreakEven: "<$0.000001", paperBreakEvenStatus: "price" });
+    expect(walletPerformance(wallet, at)).toMatchObject({ unrecoveredLoss: "<$0.01", unrecoveredLossStatus: "loss" });
     wallet.stakingRewards!.pendingRaw = remaining.toString();
-    expect(walletPerformance(wallet, at)).toMatchObject({ paperBreakEven: "Cost recovered", paperBreakEvenStatus: "recovered" });
+    expect(walletPerformance(wallet, at)).toMatchObject({ unrecoveredLoss: "$0.00", unrecoveredLossStatus: "recovered" });
     wallet.stakingRewards!.pendingRaw = (remaining + 1n).toString();
-    expect(walletPerformance(wallet, at).paperBreakEven).toBe("Cost recovered");
+    expect(walletPerformance(wallet, at).unrecoveredLoss).toBe("$0.00");
   });
 
   it.each([0, 1_000])("shows recovered for a nonnegative trading result (%s) with known rewards", (pnl) => {
@@ -46,15 +46,15 @@ describe("PAPER break-even", () => {
     wallet.snapshot!.lifetime.realizedPnlRaw = raw(pnl);
     wallet.snapshot!.lifetime.paperRewardsClaimedRaw = "0";
     wallet.stakingRewards!.pendingRaw = "0";
-    expect(walletPerformance(wallet, at).paperBreakEven).toBe("Cost recovered");
+    expect(walletPerformance(wallet, at).unrecoveredLoss).toBe("$0.00");
   });
 
-  it("rounds subcent prices to six decimals without reducing a positive balance to zero", () => {
-    const wallet = losingWallet();
-    wallet.snapshot!.paper = { balance: raw(90_000), staked: "0" };
-    expect(walletPerformance(wallet, at).paperBreakEven).toBe("$0.006667");
-    wallet.snapshot!.paper.balance = raw(1_000_000_000);
-    expect(walletPerformance(wallet, at).paperBreakEven).toBe("<$0.000001");
+  it("does not depend on PAPER balances, including unknown or zero holdings", () => {
+    for (const paper of [{ balance: "0", staked: "0" }, { balance: "invalid", staked: "invalid" }, { balance: raw(1_000_000_000), staked: "0" }]) {
+      const wallet = losingWallet();
+      wallet.snapshot!.paper = paper;
+      expect(walletPerformance(wallet, at).unrecoveredLoss).toBe("$600.00");
+    }
   });
 
   it.each([null, "invalid", "-1"])("preserves missing or invalid pending rewards (%s), without pendingBase", (pending) => {
@@ -62,22 +62,20 @@ describe("PAPER break-even", () => {
     wallet.stakingRewards!.pendingRaw = pending;
     wallet.snapshot!.paper.pendingBase = raw(750);
     expect(walletPerformance(wallet, at)).toMatchObject({
-      paperBreakEven: "—", paperBreakEvenStatus: "unavailable", paperBreakEvenNote: "Pending rewards unavailable",
+      unrecoveredLoss: "—", unrecoveredLossStatus: "unavailable", unrecoveredLossNote: "Pending rewards unavailable",
     });
   });
 
-  it("keeps missing account, trading, claimed, PAPER and zero PAPER distinct", () => {
+  it("keeps missing account, trading and claimed rewards distinct", () => {
     const cases = [
       [(wallet: ReturnType<typeof losingWallet>) => { wallet.snapshot = null; }, "Account snapshot unavailable"],
       [(wallet: ReturnType<typeof losingWallet>) => { wallet.snapshot!.lifetime.realizedPnlRaw = "invalid"; }, "Trading P&L unavailable"],
       [(wallet: ReturnType<typeof losingWallet>) => { wallet.snapshot!.lifetime.paperRewardsClaimedRaw = "-1"; }, "Claimed rewards unavailable"],
-      [(wallet: ReturnType<typeof losingWallet>) => { wallet.snapshot!.paper.staked = "invalid"; }, "PAPER balance unavailable"],
-      [(wallet: ReturnType<typeof losingWallet>) => { wallet.snapshot!.paper = { balance: "0", staked: "0" }; }, "No PAPER owned"],
     ] as const;
     for (const [change, reason] of cases) {
       const wallet = losingWallet();
       change(wallet);
-      expect(walletPerformance(wallet, at)).toMatchObject({ paperBreakEven: "—", paperBreakEvenStatus: "unavailable", paperBreakEvenNote: reason });
+      expect(walletPerformance(wallet, at)).toMatchObject({ unrecoveredLoss: "—", unrecoveredLossStatus: "unavailable", unrecoveredLossNote: reason });
     }
   });
 
@@ -93,9 +91,9 @@ describe("PAPER break-even", () => {
     for (const change of changes) {
       const wallet = losingWallet();
       change(wallet);
-      expect(walletPerformance(wallet, at)).toMatchObject({ paperBreakEven: "$0.006000", paperBreakEvenNote: "USDC per PAPER · last available" });
+      expect(walletPerformance(wallet, at)).toMatchObject({ unrecoveredLoss: "$600.00", unrecoveredLossNote: "USDC after rewards · last available" });
     }
-    expect(walletPerformance(losingWallet(), at, true).paperBreakEvenNote).toContain("last available");
+    expect(walletPerformance(losingWallet(), at, true).unrecoveredLossNote).toContain("last available");
   });
 
   it("freezes the same value and freshness in every privacy-safe card layout", () => {
@@ -103,16 +101,16 @@ describe("PAPER break-even", () => {
     const source = { wallet, metrics: null, displayName: "Private name", capturedAt: at };
     for (const layout of PNL_CARD_LAYOUTS) {
       const model = walletPnlCardModel(source, { layout: layout.id, hideWallet: true });
-      expect(model.paperBreakEven).toBe(walletPerformance(wallet, at).paperBreakEven);
-      expect(model.paperBreakEvenNote).toBe("USDC per PAPER");
-      expect(model.shareText).toContain("$0.006000 PAPER break-even (USDC per PAPER)");
+      expect(model.unrecoveredLoss).toBe(walletPerformance(wallet, at).unrecoveredLoss);
+      expect(model.unrecoveredLossNote).toBe("USDC after rewards");
+      expect(model.shareText).toContain("$600.00 Unrecovered trading loss (USDC after rewards)");
       expect(JSON.stringify(model)).not.toContain(WALLET);
       expect(JSON.stringify(model)).not.toContain("Private name");
       const prior = wallet.stakingRewards!.pendingRaw;
       wallet.stakingRewards!.pendingRaw = raw(10_000);
       wallet.stakingRewards!.stale = true;
-      expect(model.paperBreakEven).toBe("$0.006000");
-      expect(model.paperBreakEvenNote).toBe("USDC per PAPER");
+      expect(model.unrecoveredLoss).toBe("$600.00");
+      expect(model.unrecoveredLossNote).toBe("USDC after rewards");
       wallet.stakingRewards!.pendingRaw = prior;
       wallet.stakingRewards!.stale = false;
     }

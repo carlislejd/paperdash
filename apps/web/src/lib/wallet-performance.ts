@@ -3,15 +3,10 @@ import { formatRawUsd } from "./format";
 import { walletAccountClock } from "./wallet-account-clock";
 
 export const WALLET_PERFORMANCE_NOTE = "Lifetime realized trading + rewards";
-export const PAPER_BREAK_EVEN_NOTE =
-  "Remaining realized trading losses after claimed + pending rewards ÷ PAPER owned (staked + unstaked). Excludes open P&L and token price; not an acquisition cost.";
+export const LOSS_RECOVERY_NOTE =
+  "Remaining realized trading losses after claimed + claimable USDC rewards. Excludes open P&L and PAPER holdings.";
 
 export interface WalletPerformance {
-  /** Exact observed amounts for optional reference valuations. */
-  pnlRaw: string | null;
-  paperOwnedRaw: string | null;
-  accountDelayed: boolean;
-  performanceDelayed: boolean;
   pnl: string;
   pnlTone: "positive" | "negative" | "neutral";
   pnlNote: string;
@@ -19,9 +14,9 @@ export interface WalletPerformance {
   tradingPnlTone: "positive" | "negative" | "neutral";
   rewards: string;
   rewardsNote: string;
-  paperBreakEven: string;
-  paperBreakEvenNote: string;
-  paperBreakEvenStatus: "price" | "recovered" | "unavailable";
+  unrecoveredLoss: string;
+  unrecoveredLossNote: string;
+  unrecoveredLossStatus: "loss" | "recovered" | "unavailable";
 }
 
 function signedUsd(raw: bigint | null): string {
@@ -73,9 +68,6 @@ export function walletPerformance(
         observedAt > at + 30_000 ||
         at - observedAt > 30_000,
     );
-  const balance = rawAmount(account?.paper.balance);
-  const staked = rawAmount(account?.paper.staked);
-  const paper = balance !== null && staked !== null ? balance + staked : null;
   const unavailable = !account
     ? "Account snapshot unavailable"
     : rawTradingPnl === null
@@ -84,38 +76,17 @@ export function walletPerformance(
         ? "Claimed rewards unavailable"
         : pending === null
           ? "Pending rewards unavailable"
-          : paper === null
-            ? "PAPER balance unavailable"
-            : paper === 0n
-              ? "No PAPER owned"
-              : null;
+          : null;
   const accountDelayed = walletAccountClock(wallet, refreshFailed, at).stale;
   const delayed = rewardsDelayed || accountDelayed;
-  let paperBreakEven = "—";
-  let paperBreakEvenStatus: WalletPerformance["paperBreakEvenStatus"] =
-    "unavailable";
-  if (unavailable === null && rawPnl !== null && paper !== null && paper > 0n) {
-    if (rawPnl >= 0n) {
-      paperBreakEven = "Cost recovered";
-      paperBreakEvenStatus = "recovered";
-    } else {
-      // Both amounts have 18 decimals. Keep their ratio exact until display;
-      // a positive amount below the display precision must not look recovered.
-      const micros = (-rawPnl * 1_000_000n) / paper;
-      const rounded = (-rawPnl * 1_000_000n + paper / 2n) / paper;
-      paperBreakEven =
-        micros === 0n
-          ? "<$0.000001"
-          : `$${(rounded / 1_000_000n).toLocaleString("en-US")}.${(rounded % 1_000_000n).toString().padStart(6, "0")}`;
-      paperBreakEvenStatus = "price";
-    }
-  }
+  const remainingLoss = rawPnl === null ? null : rawPnl < 0n ? -rawPnl : 0n;
+  const unrecoveredLoss = remainingLoss !== null && remainingLoss > 0n && remainingLoss < 10n ** 16n
+    ? "<$0.01"
+    : formatRawUsd(remainingLoss?.toString());
+  const unrecoveredLossStatus: WalletPerformance["unrecoveredLossStatus"] =
+    remainingLoss === null ? "unavailable" : remainingLoss === 0n ? "recovered" : "loss";
 
   return {
-    pnlRaw: rawPnl?.toString() ?? null,
-    paperOwnedRaw: paper?.toString() ?? null,
-    accountDelayed,
-    performanceDelayed: delayed,
     pnl: signedUsd(rawPnl),
     pnlTone: pnlTone(rawPnl),
     pnlNote:
@@ -135,9 +106,9 @@ export function walletPerformance(
         : claimed === null
           ? "Claimed rewards unavailable"
           : `Claimed + pending · USDC${rewardsDelayed ? " · delayed" : ""}`,
-    paperBreakEven,
-    paperBreakEvenStatus,
-    paperBreakEvenNote:
-      unavailable ?? `USDC per PAPER${delayed ? " · last available" : ""}`,
+    unrecoveredLoss,
+    unrecoveredLossStatus,
+    unrecoveredLossNote:
+      unavailable ?? `USDC after rewards${delayed ? " · last available" : ""}`,
   };
 }

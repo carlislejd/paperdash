@@ -54,6 +54,7 @@ export function OverviewCharts() {
   };
   return (
     <>
+      <HouseStats chartRange={range} paper={paper} />
       <section className="overview-chart-section" aria-label="Protocol charts">
         <div className="overview-chart-toolbar">
           <p>
@@ -117,7 +118,6 @@ export function OverviewCharts() {
           />
         </div>
       )}
-      <HouseStats chartRange={range} paper={paper} />
     </>
   );
 }

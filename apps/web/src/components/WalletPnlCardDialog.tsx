@@ -2,13 +2,12 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   PNL_CARD_LAYOUTS,
   PNL_CARD_PNL_LABEL,
-  PARAGON_CARD_NOTE,
   walletPnlCardModel,
   type PnlCardLayout,
   type PnlCardSnapshot,
 } from "../lib/wallet-pnl-card";
 import { useImageActions } from "../lib/use-image-actions";
-import { PAPER_BREAK_EVEN_NOTE } from "../lib/wallet-performance";
+import { LOSS_RECOVERY_NOTE } from "../lib/wallet-performance";
 import "./wallet-pnl-card.css";
 
 export function WalletPnlCardDialog({
@@ -186,7 +185,7 @@ export function WalletPnlCardDialog({
               src={ready.url}
               width={model.width}
               height={model.height}
-              alt={`${model.identity} · ${model.pnl} total P&L · ${model.tradingPnl} realized trading P&L · ${model.rewards} rewards (${model.rewardsNote}) · ${model.paper} PAPER owned · ${model.paperBreakEven} PAPER break-even (${model.paperBreakEvenNote})${model.paragon ? ` · ${model.paragon.summary}` : ""}`}
+              alt={`${model.identity} · ${model.pnl} total P&L · ${model.tradingPnl} realized trading P&L · ${model.rewards} rewards (${model.rewardsNote}) · ${model.paper} PAPER owned · ${model.unrecoveredLoss} Unrecovered trading loss (${model.unrecoveredLossNote})`}
             />
           ) : previewError ? (
             <div role="alert">
@@ -216,17 +215,9 @@ export function WalletPnlCardDialog({
         </dd>
         <dt>PAPER owned, staked and unstaked</dt>
         <dd>{model.paper}</dd>
-        {model.paragon && <>
-          <dt>P&amp;L + PAPER value</dt>
-          <dd>{model.paragon.pnl} ({model.paragon.label}) · {model.paragon.pnlNote}</dd>
-          <dt>PAPER value</dt>
-          <dd>{model.paragon.paper} ({model.paragon.label}) · {model.paragon.paperNote}</dd>
-          <dt>Reference price</dt>
-          <dd>{model.paragon.priceNote}</dd>
-        </>}
-        <dt>PAPER break-even</dt>
+        <dt>Unrecovered trading loss</dt>
         <dd>
-          {model.paperBreakEven} · {model.paperBreakEvenNote}. {PAPER_BREAK_EVEN_NOTE}
+          {model.unrecoveredLoss} · {model.unrecoveredLossNote}. {LOSS_RECOVERY_NOTE}
         </dd>
         {model.stats.map((stat) => (
           <div key={stat.label}>
@@ -288,7 +279,6 @@ export function WalletPnlCardDialog({
           Snapshot captured · {model.captured}. Trade highlights use recorded
           closed positions, including liquidations.
         </p>
-        {model.paragon && <p className="pnl-source-note">{model.paragon.priceNote}. {model.paragon.pnlNote}. {PARAGON_CARD_NOTE}</p>}
       </footer>
     </dialog>
   );

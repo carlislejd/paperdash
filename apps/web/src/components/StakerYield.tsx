@@ -1,10 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { paperPriceDelayed, validPaperPrice } from "../../../../packages/shared/src/paper-price";
 import type { PaperEconomicsResponse } from "../../../../packages/shared/src/types";
 import { useAnalytics } from "../lib/use-analytics";
 import {
-  formatPaperPrice,
-  formatStakerApr,
   formatStakerYield,
   formatYieldHours,
   formatYieldTime,
@@ -38,10 +35,7 @@ export function StakerYieldMetric() {
   );
   const rewards = data?.stakingYield;
   const rate = stakerYieldRate(rewards);
-  const quote = validPaperPrice(data?.paperPrice);
   const rewardDelayed = Boolean(error || stakerYieldDelayed(data));
-  const priceDelayed = paperPriceDelayed(quote);
-  const delayed = rate !== null && quote !== null && (rewardDelayed || priceDelayed);
   const collecting =
     rewards?.elapsedMs != null &&
     Number.isSafeInteger(rewards.elapsedMs) &&
@@ -64,11 +58,11 @@ export function StakerYieldMetric() {
       }}
     >
       <span className="metric-label">
-        Staker yield / year
+        Staking rewards / year
         <button
           type="button"
           className="staker-yield-info"
-          aria-label="How staker yield is calculated"
+          aria-label="How staking rewards are calculated"
           aria-describedby={methodOpen ? methodId : undefined}
           onClick={() => setMethodOpen(true)}
         >
@@ -78,27 +72,18 @@ export function StakerYieldMetric() {
           </svg>
         </button>
       </span>
-      <strong>{formatStakerApr(rate, quote?.priceUsdRaw)}</strong>
-      <span className="metric-note staker-yield-price-row">
-        <a
-          className="staker-yield-source"
-          href="https://app.hyperliquid.xyz/trade/para:PAPER"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-describedby={methodOpen ? methodId : undefined}
-        >
-          {quote ? `PAPER price ${formatPaperPrice(quote.priceUsdRaw)}` : "PAPER price unavailable"} <span aria-hidden="true">↗</span>
-        </a>
-        {quote && priceDelayed && <span className="staker-yield-delayed"> · Price delayed</span>}
+      <strong>{formatStakerYield(rate)}</strong>
+      <span className="metric-note">
+        USDC / 1K staked PAPER
         {rate !== null && rewardDelayed && <span className="staker-yield-delayed"> · Rewards delayed</span>}
         {rate === null && <span> · {collecting ? "Rewards pending" : "Rewards unavailable"}</span>}
       </span>
       <div className="staker-yield-method" id={methodId} role="tooltip" hidden={!methodOpen}>
           <p className="staker-yield-method-heading">How it’s calculated</p>
-          <p>Simple APR · {rate === null || quote === null ? "unavailable" : delayed ? "last available" : "observed rate"}</p>
+          <p>Historical annualized rate · {rate === null ? "unavailable" : rewardDelayed ? "last available" : "observed rewards"}</p>
           <p>
-            Observed annual USDC earned per PAPER ÷ PAPER price. No compounding;
-            future rewards vary.
+            Observed USDC earned per 1,000 staked PAPER, annualized over the measured
+            interval. No compounding; future rewards vary.
           </p>
           {rate !== null && rewards ? (
             <>
@@ -109,14 +94,10 @@ export function StakerYieldMetric() {
                 <span aria-hidden="true"> → </span><span className="sr-only"> to </span>
                 <time dateTime={new Date(rewards.toMs!).toISOString()}>{formatYieldTime(rewards.toMs!)}</time>
               </p>
-              <p>USDC earned per PAPER ÷ elapsed hours × 8,760. Retrospective run rate.</p>
+              <p>USDC earned per PAPER ÷ elapsed hours × 8,760 × 1,000. Historical run rate, not a forecast.</p>
             </>
           ) : (
             <p>{collecting ? "Collecting the first hour of staking rewards." : "Waiting for staking reward observations."}</p>
-          )}
-          <p>Price is the midpoint of the best bid and ask for Paragon’s PAPER perpetual on Hyperliquid.</p>
-          {quote && (
-            <p>Price as of <time dateTime={new Date(quote.sourceAt).toISOString()}>{formatYieldTime(quote.sourceAt)}</time>.</p>
           )}
       </div>
     </div>

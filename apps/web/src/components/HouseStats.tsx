@@ -12,9 +12,9 @@ import {
 import "./protocol-stats.css";
 
 const components = [
-  { id: "house-funds", title: "House funds", field: "fundsRaw" },
+  { id: "house-lp", title: "LP balance", field: "lpRaw" },
   { id: "house-open-pnl", title: "Open house PnL", field: "openPnlRaw" },
-  { id: "house-queue-debt", title: "Queue debt", field: "queueDebtRaw" },
+  { id: "house-queue-debt", title: "Queued payouts", field: "queueDebtRaw" },
 ] as const;
 
 function rawDelta(value: string | null | undefined): bigint | null {
@@ -55,7 +55,7 @@ function HouseChange({ change }: { change: HouseResponse["change"] }) {
   const contributions = [
     { label: "LP balance", value: lp },
     { label: "Open house PnL", value: pnl },
-    { label: "Queue debt effect", value: -debt },
+    { label: "Queued payout effect", value: -debt },
   ];
   const maximum = contributions.reduce((max, { value }) => {
     const magnitude = value < 0n ? -value : value;
@@ -111,7 +111,7 @@ function HouseChange({ change }: { change: HouseResponse["change"] }) {
         })}
       </dl>
       <p className="protocol-method">
-        Queue debt reduces funds; a decrease contributes positively.
+        More queued payouts reduce funds; fewer queued payouts increase funds.
       </p>
     </section>
   );
@@ -131,14 +131,15 @@ export function HouseStats({
     () =>
       (data?.history ?? []).map((point) => ({
         ...point,
-        value: rawToNumber(point.lpRaw),
+        value: rawToNumber(point.fundsRaw),
       })),
     [data?.history],
   );
   const stale = Boolean(error || (data?.houseStale ?? data?.stale));
   const houseError =
     error || (data?.houseStale === false ? undefined : data?.error);
-  const houseTo = validChartTime(data?.sourceAt) ? data.sourceAt : Date.now();
+  const sourceAt = validChartTime(data?.sourceAt) ? data.sourceAt : null;
+  const houseTo = sourceAt ?? Date.now();
   const dayStart = Math.max(0, houseTo - 86400000);
   const availableTimes = points
     .filter(
@@ -161,48 +162,42 @@ export function HouseStats({
   };
   return (
     <section className="house-panel" aria-label="House and PAPER statistics">
-      <div className="house-funds">
+      <section className="house-funds" aria-label="House health">
+        <div className="section-heading house-health-heading">
+          <h2>House health</h2>
+          <span
+            className={`house-health-status${stale ? " house-health-status--stale" : ""}`}
+            title={sourceAt === null ? undefined : formatChartTime(sourceAt)}
+          >
+            {sourceAt === null ? (
+              loading ? "Loading snapshot" : "Awaiting snapshot"
+            ) : (
+              <>
+                {stale ? "Last available" : "Updated"} ·{" "}
+                <time dateTime={new Date(sourceAt).toISOString()}>
+                  {formatChartTime(sourceAt, false)}
+                </time>
+              </>
+            )}
+          </span>
+        </div>
         <ChartCard
-          id="house-lp"
-          title="LP balance"
+          id="house-funds"
+          title="House funds"
           unit="USDC"
           kind="line"
           points={points}
           range={houseRange}
-          sourceAt={data?.sourceAt ?? null}
-          valueLabel={formatRawUsd(data?.house?.lpRaw, true)}
-          valueTitle={formatRawUsd(data?.house?.lpRaw)}
+          sourceAt={sourceAt}
+          valueLabel={formatRawUsd(data?.house?.fundsRaw, true)}
+          valueTitle={formatRawUsd(data?.house?.fundsRaw)}
+          valueCaption="After open PnL & queued payouts"
           coverage="Estimated · available observations · gaps unknown"
           stale={stale}
           loading={loading}
           error={houseError}
           onRetry={refresh}
         />
-        <section className="lp-thresholds" aria-label="LP and PAPER thresholds">
-          <div>
-            <h3>
-              <strong>$2M</strong> Mint threshold
-            </h3>
-            <p>
-              Eligible losses can mint up to 100 PAPER per $1 of eligible loss
-              basis. Above $2M tracked LP, the rate tapers with its high-water
-              mark.
-            </p>
-          </div>
-          <div>
-            <h3>
-              <strong>$5M</strong> Staking surplus
-            </h3>
-            <p>
-              Above $5M tracked LP, excess can fund staker rewards. Fee-share
-              rewards can also accrue below the cap; payouts are separate.
-            </p>
-          </div>
-          <p className="lp-threshold-note">
-            Thresholds use protocol tracked LP. Staker distributions do not
-            reset the mint curve’s high-water mark.
-          </p>
-        </section>
         <div className="house-components" aria-describedby={id}>
           {components.map(({ id, title, field }) => (
             <ChartCard
@@ -218,7 +213,7 @@ export function HouseStats({
                 gapBefore: point.gapBefore,
               }))}
               range={houseRange}
-              sourceAt={data?.sourceAt ?? null}
+              sourceAt={sourceAt}
               valueLabel={formatRawUsd(data?.house?.[field], true)}
               valueTitle={formatRawUsd(data?.house?.[field])}
               coverage="Estimated · available observations · gaps unknown"
@@ -228,7 +223,8 @@ export function HouseStats({
           ))}
         </div>
         <p id={id} className="protocol-method">
-          House funds = LP balance + open house PnL − queue debt · estimated
+          House funds = LP balance + open house PnL − queued payouts. Includes
+          unrealized trading PnL; snapshot estimate.
         </p>
         <HouseChange change={data?.change} />
         {error && (
@@ -236,7 +232,7 @@ export function HouseStats({
             Retry house data
           </button>
         )}
-      </div>
+      </section>
       <PaperEconomics chartRange={chartRange} resource={paper} />
     </section>
   );

@@ -12,6 +12,12 @@ The independent summary provides integer strings with 18 decimals. The official 
 
 Other summary fields: `balances.tvl` is total exchange USDC; `balances.margin` is user margin; `activity.open` is current open-position count; `activity.volume` is lifetime traded notional. Summary `source.at` is milliseconds and `source.block` is a decimal string. The house frame has no independently verified indexed-block field. `sourceBlock` in the dashboard's house response therefore belongs to its **protocol summary**, with a separate `summarySourceAt`; it is not the block of the house valuation.
 
+## Dashboard prominence
+
+The House health section appears immediately below the overview headline metrics. House funds are the featured chart, with LP balance, open house PnL and queued payouts alongside their coherent change decomposition. Each uses the house source clock and independent stale state. The label describes observable inputs, not a solvency rating or payout guarantee.
+
+The hardcoded mint-threshold and staking-surplus explainer was removed from this section in the October 19 release. This does not establish that any particular threshold changed; upcoming protocol rules require separate activation verification. The section emphasizes observed balances and liabilities.
+
 ## Retention and public response
 
 The existing collector house request serves all viewers. One latest sample per minute is durably retained in `house_samples`; a source-time regression cannot replace a newer sample, including across minute boundaries. Equal source timestamps can receive later corrections. PG writers serialize the ordering guard and upsert with a transaction advisory lock. SQLite uses one atomic guarded upsert. Samples survive restarts and are not reset when public views change.

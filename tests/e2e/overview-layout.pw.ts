@@ -78,7 +78,7 @@ async function sources(page: Page, empty = false) {
   await page.route("**/api/house", (route) => route.fulfill({ json: house }));
 }
 
-test("overview gives ten live trades full room and fits the LP chart to retained history", async ({
+test("overview gives ten live trades full room and fits house funds to retained history", async ({
   page,
 }, testInfo) => {
   await sources(page);
@@ -111,7 +111,7 @@ test("overview gives ten live trades full room and fits the LP chart to retained
     ).toBeLessThan(1);
   } else expect(feedBox.y).toBeGreaterThan(leadersBox.y + leadersBox.height);
 
-  const chart = page.getByRole("region", { name: "LP balance chart card" });
+  const chart = page.getByRole("region", { name: "House funds chart card" });
   await expect(chart).toContainText("Available history · up to 24h");
   const plot = chart.getByRole("img");
   const plotBox = (await plot.boundingBox())!;
@@ -142,12 +142,15 @@ test("overview gives ten live trades full room and fits the LP chart to retained
   });
 });
 
-test("LP chart leaves absent observations unavailable at its comfortable default height", async ({
+test("house health leaves absent observations unavailable at its comfortable default height", async ({
   page,
 }, testInfo) => {
   await sources(page, true);
   await page.goto("/");
-  const chart = page.getByRole("region", { name: "LP balance chart card" });
+  const health = page.getByRole("region", { name: "House health", exact: true });
+  const chart = health.getByRole("region", { name: "House funds chart card" });
+  await expect(health.locator(".house-health-status")).toHaveText("Awaiting snapshot");
+  await expect(health.locator(".house-components .pc-chart-headline > strong")).toHaveText(["—", "—", "—"]);
   await expect(chart.locator(".pc-chart-headline > strong")).toHaveText("—");
   await expect(chart).toContainText("awaiting observations");
   await expect(chart).toContainText("No observations in this range");

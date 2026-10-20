@@ -378,20 +378,7 @@
   gap: 12px 20px;
   min-width: 0;
 }
-.leaderboard-title-controls .paragon-control {
-  min-width: 0;
-}
-.leaderboard-value-paper .paragon-estimate,
-.leaderboard-paper-summary .paragon-estimate {
-  display: block;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 400;
-  line-height: 1.5;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
+
 .leaderboard-history-state {
   display: block;
   margin-top: 5px;

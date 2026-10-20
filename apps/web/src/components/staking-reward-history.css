@@ -1,0 +1,109 @@
+.staking-reward-history {
+  margin: 12px 0 20px;
+  min-width: 0;
+}
+.staking-reward-history-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+}
+.staking-reward-history-heading h3 {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.staking-reward-history-status {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.staking-reward-history-status.is-stale {
+  color: #8a7650;
+}
+.staking-reward-history-description,
+.staking-reward-history-note,
+.staking-reward-history-empty {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 5px 0 10px;
+}
+.staking-reward-history table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.staking-reward-history th,
+.staking-reward-history td {
+  text-align: left;
+  padding: 8px 0;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+}
+.staking-reward-history thead th {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  padding-top: 5px;
+}
+.staking-reward-history th:first-child {
+  width: 23%;
+}
+.staking-reward-history th:nth-child(2) {
+  width: 32%;
+  text-align: right;
+  padding-right: 16px;
+}
+.staking-reward-history tbody th {
+  font-weight: 400;
+}
+.staking-reward-history .staking-reward-amount {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  padding-right: 16px;
+  overflow-wrap: anywhere;
+}
+.staking-reward-history [data-missing="true"] .staking-reward-amount {
+  color: var(--muted);
+}
+.staking-reward-coverage {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.staking-reward-coverage small {
+  display: block;
+  font-size: 9px;
+  margin-top: 2px;
+}
+.staking-reward-history-toggle {
+  display: block;
+  margin: 5px 0 0 auto;
+  min-height: 32px;
+  padding: 4px 0 4px 8px;
+  color: #81718e;
+  font-size: 10px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.staking-reward-history-toggle:focus-visible {
+  outline: 2px solid #81718e;
+  outline-offset: 3px;
+}
+.staking-reward-history-note {
+  font-size: 9px;
+  margin: 8px 0 0;
+}
+.staking-reward-history-empty {
+  padding: 14px 0;
+  border-block: 1px solid var(--line);
+  margin-bottom: 0;
+}

@@ -170,7 +170,7 @@ describe("shared panel publication hints", () => {
     for (const [index, publication] of publications.entries()) {
       expect(store.put.mock.calls[index][1]).toMatchObject({ panelRevision: publication.revision });
     }
-    expect(store.get.mock.calls).toEqual([["summary"], ["paper-price"]]);
+    expect(store.get.mock.calls).toEqual([["summary"], ["staking-reward-history"], ["staking-reward-history-days"]]);
     expect(store.history.protocolChartRows).toHaveBeenCalledTimes(2);
     expect(store.depositMetrics.read).toHaveBeenCalledTimes(1);
   });

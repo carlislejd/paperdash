@@ -7,7 +7,6 @@ import {
   rawToNumber,
 } from "../lib/format";
 import { useAnalytics } from "../lib/use-analytics";
-import { ParagonEstimate, ParagonToggle } from "./ParagonValuation";
 import {
   AnalyticsNotice,
   AnalyticsStatus,
@@ -88,7 +87,6 @@ export function LeaderboardView({
   const lifetimeUnavailable =
     metric === "paper" && paperWindow === "all" && data && !lifetime;
   const message = error || data?.error;
-  const holdingsDelayed = Boolean(message || data?.accountStale);
   const columns = [
     metric,
     ...(["pnl", "paper", "volume", "trades"] as const).filter(
@@ -114,7 +112,6 @@ export function LeaderboardView({
             </span>
             <h2 id="leaderboard-heading">Leaderboard</h2>
           </div>
-          <ParagonToggle />
         </div>
         <div className="analytics-segments" aria-label="Leaderboard ranking">
           <button
@@ -211,12 +208,6 @@ export function LeaderboardView({
               title={`${formatRawToken(data?.paperOwnership?.trackedTotalRaw)} PAPER`}
             >
               {formatRawToken(data?.paperOwnership?.trackedTotalRaw, true)}
-              <ParagonEstimate
-                paperRaw={data?.paperOwnership?.trackedTotalRaw}
-                holdingsDelayed={holdingsDelayed}
-                receivedAt={data?.accountReceivedAt ?? null}
-                compact
-              />
             </dd>
           </div>
           <div>
@@ -225,12 +216,6 @@ export function LeaderboardView({
               title={`${formatRawToken(data?.paperOwnership?.pageTotalRaw)} PAPER`}
             >
               {formatRawToken(data?.paperOwnership?.pageTotalRaw, true)}
-              <ParagonEstimate
-                paperRaw={data?.paperOwnership?.pageTotalRaw}
-                holdingsDelayed={holdingsDelayed}
-                receivedAt={data?.accountReceivedAt ?? null}
-                compact
-              />
             </dd>
           </div>
           <div>
@@ -368,15 +353,7 @@ export function LeaderboardView({
                               {formatRawUsd(row.pnlRaw)}
                             </>
                           ) : column === "paper" ? (
-                            <>
-                              {formatRawToken(row.paperTotalRaw, true)}
-                              <ParagonEstimate
-                                paperRaw={row.paperTotalRaw}
-                                holdingsDelayed={holdingsDelayed}
-                                receivedAt={data.accountReceivedAt ?? null}
-                                compact
-                              />
-                            </>
+                            formatRawToken(row.paperTotalRaw, true)
                           ) : column === "volume" ? (
                             lifetime ? (
                               formatRawUsd(row.volumeRaw)

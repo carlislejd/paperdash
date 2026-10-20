@@ -1,7 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import { ParagonValuationProvider } from "./lib/paragon-valuation-context";
 import { runSiteBootstrap } from "./lib/site-bootstrap";
 import "./styles.css";
 import "./components/analytics.css";
@@ -15,7 +14,7 @@ const redirecting = runSiteBootstrap({
 if (!redirecting) {
   createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-      <ParagonValuationProvider><App /></ParagonValuationProvider>
+      <App />
     </React.StrictMode>,
   );
 }

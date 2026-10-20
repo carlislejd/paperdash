@@ -14,7 +14,10 @@ const quote = (time = at): PaperPriceQuote => ({
 async function prepare(page: Page) {
   await page.clock.install({ time: at });
   await page.clock.pauseAt(new Date(at));
-  await page.addInitScript(() => { Math.random = () => 0; });
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+    localStorage.setItem("paperclub:paragon-estimates:v1", "1");
+  });
   await mockSources(page);
   const requests: string[] = [];
   page.on("request", (request) => requests.push(request.url()));
@@ -32,7 +35,7 @@ function extraRequests(requests: string[]) {
   });
 }
 
-test("Paragon estimates are optional secondary PAPER values and never change leaderboard PnL or rank", async ({ page }) => {
+test("leaderboards preserve PnL and PAPER units with retired valuation preferences enabled", async ({ page }) => {
   const requests = await prepare(page);
   await page.route("**/api/leaderboard?**", (route) => {
     const metric = new URL(route.request().url()).searchParams.get("metric") as LeaderboardResponse["metric"];
@@ -47,35 +50,22 @@ test("Paragon estimates are optional secondary PAPER values and never change lea
   });
   await page.goto("/?view=leaderboard");
   const panel = page.getByRole("region", { name: "Leaderboard", exact: true });
-  const toggle = panel.getByRole("checkbox", { name: "Show Paragon estimates" });
   const rows = panel.locator("tbody tr");
-  await expect(toggle).not.toBeChecked();
+  await expect(rows).toHaveCount(2);
+  await expect(panel.getByRole("checkbox", { name: "Show Paragon estimates" })).toHaveCount(0);
   await expect(rows.locator(".paragon-estimate")).toHaveCount(0);
-  const pnl = await rows.locator(".leaderboard-value-pnl").allTextContents();
-  const upnl = await rows.locator(".leaderboard-upnl").allTextContents();
-  const names = await rows.locator(".wallet-identity").allTextContents();
-  await toggle.check();
-  await expect(rows.first().locator(".paragon-estimate")).toContainText("$200");
-  await expect(rows.first().locator(".paragon-estimate")).toContainText("(Paragon premarket price)");
-  await expect(rows.nth(1).locator(".paragon-estimate")).toContainText("$400");
-  expect(await rows.locator(".leaderboard-value-pnl").allTextContents()).toEqual(pnl);
-  expect(await rows.locator(".leaderboard-upnl").allTextContents()).toEqual(upnl);
-  expect(await rows.locator(".wallet-identity").allTextContents()).toEqual(names);
-  expect(requests.filter((url) => new URL(url).pathname === "/api/paper/economics")).toHaveLength(1);
-  expect(requests.filter((url) => new URL(url).pathname === "/api/leaderboard")).toHaveLength(1);
+  await expect(rows.nth(1).locator(".leaderboard-value-pnl")).toContainText("+$300");
   await panel.getByRole("button", { name: "PAPER", exact: true }).click();
-  await expect(panel.locator(".leaderboard-paper-summary .paragon-estimate").first()).toContainText("$1K");
-  await expect(panel.locator(".leaderboard-paper-summary .paragon-estimate").nth(1)).toContainText("$600");
-  await page.clock.fastForward(70000);
-  await expect(rows.first().locator(".paragon-estimate")).toContainText(/holdings.*delayed|holdings.*last available/i);
-  await panel.getByRole("button", { name: "Observed volume", exact: true }).click();
-  await expect(rows.first().locator(".paragon-estimate")).toContainText(/unavailable/i);
-  await expect(rows.first().locator(".paragon-estimate")).not.toContainText("$0");
+  await expect(panel.locator(".leaderboard-paper-summary")).toContainText("5K");
+  await expect(panel.locator(".leaderboard-paper-summary")).toContainText("3K");
+  await expect(rows.first().locator(".leaderboard-value-paper")).toContainText("1K");
+  await expect(rows.nth(1).locator(".leaderboard-value-paper")).toContainText("2K");
+  await expect(panel.locator(".paragon-estimate")).toHaveCount(0);
   expect(extraRequests(requests)).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 
-test("Following uses its existing visible-wallet batch for separate PAPER estimates and honest aging", async ({ page }) => {
+test("Following keeps cash balances and open PnL without reference valuations", async ({ page }) => {
   const requests = await prepare(page);
   await page.addInitScript(({ wallet, second }) => {
     localStorage.setItem("paperdash:following", JSON.stringify({ version: 2, items: [
@@ -99,24 +89,16 @@ test("Following uses its existing visible-wallet batch for separate PAPER estima
   const panel = page.getByRole("region", { name: /Following/ });
   const rows = panel.locator(".following-table tbody tr");
   await expect(rows).toHaveCount(2);
-  const balances = await rows.locator(".following-balance").allTextContents();
-  const openPnl = await rows.locator("td:nth-child(3)").allTextContents();
-  await panel.getByRole("checkbox", { name: "Show Paragon estimates" }).check();
-  await expect(rows.first().locator(".paragon-estimate")).toContainText("PAPER value");
-  await expect(rows.first().locator(".paragon-estimate")).toContainText("$200");
-  await expect(rows.nth(1).locator(".paragon-estimate")).toContainText("$400");
-  await expect(rows.first().locator(".paragon-estimate")).not.toContainText(/delayed/i);
-  expect(await rows.locator(".following-balance").allTextContents()).toEqual(balances);
-  expect(await rows.locator("td:nth-child(3)").allTextContents()).toEqual(openPnl);
+  await expect(panel.getByRole("checkbox", { name: "Show Paragon estimates" })).toHaveCount(0);
+  await expect(rows.locator(".paragon-estimate")).toHaveCount(0);
+  await expect(rows.first().locator("td:nth-child(3)")).toContainText("+$12");
   expect(requests.filter((url) => new URL(url).pathname === "/api/wallets/batch")).toHaveLength(1);
-  await page.clock.fastForward(70000);
-  await expect(rows.first().locator(".paragon-estimate")).toContainText(/holdings.*delayed|holdings.*last available/i);
   expect(extraRequests(requests)).toEqual([]);
   expect(requests.filter((url) => new URL(url).pathname === "/api/accounts")).toHaveLength(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 
-test("top open PnL keeps its gains and order while optional PAPER estimates wrap beside wallet names", async ({ page }) => {
+test("top open PnL keeps gains and open notional without token valuations", async ({ page }) => {
   const requests = await prepare(page);
   await page.route("**/api/accounts?**", (route) => route.fulfill({ json: {
     accounts: [WALLET, SECOND_WALLET].map((address, index) => ({
@@ -131,18 +113,10 @@ test("top open PnL keeps its gains and order while optional PAPER estimates wrap
   const panel = page.getByRole("region", { name: "Top open PnL" });
   const rows = panel.locator(".open-pnl-row");
   await expect(rows).toHaveCount(2);
-  const values = await rows.locator(".open-pnl-value strong").allTextContents();
-  const names = await rows.locator(".open-pnl-wallet > strong").allTextContents();
-  await page.getByRole("checkbox", { name: "Show Paragon estimates" }).check();
-  await expect(rows.first().locator(".paragon-estimate")).toContainText("PAPER value");
-  await expect(rows.first().locator(".paragon-estimate")).toContainText("$200");
-  await expect(rows.nth(1).locator(".paragon-estimate")).toContainText("$400");
-  expect(await rows.locator(".open-pnl-value strong").allTextContents()).toEqual(values);
-  expect(await rows.locator(".open-pnl-wallet > strong").allTextContents()).toEqual(names);
-  const estimateBox = await rows.first().locator(".paragon-estimate").boundingBox();
-  const valueBox = await rows.first().locator(".open-pnl-value").boundingBox();
-  expect(estimateBox!.x + estimateBox!.width).toBeLessThanOrEqual(valueBox!.x);
+  await expect(rows.first().locator(".open-pnl-value strong")).toHaveText("+$100");
+  await expect(rows.nth(1).locator(".open-pnl-value strong")).toHaveText("+$50");
+  await expect(rows.first().locator(".open-pnl-wallet small")).toContainText("open notional");
+  await expect(rows.locator(".paragon-estimate")).toHaveCount(0);
   expect(extraRequests(requests)).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
-  await panel.screenshot({ path: `/tmp/paperclub-paragon-open-pnl-${test.info().project.name}.png` });
 });

@@ -29,70 +29,27 @@ async function prepare(page: Page) {
   return requests;
 }
 
-test("directory setting defaults off, preserves controls, persists across navigation and reload", async ({ page }) => {
-  const requests = await prepare(page);
+test("a retired enabled preference cannot restore directory or overview valuations", async ({ page }) => {
+  await prepare(page);
+  await page.addInitScript(storageKey => localStorage.setItem(storageKey, "1"), key);
   await page.goto("/?view=wallets");
-  const toggle = page.getByRole("checkbox", { name: "Show Paragon estimates" });
   const table = page.locator(".wallet-table");
   await expect(table.locator("tbody tr")).toHaveCount(1);
-  await expect(toggle).not.toBeChecked();
-  // The directory already shares its top-line staker APR economics request.
-  await expect.poll(() => requests.filter(path => path === "/api/paper/economics").length).toBe(1);
+  await expect(page.getByRole("checkbox", { name: "Show Paragon estimates" })).toHaveCount(0);
+  await expect(page.locator(".paragon-estimate")).toHaveCount(0);
+  await expect(table.locator("tbody td:nth-child(4)")).toContainText("−$100");
   await page.getByLabel("Sort by").selectOption("realizedPnl");
   await page.getByRole("button", { name: "Next page" }).click();
-  await expect(table.locator("tbody .rank-cell")).not.toHaveText("01");
-  const rank = await table.locator("tbody .rank-cell").textContent();
-  const balance = await table.locator(".table-balance").textContent();
-  const pnl = await table.locator("tbody td:nth-child(4)").textContent();
-  await toggle.check();
-  await expect(table.locator(".paragon-estimate")).toContainText("≈ $24.7");
-  await expect(table.locator(".paragon-estimate")).toContainText("(Paragon premarket price)");
-  await expect(page.getByLabel("Sort by")).toHaveValue("realizedPnl");
-  await expect(table.locator("tbody .rank-cell")).toHaveText(rank!);
-  await expect(table.locator(".table-balance")).toHaveText(balance!);
-  await expect(table.locator("tbody td:nth-child(4)")).toHaveText(pnl!);
-  expect(requests.filter(path => path === "/api/paper/economics")).toHaveLength(1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
-  await page.locator("#wallets").screenshot({ path: `/tmp/paperclub-paragon-directory-${test.info().project.name}.png` });
-  await page.getByRole("navigation").getByRole("button", { name: /^Leaderboard/ }).click();
-  await expect(toggle).toBeChecked();
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(table.locator("tbody .rank-cell")).toHaveText("26");
   await page.reload();
-  await expect(toggle).toBeChecked();
-  await toggle.uncheck();
-  await page.reload();
-  await expect(toggle).not.toBeChecked();
-  expect(await page.evaluate(storageKey => localStorage.getItem(storageKey), key)).toBe("0");
-});
-
-test("blocked preference storage still allows estimates during this session", async ({ page }) => {
-  await prepare(page);
-  await page.addInitScript(() => {
-    Object.defineProperty(window, "localStorage", { get() { throw new DOMException("Blocked", "SecurityError"); } });
-  });
-  await page.goto("/?view=wallets");
-  const toggle = page.getByRole("checkbox", { name: "Show Paragon estimates" });
-  await expect(toggle).not.toBeChecked();
-  await toggle.check();
-  await expect(page.locator(".wallet-table .paragon-estimate")).toContainText("$24.7");
-  await toggle.uncheck();
+  await expect(page.getByLabel("Sort by")).toBeVisible();
   await expect(page.locator(".paragon-estimate")).toHaveCount(0);
-});
-
-test("cross-tab preference events synchronize and an old quote stays visibly delayed", async ({ page }) => {
-  await prepare(page);
-  await page.addInitScript(storageKey => localStorage.setItem(storageKey, "invalid"), key);
-  await page.goto("/?view=wallets");
-  const toggle = page.getByRole("checkbox", { name: "Show Paragon estimates" });
-  await expect(toggle).not.toBeChecked();
+  await page.goto("/");
+  await expect(page.getByRole("checkbox", { name: "Show Paragon estimates" })).toHaveCount(0);
+  await expect(page.locator(".paragon-estimate")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("Implied supply value");
   await page.evaluate(storageKey => window.dispatchEvent(new StorageEvent("storage", { key: storageKey, newValue: "1" })), key);
-  await expect(toggle).toBeChecked();
-  const estimate = page.locator(".wallet-table .paragon-estimate");
-  await expect(estimate).toContainText("$24.7");
-  await expect(estimate).not.toContainText("delayed");
-  await page.clock.fastForward(61000);
-  await expect(estimate).toContainText("Price delayed");
-  await expect(estimate).toContainText("Holdings delayed");
-  await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", { key: null, newValue: null })));
-  await expect(toggle).not.toBeChecked();
-  await expect(estimate).toHaveCount(0);
+  await expect(page.locator(".paragon-estimate")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
 });

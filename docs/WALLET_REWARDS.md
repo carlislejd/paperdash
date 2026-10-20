@@ -30,17 +30,15 @@ The public `WalletResponse.stakingRewards` block contains `pendingRaw`, `receive
 
 The wallet's last account-change timestamp may remain old for an inactive account after a successful fresh check. That timestamp alone does not make the account stale. Future or inconsistent timestamps are rejected; summary age and successful observation receipts determine reward freshness.
 
-## PAPER break-even price
+## Unrecovered trading loss
 
-The wallet sidepanel and all three P&L card layouts use the same reward-adjusted break-even calculation:
+The wallet sidepanel and all three P&L card layouts show the remaining realized trading loss after rewards:
 
 ```text
-rewards = lifetime claimed USDC + verified pending USDC
-remaining loss = max(0, -(lifetime realized trading P&L + rewards))
-PAPER owned = staked PAPER + unstaked PAPER
-PAPER break-even = remaining loss / PAPER owned
+rewards = lifetime claimed USDC + verified claimable USDC
+unrecovered trading loss = max(0, -(lifetime realized trading P&L + rewards))
 ```
 
-The result is USDC per PAPER: the price at which the currently owned PAPER would cover the remaining realized trading loss after rewards. It excludes open-position P&L and is neither a market quote nor an acquisition cost basis. A positive PAPER balance with a known nonnegative combined result displays **Cost recovered**, including when rewards exactly cover the trading loss. Zero PAPER or missing/invalid trading, claimed, pending or ownership data leaves the value unavailable. Missing pending is never treated as zero.
+This is an amount of USDC, not a PAPER sale price or a recovery-time forecast. It excludes open-position P&L and any value assigned to PAPER holdings. It does not require ownership or a market quote. Missing trading, claimed or pending rewards remain unavailable, never zero; known nonnegative combined results show zero unrecovered loss.
 
-Arithmetic uses raw integers until formatting. Positive prices show six decimal places; a smaller positive price shows `<$0.000001`, never a rounded zero. Retained but stale inputs show a Last available note. P&L cards freeze the same calculation and source freshness at creation; preview, exported PNG and accessible/share text use the frozen value.
+The same exact integer calculation is frozen in card preview, exported images and accessible/share text. A positive amount smaller than one cent shows `<$0.01`. Retained stale inputs keep their last-available label. Claimed and claimable reward components remain visible separately in the wallet.

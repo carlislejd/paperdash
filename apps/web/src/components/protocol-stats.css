@@ -16,6 +16,23 @@
 .house-funds > .pc-chart-card .pc-chart-plot {
   --pc-plot-height: clamp(230px, 30cqw, 280px);
 }
+.house-health-heading {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+.house-health-status {
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+.house-health-status--stale {
+  color: #8a7650;
+}
+.house-funds > .pc-chart-card .pc-chart-headline strong {
+  font-size: clamp(30px, 4cqw, 42px);
+}
 .paper-panel {
   padding: 16px 0 12px 20px;
   border-left: 1px solid var(--line);
@@ -149,93 +166,11 @@
   display: grid;
   gap: 0;
 }
-.annualized-revenue {
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
-  margin-top: 6px;
-}
-.annualized-revenue dl {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin: 0;
-}
-.annualized-revenue dl > div {
-  display: grid;
-  grid-template-rows: 1fr auto;
-  min-width: 0;
-}
-.annualized-revenue dt {
-  display: block;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--muted);
-}
-.annualized-revenue dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.annualized-revenue strong {
-  display: block;
-  font-size: clamp(24px, 2.3vw, 32px);
-  color: #9576b2;
-  font-weight: 600;
-  letter-spacing: -0.045em;
-  margin-top: 4px;
-  font-variant-numeric: tabular-nums;
-}
-.annualized-revenue small {
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 0;
-  font-weight: 400;
-}
-.annualized-revenue p {
-  font-size: 10px;
-  color: var(--muted);
-  line-height: 1.5;
-  margin-top: 5px;
-}
 .protocol-method {
   color: var(--muted);
   font-size: 10px;
   line-height: 1.6;
   margin: 10px 0 0;
-}
-.lp-thresholds {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 20px;
-  margin: 8px 0 18px;
-  padding: 14px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-.lp-thresholds h3 {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 500;
-  margin: 0 0 5px;
-}
-.lp-thresholds h3 strong {
-  color: #9078ad;
-  font-size: 20px;
-  font-weight: 600;
-}
-.lp-thresholds > div:nth-child(2) h3 strong {
-  color: #506746;
-}
-.lp-thresholds p {
-  color: var(--muted);
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.6;
-}
-.lp-thresholds .lp-threshold-note {
-  grid-column: 1 / -1;
-  font-size: 9px;
 }
 .liquidation-summary {
   display: flex;

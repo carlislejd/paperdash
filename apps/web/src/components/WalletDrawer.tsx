@@ -36,10 +36,8 @@ import {
 import { PositionReceiptDialog } from "./PositionReceiptDialog";
 import { WalletPnlCardDialog } from "./WalletPnlCardDialog";
 import { PNL_CARD_ART, type PnlCardSnapshot } from "../lib/wallet-pnl-card";
-import { useParagonValuation } from "../lib/paragon-valuation-context";
-import { ParagonEstimate, ParagonToggle } from "./ParagonValuation";
 import {
-  PAPER_BREAK_EVEN_NOTE,
+  LOSS_RECOVERY_NOTE,
   walletPerformance,
 } from "../lib/wallet-performance";
 import type { PositionMetricsResponse } from "../../../../packages/shared/src/position-metrics";
@@ -616,7 +614,6 @@ export function WalletDrawer({
   displayName,
 }: WalletDrawerProps) {
   const { following, toggle: toggleFollowing } = useFollowing();
-  const paragon = useParagonValuation();
   const titleId = useId();
   const contentId = useId();
   const [data, setData] = useState<WalletResponse | null>(null);
@@ -1123,12 +1120,6 @@ export function WalletDrawer({
         displayName: walletName,
         capturedAt: Date.now(),
         refreshFailed: Boolean(error),
-        paragon: {
-          enabled: paragon.enabled,
-          quote: paragon.quote,
-          priceDelayed: paragon.priceDelayed,
-          priceError: paragon.priceError,
-        },
       }),
     );
   }
@@ -1289,12 +1280,6 @@ export function WalletDrawer({
                         {performance.pnl}
                       </div>
                       <p>{performance.pnlNote}</p>
-                      <ParagonEstimate
-                        paperRaw={performance.paperOwnedRaw}
-                        baseRaw={performance.pnlRaw}
-                        label="P&L + PAPER value"
-                        holdingsDelayed={performance.performanceDelayed}
-                      />
                     </div>
                     <div className="wd-performance-art" aria-hidden="true">
                       <img src={PNL_CARD_ART} alt="" decoding="async" />
@@ -1324,7 +1309,6 @@ export function WalletDrawer({
                       <span>{performance.rewardsNote}</span>
                     </div>
                   </dl>
-                  <div className="wd-paragon-controls"><ParagonToggle /></div>
                 </section>
                 {partial && (
                   <div className="wd-notice wd-source-notice" role="status">
@@ -1384,31 +1368,26 @@ export function WalletDrawer({
                         ? `Unstaked ${paperAmount(snapshot.paper.balance)} · Staked ${paperAmount(snapshot.paper.staked)}`
                         : "No snapshot available"}
                     </span>
-                    <ParagonEstimate
-                      paperRaw={performance.paperOwnedRaw}
-                      label="PAPER value"
-                      holdingsDelayed={performance.accountDelayed}
-                    />
                   </div>
                 </dl>
                 <section
-                  className="wd-paper-break-even"
-                  aria-label="PAPER break-even"
+                  className="wd-loss-recovery"
+                  aria-label="Unrecovered trading loss"
                 >
                   <dl>
-                    <dt>PAPER break-even</dt>
+                    <dt>Unrecovered trading loss</dt>
                     <dd
                       className={
-                        performance.paperBreakEvenStatus === "recovered"
+                        performance.unrecoveredLossStatus === "recovered"
                           ? "wd-tone-positive"
                           : undefined
                       }
                     >
-                      {performance.paperBreakEven}
+                      {performance.unrecoveredLoss}
                     </dd>
-                    <span>{performance.paperBreakEvenNote}</span>
+                    <span>{performance.unrecoveredLossNote}</span>
                   </dl>
-                  <p>{PAPER_BREAK_EVEN_NOTE}</p>
+                  <p>{LOSS_RECOVERY_NOTE}</p>
                 </section>
                 {activeBalances.length > 0 && (
                   <dl className="wd-active-balances">

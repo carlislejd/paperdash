@@ -178,6 +178,9 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   const panel = page.getByRole("region", {
     name: "House and PAPER statistics",
   });
+  const health = panel.getByRole("region", { name: "House health", exact: true });
+  await expect(health.getByRole("heading", { name: "House health" })).toBeVisible();
+  await expect(health.locator(".house-health-status")).toHaveText("Updated · 14:00 UTC");
   await expect(
     panel
       .getByRole("region", { name: "LP balance chart card" })
@@ -190,10 +193,8 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   ).toHaveText("-$10B");
   await expect(panel).toContainText("125.57M");
   await expect(panel).toContainText("$16.27K");
-  await expect(panel.locator(".annualized-revenue")).toContainText("$1.48M");
-  await expect(panel.locator(".annualized-revenue")).toContainText(
-    "Historical run rate, not APY or a forecast",
-  );
+  await expect(panel).toContainText("Daily staking rewards");
+  await expect(panel).not.toContainText("Annualized reward allocations");
   const paper = panel.locator(".paper-details");
   await expect(paper.locator("h3")).toHaveText([
     "PAPER supply",
@@ -208,17 +209,10 @@ test("house funds show signed billion values, retained gaps and PAPER independen
   await expect(
     paper.locator(".pc-chart-headline > strong").first(),
   ).toHaveAttribute("title", "125,571,374 PAPER");
-  await expect(panel).toContainText("LP balance + open house PnL − queue debt");
-  const thresholds = panel.getByRole("region", {
-    name: "LP and PAPER thresholds",
-  });
-  await expect(thresholds.locator("h3")).toHaveText([
-    "$2M Mint threshold",
-    "$5M Staking surplus",
-  ]);
-  await expect(thresholds).toContainText("Eligible losses");
-  await expect(thresholds).toContainText("below the cap; payouts are separate");
-  await expect(thresholds).toContainText("Thresholds use protocol tracked LP");
+  await expect(panel).toContainText("LP balance + open house PnL − queued payouts");
+  await expect(panel).toContainText("Includes unrealized trading PnL; snapshot estimate");
+  await expect(panel).not.toContainText("Mint threshold");
+  await expect(panel).not.toContainText("100 PAPER per $1");
   const d = await panel
     .locator(".house-funds > .pc-chart-card .pc-chart-plot path")
     .getAttribute("d");
@@ -236,12 +230,12 @@ test("house funds show signed billion values, retained gaps and PAPER independen
     "title",
     "−$1,000,101,000.00 contribution to house funds",
   );
-  await expect(change).toContainText("Queue debt effect");
+  await expect(change).toContainText("Queued payout effect");
   const componentCards = panel.locator(".house-components .pc-chart-card");
   await expect(componentCards.locator("h3")).toHaveText([
-    "House funds",
+    "LP balance",
     "Open house PnL",
-    "Queue debt",
+    "Queued payouts",
   ]);
   const componentPaths = await componentCards
     .locator("path[stroke]")
@@ -300,9 +294,9 @@ test("house component links expand and export without mixing PAPER freshness", a
   );
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await page.getByRole("button", { name: "Expand Queue debt chart" }).click();
+  await page.getByRole("button", { name: "Expand Queued payouts chart" }).click();
   await expect(
-    page.getByRole("dialog", { name: "Queue debt", exact: true }),
+    page.getByRole("dialog", { name: "Queued payouts", exact: true }),
   ).toBeVisible();
 });
 
@@ -326,12 +320,12 @@ test("house legacy history keeps current amounts and marks missing components an
   const housePanel = page.locator(".house-funds");
   await expect(
     housePanel.locator(".house-components .pc-chart-headline strong"),
-  ).toHaveText(["-$10B", "-$10B", "$1K"]);
+  ).toHaveText(["$1M", "-$10B", "$1K"]);
   await expect(
     housePanel
       .locator(".house-components")
       .getByRole("img", { name: /no observations/ }),
-  ).toHaveCount(2);
+  ).toHaveCount(3);
   await expect(
     housePanel
       .getByRole("region", { name: "LP balance chart card" })
@@ -342,6 +336,8 @@ test("house legacy history keeps current amounts and marks missing components an
   );
   await expect(housePanel.locator(".house-contributions")).toHaveCount(0);
   await expect(housePanel).toContainText("Last available");
+  await expect(housePanel.locator(".house-health-status")).toContainText("Last available");
+  await expect(housePanel.locator(".house-health-status")).toHaveClass(/--stale/);
   await expect(
     page.getByRole("region", { name: "PAPER economics" }),
   ).not.toContainText("LAST AVAILABLE");

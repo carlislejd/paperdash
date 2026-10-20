@@ -4,15 +4,6 @@
 .metric-staker-yield > strong {
   overflow-wrap: anywhere;
 }
-.staker-yield-source {
-  color: var(--muted);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  overflow-wrap: anywhere;
-}
-.staker-yield-source:hover {
-  color: var(--ink);
-}
 .staker-yield-delayed {
   color: #8d8058;
 }
@@ -25,8 +16,7 @@
   position: absolute;
   inset: -8px;
 }
-.staker-yield-info:focus-visible,
-.staker-yield-source:focus-visible {
+.staker-yield-info:focus-visible {
   outline: 2px solid #84639f;
   outline-offset: 3px;
 }
