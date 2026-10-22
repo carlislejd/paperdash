@@ -1,0 +1,111 @@
+{
+  "checkedAt": "2026-10-22T23:20:54Z",
+  "origin": "https://exchange.papertrade.xyz",
+  "conclusion": "No upstream API schema incompatibility found in bounded public production samples.",
+  "checks": [
+    {
+      "endpoint": "/query/protocol/summary",
+      "httpStatus": 200,
+      "schema": "summarySchema",
+      "passed": true,
+      "sourceAt": 1792711063000
+    },
+    {
+      "endpoint": "/state/house/current",
+      "httpStatus": 200,
+      "schema": "houseSchema",
+      "passed": true,
+      "sourceAt": 1792711065030
+    },
+    {
+      "endpoint": "/query/protocol/history?interval=1h",
+      "httpStatus": 200,
+      "schema": "protocolHistorySchema",
+      "passed": true,
+      "sourceAt": 1792711057000,
+      "sampleCount": 216
+    },
+    {
+      "endpoint": "/state/leaderboard/accounts?page=0&pageSize=10&sortDir=desc&sortKey=currentBalance&window=all",
+      "httpStatus": 200,
+      "schema": "accountsSchema",
+      "passed": true,
+      "sampleCount": 10
+    },
+    {
+      "endpoint": "/state/leaderboard/accounts?page=0&pageSize=25&sortDir=desc&sortKey=totalWindowedPnl&window=24h",
+      "httpStatus": 200,
+      "schema": "accountsSchema",
+      "passed": true,
+      "sampleCount": 25
+    },
+    {
+      "endpoint": "/state/leaderboard/accounts?page=0&pageSize=25&sortDir=desc&sortKey=paperTotal&window=all",
+      "httpStatus": 200,
+      "schema": "accountsSchema",
+      "passed": true,
+      "sampleCount": 25
+    },
+    {
+      "endpoint": "/query/protocol/trades/recent",
+      "httpStatus": 200,
+      "schema": "normalizeTrade",
+      "passed": true,
+      "sampleCount": 50
+    },
+    {
+      "endpoint": "/state/user/live?wallet=<public-wallet>",
+      "httpStatus": 200,
+      "schema": "firstWalletEvent / walletSchema",
+      "passed": true,
+      "sampleCount": 2,
+      "details": "One inactive account and one currently trading account; active open position retained ten-field tuple, staking pendingBase/rewardDebt present."
+    },
+    {
+      "endpoint": "/query/accounts/<public-wallet>/trades?filter=all&limit=75",
+      "httpStatus": 200,
+      "schema": "historySchema(closedTradeSchema)",
+      "passed": true,
+      "sampleCount": 150,
+      "details": "Two wallets; active wallet's newest close occurred at 2026-10-22T23:20:52Z, after the protocol update."
+    },
+    {
+      "endpoint": "/query/accounts/<public-wallet>/cashflows?limit=75",
+      "httpStatus": 200,
+      "schema": "historySchema(cashflowSchema)",
+      "passed": true,
+      "sampleCount": 10
+    },
+    {
+      "endpoint": "/query/accounts/<public-wallet>/portfolio-history?range=1d",
+      "httpStatus": 200,
+      "schema": "portfolioSchema",
+      "passed": true,
+      "sampleCount": 1,
+      "details": "Inactive wallet; source marks incomplete coverage, so this is not proof of complete account history."
+    }
+  ],
+  "observations": [
+    "Global summary retains fees.lifetime, pending rewards, PAPER supply/staked, accumulator and original raw economic parameters; current counter-based reward calculations do not depend on a fixed mint-rate assumption.",
+    "House current payload contains extra revision and heads metadata; accepted head, source time, trader long/short entries remain compatible.",
+    "Account directory includes extra stakingRewards and _leaderboardRank fields; schema intentionally strips unused fields, and missing currentOpenPositionCount remains supported.",
+    "Recent events include positionId, intentId, instrumentId and instrumentTerminal in addition to existing fields. All sampled events normalize; provenance/identity semantics would need separate verification before changing ingestion identity.",
+    "Source enforces sorted, unique, URLSearchParams-encoded query parameters and specific allowed limits/ranges; production canonicalPath and history paths already comply.",
+    "Root confirmed initially old leaderboard responses refresh successfully on a second read; observed behavior is stale-while-revalidate caching, not an upstream contract failure."
+  ],
+  "unaddressedConfirmedBreakages": [],
+  "limitations": "Bounded public samples validate currently returned contracts, not every wallet, unsupported instrument, or missing historical interval. No production storage or source files modified by this audit.",
+  "protocolUpgrade": {
+    "officialChangesUrl": "https://docs.papertrade.xyz/dev/protocol-changes/",
+    "liveSince": "2026-10-21",
+    "contractSet": 2,
+    "upgradeTransaction": "0x4410b81e3eb76f83f5ddc4e3faee794fb67208d2f129bc013094b9d06055acb6",
+    "relevantChanges": [
+      "Small winning moves and standard/off-hours payout curves",
+      "Closes at or beyond the bust price settle as liquidation",
+      "Builder fees and restricted staker-fee push",
+      "Supply-relative PAPER mint rule and insolvency bonus"
+    ],
+    "dashboardImpact": "Dashboard uses source-reported settled amounts and cumulative counters; no fixed mint-rate or winning-close curve is recalculated. Historical annualized rates retain their original observation windows and can span different contract rules."
+  }
+}

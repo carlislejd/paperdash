@@ -357,6 +357,29 @@ describe("independent asset source contract", () => {
     expect(response.error).toBeTruthy();
   });
 
+  it("distinguishes historical intake gaps from current delays without clearing coverage evidence", async () => {
+    const store = await memory();
+    await retainAssetSource(store, snapshot(), now);
+    await refreshAssetAnalytics(store, now);
+    const errors = { "trade-ingestion-gap": "known historical gap" };
+    const tradeIntake = { gap: { at: now - 60000 } };
+    await store.put("collector-heartbeat", { at: now, errors, tradeIntake }, now);
+    const fresh = await readAssets(store, now);
+    expect(fresh).toMatchObject({ stale: true, freshness: { delayed: false, historyGap: true } });
+    expect(fresh.error).toBeUndefined();
+    expect((await store.get<{ errors: Record<string, string> }>("collector-heartbeat"))?.value.errors).toEqual(errors);
+
+    await store.put("collector-heartbeat", { at: now, errors: { ...errors, recent: "current outage" }, tradeIntake }, now);
+    expect(await readAssets(store, now)).toMatchObject({
+      stale: true, freshness: { delayed: true, historyGap: true },
+      error: "Trade activity snapshot is delayed.",
+    });
+    await store.put("collector-heartbeat", { at: now, errors, tradeIntake }, now);
+    expect(await readAssets(store, now + 30_001)).toMatchObject({
+      stale: true, freshness: { delayed: true, historyGap: true },
+    });
+  });
+
   it.each(["stream", "recent", "asset-activity"])(
     "marks a fresh asset projection delayed when collector %s is failing",
     async (failedFeed) => {

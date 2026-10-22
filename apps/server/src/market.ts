@@ -8,7 +8,7 @@ import type {
 } from "../../../packages/shared/src/types.js";
 import { marketMinPnlUsd } from "../../../packages/shared/src/types.js";
 import { visibleTrades, type Store } from "./store.js";
-import { activityDelayed } from "./activity-health.js";
+import { activityHealth } from "./activity-health.js";
 import { PROFITABLE_SNAPSHOT_MAX_AGE_MS, type MarketActivityData, type ProfitableMarketData } from "./market-store.js";
 
 export const marketSymbols = ["BTC", "ETH"] as const;
@@ -116,10 +116,10 @@ export async function readMarket(
     (activity !== undefined && !["all", "entries", "exits"].includes(activity))
   )
     throw new Error("Unknown market instrument");
-  const [saved, connection, tradesDelayed, heartbeat] = await Promise.all([
+  const [saved, connection, tradeHealth, heartbeat] = await Promise.all([
     store.get<SavedMarket>(snapshotKey(instrument, segment, minPnlUsd)),
     store.get<{ connected: boolean }>("market-connection"),
-    activityDelayed(store, now),
+    activityHealth(store, now),
     store.get<{ errors?: Record<string, string> }>("collector-heartbeat"),
   ]);
   if (saved) {
@@ -156,6 +156,24 @@ export async function readMarket(
         !Number.isSafeInteger(classification.classifiedAt) ||
         classification.classifiedAt > now ||
         now - classification.classifiedAt > PROFITABLE_SNAPSHOT_MAX_AGE_MS);
+    const validClock = (value: number) => Number.isSafeInteger(value) && value >= 0 && value <= now + 30000;
+    const delayed =
+      activityUnavailable ||
+      classificationExpired ||
+      saved.value.stale ||
+      !validClock(saved.receivedAt) ||
+      now - saved.receivedAt > 15000 ||
+      !connection?.value.connected ||
+      tradeHealth.delayed ||
+      Boolean(
+        heartbeat?.value.errors?.["asset-live"] ||
+          heartbeat?.value.errors?.["market-quotes"],
+      ) ||
+      !saved.value.price ||
+      !validClock(saved.value.price.sourceAt) ||
+      !validClock(saved.value.price.receivedAt) ||
+      now - saved.value.price.sourceAt > 30000 ||
+      now - saved.value.price.receivedAt > 30000;
     return {
       ...value,
       segment,
@@ -164,19 +182,8 @@ export async function readMarket(
         : chartSamples?.[window]
           ? { chartSample: chartSamples[window] }
           : {}),
-      stale:
-        activityUnavailable ||
-        classificationExpired ||
-        saved.value.stale ||
-        now - saved.receivedAt > 15000 ||
-        !connection?.value.connected ||
-        tradesDelayed ||
-        Boolean(
-          heartbeat?.value.errors?.["asset-live"] ||
-            heartbeat?.value.errors?.["market-quotes"],
-        ) ||
-        !saved.value.price ||
-        now - saved.value.price.sourceAt > 30000,
+      stale: delayed || tradeHealth.historyGap,
+      freshness: { delayed, historyGap: tradeHealth.historyGap },
     };
   }
   return {
@@ -191,6 +198,7 @@ export async function readMarket(
     windowTo: now,
     receivedAt: now,
     stale: true,
+    freshness: { delayed: true, historyGap: tradeHealth.historyGap },
     coverage: {
       source: "retained-market-observations",
       observedFrom: null,

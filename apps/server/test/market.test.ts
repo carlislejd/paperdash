@@ -180,6 +180,35 @@ describe("retained live market data", () => {
     expect((await readMarket(store, 0, at + 31000)).stale).toBe(true);
     expect((await readMarket(store, 0, at + 31000)).price?.sourceAt).toBe(at);
   });
+  it("keeps historical gap coverage distinct from current market freshness", async () => {
+    const store = await memory();
+    await store.market.quote(quote());
+    await store.put("market-connection", { connected: true }, at);
+    await store.put("overview", { status: { stream: "connected" } }, at);
+    const errors = { "trade-ingestion-gap": "known historical gap" };
+    const tradeIntake = { gap: { at: at - 60000 } };
+    await store.put("collector-heartbeat", { at, errors, tradeIntake }, at);
+    await refreshMarkets(store, at);
+    for (const segment of ["all", "profitable"] as const) {
+      const fresh = await readMarket(store, 0, at, "5m", segment, 0, "all");
+      expect(fresh).toMatchObject({ stale: true, freshness: { delayed: false, historyGap: true } });
+      expect(fresh.price?.sourceAt).toBe(at);
+      expect(await readMarket(store, 0, at + 15_001, "5m", segment, 0, "all")).toMatchObject({
+        stale: true, freshness: { delayed: true, historyGap: true },
+      });
+    }
+    await store.put("collector-heartbeat", { at, errors: { ...errors, "asset-live": "current outage" }, tradeIntake }, at);
+    expect(await readMarket(store, 0, at)).toMatchObject({
+      stale: true, freshness: { delayed: true, historyGap: true },
+    });
+    await store.put("collector-heartbeat", { at, errors, tradeIntake }, at);
+    await store.put("market-connection", { connected: false }, at);
+    expect(await readMarket(store, 0, at)).toMatchObject({
+      stale: true, freshness: { delayed: true, historyGap: true },
+    });
+    expect((await store.get<{ errors: Record<string, string> }>("collector-heartbeat"))?.value.errors).toEqual(errors);
+  });
+
   it("rejects invalid quote boundaries without writing a sample or notification", async () => {
     const store = await memory();
     for (const bad of [

@@ -51,6 +51,7 @@ export interface AssetTradeGraphProps {
   price: { priceUsd: number; sourceAt: number; receivedAt: number } | null;
   receivedAt: number | null;
   stale: boolean;
+  freshness?: AssetMarketResponse["freshness"];
   connected: boolean;
   tradesCapped: boolean;
   onWallet: (address: string) => void;
@@ -268,6 +269,13 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
     data.price.receivedAt > now + GRAPH_PRICE_GAP_MS ||
     now - data.price.sourceAt > GRAPH_PRICE_GAP_MS ||
     now - data.price.receivedAt > GRAPH_PRICE_GAP_MS;
+  const tradeDelayed =
+    (data.freshness?.delayed ?? data.stale) ||
+    !Number.isSafeInteger(data.receivedAt) ||
+    data.receivedAt! > now + 30_000 ||
+    // Match the current snapshot's 20s client lease; healthy reconciliation
+    // can take 15–18s while live trade/quote events continue to arrive.
+    now - data.receivedAt! >= 20_000;
   const displayPrice =
     data.price &&
     Number.isFinite(data.price.priceUsd) &&
@@ -744,14 +752,15 @@ export function AssetTradeGraph(props: AssetTradeGraphProps) {
                 : data.segment === "profitable"
                   ? data.segmentUnavailable
                     ? "Classification unavailable"
-                    : data.stale
+                    : tradeDelayed
                       ? "Trade coverage delayed"
                       : "Classified snapshot"
-                  : data.stale
+                  : tradeDelayed
                     ? "Trade snapshot delayed"
                     : data.connected
                       ? "Live observations"
                       : "Retained observations"}
+              {data.freshness?.historyGap ? " · history gap" : ""}
             </small>
           </div>
           {data.segment === "profitable" && (

@@ -414,7 +414,7 @@ export function AssetsView({
         </div>
         <AnalyticsStatus
           receivedAt={data?.receivedAt}
-          stale={data?.stale ?? false}
+          stale={data?.freshness?.delayed ?? data?.stale ?? false}
           error={message}
           loading={loading}
           onRefresh={refresh}
@@ -424,6 +424,11 @@ export function AssetsView({
         Follow the price, spot meaningful entries, and see how traders are positioned.
       </p>
       <AnalyticsNotice error={message} hasData={Boolean(data?.assets.length)} />
+      {data?.freshness?.historyGap && (
+        <p className="analytics-footnote" role="status">
+          Historical trade coverage has a known gap; some earlier executions may be missing.
+        </p>
+      )}
       <div className="asset-selectors" aria-label="Select an asset">
         {[
           { instrument: 0, symbol: "BTC", name: "Bitcoin", mark: "₿" },

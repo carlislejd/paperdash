@@ -5,7 +5,7 @@ import type {
   MarketWindow,
   TradeEvent,
 } from "../../packages/shared/src/types";
-import { marketResponse, mockSources, WALLET } from "./fixtures";
+import { assetResponse, marketResponse, mockSources, WALLET } from "./fixtures";
 
 const NOW = Date.UTC(2026, 9, 16, 16);
 const losingWallet = `0x${"b".repeat(40)}`;
@@ -242,6 +242,52 @@ test("legacy, mismatched, expired and failed classification responses fail close
   await page.clock.fastForward(5_001);
   await expect(panel.locator("li[data-trade-id]")).toHaveCount(0);
   await expect(panel).toContainText("Classification unavailable");
+});
+
+test("fresh asset updates disclose a historical gap separately from actual delays", async ({ page }) => {
+  await setup(page);
+  let delayed = false;
+  await page.route("**/api/assets", async (route) => {
+    await route.fulfill({ json: {
+      ...assetResponse(),
+      receivedAt: NOW, sourceAt: NOW, activityReceivedAt: NOW,
+      stale: true, freshness: { delayed, historyGap: true },
+      ...(delayed ? { error: "Trade activity snapshot is delayed." } : {}),
+    } });
+  });
+  await page.route("**/api/assets/0/market*", async (route) => {
+    const url = new URL(route.request().url());
+    const data = response(url.searchParams.get("segment") === "profitable");
+    data.stale = true;
+    data.freshness = { delayed, historyGap: true };
+    await route.fulfill({ json: data });
+  });
+  await page.goto("/?view=assets&asset=0");
+  const assets = page.getByRole("region", { name: "Assets", exact: true });
+  const panel = page.getByRole("region", { name: "BTC price and trades" });
+  const feedStatus = panel.locator(".trade-graph-feed-heading small");
+  await expect(assets.locator(".analytics-status")).toContainText("Updated");
+  await expect(assets).toContainText("Historical trade coverage has a known gap; some earlier executions may be missing.");
+  await expect(assets).not.toContainText("Trade activity snapshot is delayed");
+  await expect(feedStatus).toHaveText("Live observations · history gap");
+  await panel.getByRole("button", { name: "Profitable traders", exact: true }).click();
+  await expect(feedStatus).toHaveText("Classified snapshot · history gap");
+  await expect(panel).toContainText("1 unknown wallet excluded; more may qualify.");
+
+  delayed = true;
+  await page.clock.fastForward(5_001);
+  await expect(assets.locator(".analytics-status")).toContainText("Last available snapshot");
+  await expect(assets).toContainText("Trade activity snapshot is delayed.");
+  await expect(feedStatus).toHaveText("Trade coverage delayed · history gap");
+
+  // A response marked current at publication cannot remain current forever.
+  delayed = false;
+  await page.clock.fastForward(11_001);
+  await expect(feedStatus).toHaveText("Classified snapshot · history gap");
+  await page.clock.fastForward(5_001);
+  await expect(feedStatus).toHaveText("Trade coverage delayed · history gap");
+  await expect(assets).toContainText("Historical trade coverage has a known gap");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 
 for (const state of [

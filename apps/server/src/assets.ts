@@ -6,7 +6,7 @@ import type {
   AssetSummary,
 } from "../../../packages/shared/src/types.js";
 import type { Store } from "./store.js";
-import { activityDelayed } from "./activity-health.js";
+import { activityHealth } from "./activity-health.js";
 
 const time = z.number().int().nonnegative().safe();
 const usd = z.number().finite().nonnegative();
@@ -194,10 +194,10 @@ export async function readAssets(
   store: Store,
   now = Date.now(),
 ): Promise<AssetsResponse> {
-  const [savedSource, analytics, collectionDelayed] = await Promise.all([
+  const [savedSource, analytics, collectionHealth] = await Promise.all([
     store.get<HouseSnapshot>("asset-source"),
     store.get<RetainedAnalytics>("asset-analytics"),
-    activityDelayed(store, now),
+    activityHealth(store, now),
   ]);
   const parsed = houseSchema.safeParse(savedSource?.value);
   const source =
@@ -236,14 +236,20 @@ export async function readAssets(
     now - source.receivedAt > 20000 ||
     now - source.value.sourceAsOfMs > 30000;
   const activityStale =
-    !analytics || now - analytics.receivedAt > 30000 || collectionDelayed;
+    !analytics ||
+    !validClock(analytics.receivedAt) ||
+    analytics.receivedAt > now + 30000 ||
+    now - analytics.receivedAt > 30000 ||
+    collectionHealth.delayed;
+  const delayed = marketStale || activityStale;
   return {
     assets,
     sourceAt: source?.value.sourceAsOfMs ?? null,
     indexedBlock: null,
     receivedAt: source?.receivedAt ?? null,
     activityReceivedAt: analytics?.receivedAt ?? null,
-    stale: marketStale || activityStale,
+    stale: delayed || collectionHealth.historyGap,
+    freshness: { delayed, historyGap: collectionHealth.historyGap },
     ...(!source
       ? { error: "Asset snapshots are being collected." }
       : marketStale

@@ -140,6 +140,12 @@ export interface MarketTradeSample {
   selection: "largest-notional-per-time-bucket";
   partial: true;
 }
+export interface AssetFreshness {
+  /** Current publication/transport delay, independent of historical completeness. */
+  delayed: boolean;
+  /** Retained evidence of an unresolved historical trade-ingestion gap. */
+  historyGap: boolean;
+}
 export interface AssetMarketResponse {
   /** Explicit activity selection; absent in legacy snapshots. Exits include liquidations. */
   activity?: MarketActivity;
@@ -157,6 +163,8 @@ export interface AssetMarketResponse {
   windowTo: number;
   receivedAt: number;
   stale: boolean;
+  /** Absent in older responses; aggregate stale remains conservative. */
+  freshness?: AssetFreshness;
   coverage: {
     source: "retained-market-observations";
     observedFrom: number | null;
@@ -212,6 +220,8 @@ export interface AssetsResponse {
   receivedAt: number | null;
   activityReceivedAt: number | null;
   stale: boolean;
+  /** Absent in older responses; aggregate stale remains conservative. */
+  freshness?: AssetFreshness;
   error?: string;
 }
 export interface LeaderboardResponse {

@@ -205,5 +205,9 @@ export function useAssetMarket(
     segmentUnavailable: profitable && !data,
     price,
     stale: !data || Boolean(snapshot.error) || (market?.stale ?? true),
+    freshness: market?.freshness ? {
+      ...market.freshness,
+      delayed: !data || Boolean(snapshot.error) || market.freshness.delayed,
+    } : undefined,
   };
 }

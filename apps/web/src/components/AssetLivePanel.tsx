@@ -44,6 +44,7 @@ export function AssetLivePanel({
         price={market.price}
         receivedAt={market.data?.receivedAt ?? null}
         stale={market.stale}
+        freshness={market.freshness}
         connected={connected}
         tradesCapped={market.data?.coverage.tradesCapped ?? false}
         onWallet={onWallet}
