@@ -1,0 +1,106 @@
+{
+  "release": "Restore prominent total and annualized staker revenue",
+  "deployedCommit": "32ae1c66d508a4bc8803b23f0750ceb537ee55a5",
+  "verifiedAt": "2026-10-22T17:30:18.759Z",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/39821436347",
+    "conclusion": "success",
+    "checks": [
+      "Production build and typecheck",
+      "Unit and PostgreSQL/Redis integration tests",
+      "300 desktop/mobile browser cases: 299 passed, one existing wallet staking case passed on retry",
+      "Python tests",
+      "Render Blueprint validation"
+    ],
+    "retry": "Existing mobile wallet-staking pool-share refresh assertion at tests/e2e/wallet-staking.pw.ts:231 failed on its first attempt and passed on retry. The new revenue tests passed."
+  },
+  "localChecks": {
+    "build": "passed",
+    "focusedUnitTests": 46,
+    "focusedBrowserTests": 66,
+    "review": "No blockers; applied 30-second freshness consistency feedback"
+  },
+  "deployment": {
+    "serviceId": "srv-db4sp78473hc7390tou0",
+    "deploymentId": "dep-dbd4f8m7bikc73f22urg",
+    "status": "live",
+    "scope": "frontend only"
+  },
+  "liveChecks": {
+    "desktop": {
+      "cardHeight": 170.7421875,
+      "scrollWidth": 1280,
+      "width": 1280
+    },
+    "mobile": {
+      "scrollWidth": 390,
+      "width": 390
+    },
+    "tooltipHeight": 170.7421875,
+    "browserErrors": [],
+    "calculation": "total allocated / exact elapsed hours * 24 * 365, verified against raw integer response",
+    "sourceClockAdvanced": true,
+    "allocationBaselinePreserved": true,
+    "dailyHistoryPreserved": true,
+    "sample": {
+      "verifiedAt": "2026-10-22T17:29:15.791Z",
+      "assertions": "passed",
+      "ready": {
+        "ready": true,
+        "degraded": false,
+        "status": {
+          "stale": false,
+          "stream": "connected",
+          "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+          "sourceAt": 1792690152000,
+          "receivedAt": 1792690155346,
+          "persistence": "postgres",
+          "indexedBlock": "49240704"
+        }
+      },
+      "economics": {
+        "sourceAt": 1792690143000,
+        "receivedAt": 1792690148294,
+        "stale": false,
+        "allocatedRewardsRaw": "58118369820587504009589279",
+        "annualized": {
+          "toMs": 1792690143000,
+          "basis": "observed-trading-window",
+          "fromMs": 1791640800000,
+          "yearDays": 365,
+          "cutoffBasis": "announced-trading-start",
+          "usdPerDayRaw": "4785305808013929045534695",
+          "usdPerYearRaw": "1746636619925084101620163762",
+          "baselineRewardsRaw": "0",
+          "lifetimeRewardsRaw": "58118369820587504009589279",
+          "allocatedSinceStartRaw": "58118369820587504009589279"
+        }
+      },
+      "display": {
+        "total": "$58.12M",
+        "annualized": "$1.75B"
+      },
+      "stakingRewardHistory": {
+        "observedFromMs": 1792467555000,
+        "dayCount": 3
+      }
+    }
+  },
+  "changes": {
+    "backend": false,
+    "schema": false,
+    "environment": false,
+    "servicePlans": false,
+    "historyReset": false,
+    "newSourceRequests": false
+  },
+  "limitations": [
+    "Annualized revenue is a historical protocol-wide allocation run rate, not a forecast or per-token yield. Total allocations include unclaimed rewards and do not establish total claims or distributions.",
+    "The existing trade-ingestion-gap warning remains unrelated to this frontend release."
+  ],
+  "previews": [
+    "docs/previews/production-staker-revenue-2026-10-22.png",
+    "docs/previews/production-staker-revenue-mobile-2026-10-22.png",
+    "docs/previews/production-staker-revenue-tooltip-2026-10-22.png"
+  ]
+}
