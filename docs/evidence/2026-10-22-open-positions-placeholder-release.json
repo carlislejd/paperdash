@@ -1,0 +1,204 @@
+{
+  "release": "Align open positions plot with neighboring summary bars",
+  "deployedCommit": "f1a2d4344e0e6136cbdd5123de0c341f404e33c7",
+  "verifiedAt": "2026-10-22T17:46:19.409Z",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/39824066392",
+    "conclusion": "success",
+    "checks": [
+      "Production build and typecheck",
+      "Unit and PostgreSQL/Redis integration tests",
+      "300-case desktop/mobile browser suite",
+      "Python tests",
+      "Render Blueprint validation"
+    ]
+  },
+  "localChecks": {
+    "build": "passed",
+    "focusedBrowserTests": 28,
+    "review": "Independent read-only review found no blockers"
+  },
+  "deployment": {
+    "serviceId": "srv-db4sp78473hc7390tou0",
+    "deploymentId": "dep-dbd4n2bl550s73al8eag",
+    "status": "live",
+    "scope": "frontend only"
+  },
+  "liveChecks": {
+    "desktopBefore": [
+      {
+        "axis": {
+          "height": 14,
+          "y": 679.484375
+        },
+        "caption": {
+          "height": 28,
+          "y": 701.484375
+        },
+        "footer": {
+          "height": 70,
+          "y": 736.484375
+        },
+        "name": "Deposit volume / day",
+        "plot": {
+          "height": 174,
+          "y": 555.484375
+        },
+        "summary": {
+          "height": 31.5,
+          "y": 511.984375
+        }
+      },
+      {
+        "axis": {
+          "height": 14,
+          "y": 679.484375
+        },
+        "caption": {
+          "height": 28,
+          "y": 701.484375
+        },
+        "footer": {
+          "height": 56,
+          "y": 736.484375
+        },
+        "name": "Volume / hour",
+        "plot": {
+          "height": 174,
+          "y": 555.484375
+        },
+        "summary": {
+          "height": 31.5,
+          "y": 511.984375
+        }
+      },
+      {
+        "axis": {
+          "height": 14,
+          "y": 635.984375
+        },
+        "caption": {
+          "height": 28,
+          "y": 657.984375
+        },
+        "footer": {
+          "height": 56,
+          "y": 736.484375
+        },
+        "name": "Open positions",
+        "plot": {
+          "height": 174,
+          "y": 511.984375
+        },
+        "summary": null
+      }
+    ],
+    "desktopAfter": {
+      "cards": [
+        {
+          "axis": {
+            "height": 14,
+            "y": 679.484375
+          },
+          "caption": {
+            "height": 28,
+            "y": 701.484375
+          },
+          "footer": {
+            "height": 70,
+            "y": 736.484375
+          },
+          "name": "Deposit volume / day",
+          "plot": {
+            "height": 174,
+            "y": 555.484375
+          },
+          "summary": {
+            "height": 31.5,
+            "y": 511.984375
+          },
+          "summaryAriaHidden": null,
+          "summaryText": "Recorded total62.28M USDC"
+        },
+        {
+          "axis": {
+            "height": 14,
+            "y": 679.484375
+          },
+          "caption": {
+            "height": 28,
+            "y": 701.484375
+          },
+          "footer": {
+            "height": 56,
+            "y": 736.484375
+          },
+          "name": "Volume / hour",
+          "plot": {
+            "height": 174,
+            "y": 555.484375
+          },
+          "summary": {
+            "height": 31.5,
+            "y": 511.984375
+          },
+          "summaryAriaHidden": null,
+          "summaryText": "Selected-period total12.03B USDC"
+        },
+        {
+          "axis": {
+            "height": 14,
+            "y": 679.484375
+          },
+          "caption": {
+            "height": 28,
+            "y": 701.484375
+          },
+          "footer": {
+            "height": 56,
+            "y": 736.484375
+          },
+          "name": "Open positions",
+          "plot": {
+            "height": 174,
+            "y": 555.484375
+          },
+          "summary": {
+            "height": 31.5,
+            "y": 511.984375
+          },
+          "summaryAriaHidden": "true",
+          "summaryText": ""
+        }
+      ],
+      "scrollWidth": 1440,
+      "width": 1440
+    },
+    "mobile": {
+      "placeholderHeight": 31.5,
+      "scrollWidth": 390,
+      "width": 390
+    },
+    "browserErrors": [],
+    "plotAlignmentDeltaPx": 0,
+    "axisAlignmentDeltaPx": 0,
+    "captionAlignmentDeltaPx": 0,
+    "sourceDividerAlignmentDeltaPx": 0
+  },
+  "changes": {
+    "backend": false,
+    "schema": false,
+    "environment": false,
+    "servicePlans": false,
+    "historyReset": false,
+    "newSourceRequests": false
+  },
+  "notes": [
+    "The blank gray period-summary strip is decorative and aria-hidden. It adds no position aggregate.",
+    "The placeholder is limited to the inline Open positions card; expanded charts and exports retain their existing semantics."
+  ],
+  "previews": [
+    "docs/previews/production-open-positions-placeholder-2026-10-22.png",
+    "docs/previews/production-open-positions-placeholder-mobile-2026-10-22.png"
+  ]
+}
