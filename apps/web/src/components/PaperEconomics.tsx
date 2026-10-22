@@ -9,6 +9,7 @@ import {
 } from "../lib/chart-data";
 import { ChartCard } from "./ChartCard";
 import { StakingRewardHistory } from "./StakingRewardHistory";
+import { StakerRevenue } from "./StakerRevenue";
 import "./paper-economics.css";
 import { hourlyChartRangeLabel } from "../lib/chart-summary";
 
@@ -76,6 +77,7 @@ export function PaperEconomics({
                 : "PROTOCOL SUMMARY"}
           </span>
         </div>
+        <StakerRevenue data={data} stale={stale} loading={loading} />
         <StakingRewardHistory
           history={data?.stakingRewardHistory}
           sourceAt={sourceAt}
