@@ -1,0 +1,524 @@
+{
+  "release": "Separate live asset freshness from historical trade gaps and verify chart range alignment",
+  "deployedCommit": "baa4012e8915ad232c2ef6648dd5bdfcfb364d99",
+  "verifiedAt": "2026-10-22T23:43:47.451Z",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/39871726849",
+    "conclusion": "success",
+    "checks": [
+      "Production build and typecheck",
+      "Unit and PostgreSQL/Redis integration tests",
+      "304-case desktop/mobile browser suite",
+      "Python tests",
+      "Render Blueprint validation"
+    ],
+    "note": "Browser dependency download was slower than usual; no deployment started until CI succeeded."
+  },
+  "localChecks": {
+    "build": "passed",
+    "focusedServerTests": 62,
+    "focusedBrowserTests": 44,
+    "independentReview": "Passed after correcting the snapshot age lease and keeping recent malformed intake gaps delayed"
+  },
+  "deployments": [
+    {
+      "serviceId": "srv-db4sq6g473hc739111lg",
+      "deploymentId": "dep-dbd9t4dg1s2s73ao1icg",
+      "status": "live",
+      "instances": "3 of 3"
+    },
+    {
+      "serviceId": "srv-db4sp78473hc7390tou0",
+      "deploymentId": "dep-dbd9tp8ae00c73fdstsg",
+      "status": "live"
+    }
+  ],
+  "liveChecks": {
+    "samples": [
+      {
+        "checkedAt": "2026-10-22T23:40:01.996Z",
+        "ready": {
+          "ready": true,
+          "degraded": false,
+          "status": {
+            "stale": false,
+            "stream": "connected",
+            "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+            "sourceAt": 1792712395000,
+            "receivedAt": 1792712398200,
+            "persistence": "postgres",
+            "indexedBlock": "49263317"
+          }
+        },
+        "assets": {
+          "freshness": {
+            "delayed": false,
+            "historyGap": true
+          },
+          "stale": true,
+          "sourceAt": 1792712398016,
+          "receivedAt": 1792712398543,
+          "activityReceivedAt": 1792712397869
+        },
+        "markets": [
+          {
+            "instrument": 0,
+            "segment": "all",
+            "stale": true,
+            "freshness": {
+              "delayed": false,
+              "historyGap": true
+            },
+            "sourceAt": 1792712394318,
+            "receivedAt": 1792712395784,
+            "tradeCount": 200
+          },
+          {
+            "instrument": 0,
+            "segment": "profitable",
+            "stale": true,
+            "freshness": {
+              "delayed": false,
+              "historyGap": true
+            },
+            "sourceAt": 1792712394318,
+            "receivedAt": 1792712395784,
+            "tradeCount": 108,
+            "classification": {
+              "basis": "positive-lifetime-realized-trading-pnl",
+              "activity": "all",
+              "minPnlUsd": 1000,
+              "classifiedAt": 1792712395784,
+              "unknownWallets": 0,
+              "maxAccountAgeMs": 300000,
+              "observedWallets": 138,
+              "classifiedWallets": 138,
+              "profitableWallets": 6,
+              "newestAccountReceivedAt": 1792712386006,
+              "oldestAccountReceivedAt": 1792712364528
+            }
+          },
+          {
+            "instrument": 1,
+            "segment": "all",
+            "stale": true,
+            "freshness": {
+              "delayed": false,
+              "historyGap": true
+            },
+            "sourceAt": 1792712394721,
+            "receivedAt": 1792712395784,
+            "tradeCount": 200
+          },
+          {
+            "instrument": 1,
+            "segment": "profitable",
+            "stale": true,
+            "freshness": {
+              "delayed": false,
+              "historyGap": true
+            },
+            "sourceAt": 1792712400465,
+            "receivedAt": 1792712401144,
+            "tradeCount": 20,
+            "classification": {
+              "basis": "positive-lifetime-realized-trading-pnl",
+              "activity": "all",
+              "minPnlUsd": 1000,
+              "classifiedAt": 1792712401144,
+              "unknownWallets": 0,
+              "maxAccountAgeMs": 300000,
+              "observedWallets": 74,
+              "classifiedWallets": 74,
+              "profitableWallets": 10,
+              "newestAccountReceivedAt": 1792712396522,
+              "oldestAccountReceivedAt": 1792712373095
+            }
+          }
+        ],
+        "rewardBaselinesPreserved": true
+      },
+      {
+        "checkedAt": "2026-10-22T23:40:31.205Z",
+        "ready": {
+          "ready": true,
+          "degraded": false,
+          "status": {
+            "stale": false,
+            "stream": "connected",
+            "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+            "sourceAt": 1792712425000,
+            "receivedAt": 1792712428388,
+            "persistence": "postgres",
+            "indexedBlock": "49263348"
+          }
+        },
+        "assets": {
+          "freshness": {
+            "delayed": false,
+            "historyGap": true
+          },
+          "stale": true,
+          "sourceAt": 1792712423764,
+          "receivedAt": 1792712424104,
+          "activityReceivedAt": 1792712428077
+        },
+        "markets": [
+          {
+            "instrument": 0,
+            "segment": "all",
+            "stale": true,
+            "freshness": {
+              "delayed": false,
+              "historyGap": true
+            },
+            "sourceAt": 1792712427326,
+            "receivedAt": 1792712429030,
+            "tradeCount": 200
+          },
+          {
+            "instrument": 0,
+            "segment": "profitable",
+            "stale": true,
+            "freshness": {
+              "delayed": false,
+              "historyGap": true
+            },
+            "sourceAt": 1792712427326,
+            "receivedAt": 1792712429030,
+            "tradeCount": 107,
+            "classification": {
+              "basis": "positive-lifetime-realized-trading-pnl",
+              "activity": "all",
+              "minPnlUsd": 1000,
+              "classifiedAt": 1792712429030,
+              "unknownWallets": 0,
+              "maxAccountAgeMs": 300000,
+              "observedWallets": 137,
+              "classifiedWallets": 137,
+              "profitableWallets": 6,
+              "newestAccountReceivedAt": 1792712422414,
+              "oldestAccountReceivedAt": 1792712412211
+            }
+          },
+          {
+            "instrument": 1,
+            "segment": "all",
+            "stale": true,
+            "freshness": {
+              "delayed": false,
+              "historyGap": true
+            },
+            "sourceAt": 1792712428096,
+            "receivedAt": 1792712429030,
+            "tradeCount": 200
+          },
+          {
+            "instrument": 1,
+            "segment": "profitable",
+            "stale": true,
+            "freshness": {
+              "delayed": false,
+              "historyGap": true
+            },
+            "sourceAt": 1792712428096,
+            "receivedAt": 1792712429030,
+            "tradeCount": 20,
+            "classification": {
+              "basis": "positive-lifetime-realized-trading-pnl",
+              "activity": "all",
+              "minPnlUsd": 1000,
+              "classifiedAt": 1792712429030,
+              "unknownWallets": 0,
+              "maxAccountAgeMs": 300000,
+              "observedWallets": 75,
+              "classifiedWallets": 75,
+              "profitableWallets": 10,
+              "newestAccountReceivedAt": 1792712422414,
+              "oldestAccountReceivedAt": 1792712412211
+            }
+          }
+        ],
+        "rewardBaselinesPreserved": true
+      }
+    ],
+    "assetClockAdvanced": true,
+    "marketClocksAdvanced": true,
+    "allSampledFeedsCurrent": true,
+    "ui": {
+      "checkedAt": "2026-10-22T23:43:47.451Z",
+      "desktop": {
+        "feedStatus": "Live observations · history gap",
+        "gapText": [
+          "Historical trade coverage has a known gap; some earlier executions may be missing."
+        ],
+        "scrollWidth": 1280,
+        "status": "Updated · Just nowRefresh",
+        "width": 1280
+      },
+      "ranges": [
+        {
+          "range": "24h",
+          "cards": [
+            {
+              "name": "Deposit volume / day",
+              "positions": [
+                {
+                  "selector": ".pc-chart-period-total",
+                  "y": 899.21875
+                },
+                {
+                  "selector": ".pc-chart-plot",
+                  "y": 942.71875
+                },
+                {
+                  "selector": ".pc-chart-axis",
+                  "y": 1066.71875
+                },
+                {
+                  "selector": ".pc-chart-inspect",
+                  "y": 1088.71875
+                },
+                {
+                  "selector": ".pc-chart-meta",
+                  "y": 1123.71875
+                }
+              ]
+            },
+            {
+              "name": "Volume / hour",
+              "positions": [
+                {
+                  "selector": ".pc-chart-period-total",
+                  "y": 899.21875
+                },
+                {
+                  "selector": ".pc-chart-plot",
+                  "y": 942.71875
+                },
+                {
+                  "selector": ".pc-chart-axis",
+                  "y": 1066.71875
+                },
+                {
+                  "selector": ".pc-chart-inspect",
+                  "y": 1088.71875
+                },
+                {
+                  "selector": ".pc-chart-meta",
+                  "y": 1123.71875
+                }
+              ]
+            },
+            {
+              "name": "Open positions",
+              "positions": [
+                {
+                  "selector": ".pc-chart-period-total",
+                  "y": 899.21875
+                },
+                {
+                  "selector": ".pc-chart-plot",
+                  "y": 942.71875
+                },
+                {
+                  "selector": ".pc-chart-axis",
+                  "y": 1066.71875
+                },
+                {
+                  "selector": ".pc-chart-inspect",
+                  "y": 1088.71875
+                },
+                {
+                  "selector": ".pc-chart-meta",
+                  "y": 1123.71875
+                }
+              ]
+            }
+          ],
+          "scrollWidth": 1280,
+          "width": 1280
+        },
+        {
+          "range": "7d",
+          "cards": [
+            {
+              "name": "Deposit volume / day",
+              "positions": [
+                {
+                  "selector": ".pc-chart-period-total",
+                  "y": 1132
+                },
+                {
+                  "selector": ".pc-chart-plot",
+                  "y": 1175.5
+                },
+                {
+                  "selector": ".pc-chart-axis",
+                  "y": 1299.5
+                },
+                {
+                  "selector": ".pc-chart-inspect",
+                  "y": 1321.5
+                },
+                {
+                  "selector": ".pc-chart-meta",
+                  "y": 1356.5
+                }
+              ]
+            },
+            {
+              "name": "Volume / hour",
+              "positions": [
+                {
+                  "selector": ".pc-chart-period-total",
+                  "y": 1132
+                },
+                {
+                  "selector": ".pc-chart-plot",
+                  "y": 1175.5
+                },
+                {
+                  "selector": ".pc-chart-axis",
+                  "y": 1299.5
+                },
+                {
+                  "selector": ".pc-chart-inspect",
+                  "y": 1321.5
+                },
+                {
+                  "selector": ".pc-chart-meta",
+                  "y": 1356.5
+                }
+              ]
+            },
+            {
+              "name": "Open positions",
+              "positions": [
+                {
+                  "selector": ".pc-chart-period-total",
+                  "y": 1132
+                },
+                {
+                  "selector": ".pc-chart-plot",
+                  "y": 1175.5
+                },
+                {
+                  "selector": ".pc-chart-axis",
+                  "y": 1299.5
+                },
+                {
+                  "selector": ".pc-chart-inspect",
+                  "y": 1321.5
+                },
+                {
+                  "selector": ".pc-chart-meta",
+                  "y": 1356.5
+                }
+              ]
+            }
+          ],
+          "scrollWidth": 1280,
+          "width": 1280
+        },
+        {
+          "range": "24h",
+          "cards": [
+            {
+              "name": "Deposit volume / day",
+              "positions": [
+                {
+                  "selector": ".pc-chart-period-total",
+                  "y": 913
+                },
+                {
+                  "selector": ".pc-chart-plot",
+                  "y": 956.5
+                },
+                {
+                  "selector": ".pc-chart-axis",
+                  "y": 1080.5
+                },
+                {
+                  "selector": ".pc-chart-inspect",
+                  "y": 1102.5
+                },
+                {
+                  "selector": ".pc-chart-meta",
+                  "y": 1137.5
+                }
+              ]
+            },
+            {
+              "name": "Volume / hour",
+              "positions": [
+                {
+                  "selector": ".pc-chart-period-total",
+                  "y": 913
+                },
+                {
+                  "selector": ".pc-chart-plot",
+                  "y": 956.5
+                },
+                {
+                  "selector": ".pc-chart-axis",
+                  "y": 1080.5
+                },
+                {
+                  "selector": ".pc-chart-inspect",
+                  "y": 1102.5
+                },
+                {
+                  "selector": ".pc-chart-meta",
+                  "y": 1137.5
+                }
+              ]
+            },
+            {
+              "name": "Open positions",
+              "positions": [
+                {
+                  "selector": ".pc-chart-period-total",
+                  "y": 913
+                },
+                {
+                  "selector": ".pc-chart-plot",
+                  "y": 956.5
+                },
+                {
+                  "selector": ".pc-chart-axis",
+                  "y": 1080.5
+                },
+                {
+                  "selector": ".pc-chart-inspect",
+                  "y": 1102.5
+                },
+                {
+                  "selector": ".pc-chart-meta",
+                  "y": 1137.5
+                }
+              ]
+            }
+          ],
+          "scrollWidth": 1280,
+          "width": 1280
+        }
+      ],
+      "browserErrors": [],
+      "mobile": "Covered by automated mobile browser tests; the interactive browser viewport override did not apply during this release check."
+    }
+  },
+  "compatibilityAudit": "docs/evidence/2026-10-22-upstream-compatibility.json",
+  "changes": {
+    "collector": false,
+    "schema": false,
+    "environment": false,
+    "servicePlans": false,
+    "historyReset": false,
+    "newSourceRequests": false
+  },
+  "previews": [
+    "docs/previews/production-assets-freshness-2026-10-22.png",
+    "docs/previews/production-seven-day-alignment-2026-10-22.png"
+  ]
+}
