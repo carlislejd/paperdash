@@ -98,6 +98,7 @@ export function OverviewCharts() {
             title="Open positions"
             unit="positions"
             kind="bar"
+            reservePeriodSummary
             points={data?.series.openPositions.points ?? []}
             coverage="Latest count each hour · partial history; gaps unknown"
           />

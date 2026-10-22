@@ -52,6 +52,8 @@ export interface ChartCardProps {
   /** Sum only flows such as volume or daily allocations, never position snapshots. */
   aggregate?: "sum";
   totalLabel?: "Selected-period total" | "Recorded total";
+  /** Align the inline plot with neighboring cards that have period totals. */
+  reservePeriodSummary?: boolean;
 }
 
 function ExpandIcon() {
@@ -656,7 +658,11 @@ export function ChartCard(props: ChartCardProps) {
           <span>· {valueCaption}</span>
           {compact && <ChartPlot {...props} compact />}
         </div>
-        {periodSummary}
+        {periodSummary ?? (props.reservePeriodSummary && !compact && (
+          <div className="pc-chart-period-total" aria-hidden="true">
+            <strong>&nbsp;</strong>
+          </div>
+        ))}
         {!compact && <ChartPlot {...props} />}
       </div>
       <div className="pc-chart-footer">
