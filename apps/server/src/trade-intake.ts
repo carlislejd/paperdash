@@ -86,7 +86,9 @@ export class TradeIntake {
   }
   enqueue(raw: unknown, provenance: TradeEvent["provenance"]): boolean {
     if (!this.canAccept) return false;
-    const max = provenance === "public-stream" ? 20 : 50;
+    // Papertrade's public:trades contract allows 1–120 observations per
+    // publication. Durable appends still use their separate 50-row bound.
+    const max = provenance === "public-stream" ? 120 : 50;
     if (
       !Array.isArray(raw) ||
       raw.length > max ||

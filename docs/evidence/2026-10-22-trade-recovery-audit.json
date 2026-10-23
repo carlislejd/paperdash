@@ -1,0 +1,152 @@
+{
+  "auditDateLocal": "2026-10-22",
+  "timezone": "America/Los_Angeles",
+  "scope": "Bounded public source reads and read-only production diagnostics; no historical import or gap clearing.",
+  "officialSource": {
+    "stream": {
+      "url": "https://exchange.papertrade.xyz/assets/app-CFJuu9ZC.js",
+      "sha256": "a33fc666ef399f226862ea5e03930409ee6db6d262a1f7e9ef57fe61b6a433d9",
+      "minimumBatchEvents": 1,
+      "maximumBatchEvents": 120,
+      "priorCollectorMaximumBatchEvents": 20,
+      "sequenceIdPresent": true,
+      "positionIdPresent": true,
+      "recoveringSubscriptionsRejected": true
+    },
+    "recent": {
+      "url": "https://exchange.papertrade.xyz/assets/dashboard-C99L0dzy.js",
+      "sha256": "cd9f4321f5c2ec9d8de2cc687a2aaab3a1572df83a67d606361283332bc98453",
+      "path": "/query/protocol/trades/recent",
+      "maximumEvents": 50,
+      "frontendPollIntervalMs": 15000,
+      "verifiedHistoricalPagination": false
+    },
+    "walletHistory": {
+      "sourceUrl": "https://exchange.papertrade.xyz/assets/queries-C04phKJY.js",
+      "sha256": "295f60c2e23415b5329512824822c19e2c3486ef3ae0a3dc6339c3d77fcbec95",
+      "closedKinds": [
+        "PositionClosed",
+        "Liquidated"
+      ],
+      "pageLimit": 75,
+      "supportedParams": [
+        "limit",
+        "filter",
+        "cursor"
+      ],
+      "globalExecutionReplay": false,
+      "notes": "Wallet closed position outcomes are not global execution events; full protocol coverage and stream identity cannot be inferred."
+    }
+  },
+  "maintenanceAnnouncement": {
+    "url": "https://x.com/papertrade_xyz/status/2112984178988069356",
+    "date": "2026-10-21",
+    "scheduledCloseOnlyFromUtc": "2026-10-21T21:50:00Z",
+    "scheduledHaltFromUtc": "2026-10-21T22:00:00Z",
+    "approximateHaltMinutes": 5,
+    "causalRelationshipToGapEstablished": false
+  },
+  "productionGapMarker": {
+    "firstAt": "2026-10-17T19:00:01.093Z",
+    "latestAt": "2026-10-22T21:55:38.075Z",
+    "kind": "malformed",
+    "count": null,
+    "reason": "A trade publication had an unsupported batch shape.",
+    "interpretation": "Earliest and latest incident timestamps, not a continuous missing interval or total loss count. The rejected payload was not retained."
+  },
+  "productionMinuteObservationChecks": {
+    "source": "Read-only paperdash_analytics_minutes queries in production",
+    "windows": [
+      {
+        "label": "maintenance",
+        "date": "2026-10-21",
+        "fromUtc": "21:45",
+        "toUtcInclusive": "22:10",
+        "minutes": 26,
+        "minutesWithObservedEvents": 26,
+        "emptyMinutes": []
+      },
+      {
+        "label": "latest-marker",
+        "date": "2026-10-22",
+        "fromUtc": "21:45",
+        "toUtcInclusive": "22:05",
+        "minutes": 21,
+        "minutesWithObservedEvents": 21,
+        "emptyMinutes": []
+      }
+    ],
+    "latestIncidentMinute": {
+      "date": "2026-10-22",
+      "utc": "21:55",
+      "btc": 55,
+      "eth": 24,
+      "total": 79
+    },
+    "completeCoverageEstablished": false
+  },
+  "boundedLiveProbe": {
+    "begunAt": "2026-10-23T00:01:12.096Z",
+    "endedAt": "2026-10-23T00:01:57.951Z",
+    "batches": 22,
+    "events": 44,
+    "batchSizes": [
+      1,
+      2,
+      2,
+      2,
+      5,
+      2,
+      2,
+      1,
+      1,
+      1,
+      1,
+      2,
+      1,
+      2,
+      1,
+      1,
+      1,
+      1,
+      2,
+      2,
+      10,
+      1
+    ],
+    "subscribed": [
+      {
+        "at": 1792713673574,
+        "kind": "subscribed",
+        "recoverable": false,
+        "wasRecovering": false,
+        "positioned": false
+      }
+    ],
+    "allHaveSequence": true,
+    "allHavePositionId": true,
+    "uniqueSequences": 44,
+    "recentCount": 50,
+    "recentResponseCount": 50,
+    "recentFrom": "2026-10-23T00:01:06.000Z",
+    "recentTo": "2026-10-23T00:01:57.000Z",
+    "matchedBySequence": 44,
+    "identicalExistingNormalizedIds": 44,
+    "matchedButDifferentFields": 0
+  },
+  "recovery": {
+    "globalReplayContractFound": false,
+    "upstreamInternalRetentionKnown": false,
+    "recentPollingAlreadyReconcilesByExistingNormalizedId": true,
+    "walletClosedOutcomeRecoverySeparate": true,
+    "historicalExecutionImportPerformed": false,
+    "gapMarkerCleared": false,
+    "neededForHistoricalExecutionBackfill": "Verified upstream archive/export or replay with explicit coverage and stable identity, plus reconciliation against retained observations."
+  },
+  "limitations": [
+    "The actual previously rejected batch size and its contents are unknown.",
+    "The 44 matching live events verify one bounded overlap, not global sequence uniqueness or complete history.",
+    "Closed-position outcomes are not interchangeable with global execution events.",
+    "No archive contract was found in inspected public source; this does not establish that Papertrade lacks history internally."
+  ]
+}

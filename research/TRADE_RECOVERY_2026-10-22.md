@@ -1,0 +1,22 @@
+# Historical trade recovery audit — October 22, 2026
+
+The investigation found a trade-ingestion compatibility defect: Papertrade's current public stream permits batches of **up to 120 events**, while our collector accepted at most 20. A larger valid batch would be rejected before its individual events reached durable storage. This explains a possible cause of the historical warning, but the old incident record does not preserve the rejected publication, so its exact contents and missing count cannot be established retrospectively.
+
+## Source and incident evidence
+
+- The [current official application bundle](https://exchange.papertrade.xyz/assets/app-CFJuu9ZC.js) validates public trade batches of 1–120 events and includes sequence and position IDs. Its SHA-256 is `a33fc666ef399f226862ea5e03930409ee6db6d262a1f7e9ef57fe61b6a433d9`.
+- The production marker's earliest incident is **October 17, 19:00:01.093 UTC**; its latest is **October 22, 21:55:38.075 UTC**, classified as a malformed/unsupported batch shape with an unknown rejected-row count. These are incident timestamps, not the endpoints of a continuously missing interval, and not a total missing-trade count.
+- Papertrade's [October 21 maintenance announcement](https://x.com/papertrade_xyz/status/2112984178988069356) scheduled close-only operation from 21:50 UTC, then an approximately five-minute halt from 22:00 UTC. That announcement predates the latest marker by almost a day; the earliest incident predates the announced maintenance by several days. It does not establish that maintenance caused our historical warning.
+- A read-only production query found retained observed events in every minute of October 21, 21:45–22:10 UTC and October 22, 21:45–22:05 UTC. The latest marker's 21:55 minute contains 55 BTC and 24 ETH observed events. This rules out a completely empty retained minute in those windows; it does **not** prove complete capture or contradict the announced trading halt.
+
+## What can be recovered safely
+
+The [official recent-trade implementation](https://exchange.papertrade.xyz/assets/dashboard-C99L0dzy.js) still requests only the newest 50 events, without a historical cursor or time range. The official stream client explicitly rejects recoverable/recovering subscriptions. No supported global execution archive or replay contract was found in the current application and trade/dashboard bundles.
+
+A bounded live check at October 23, 00:01:12–00:01:57 UTC (October 22 locally) observed 22 batches containing 44 events, with a maximum batch of 10. All 44 events had sequence and position IDs. The following recent response held 50 events spanning 51 seconds and included all 44 stream observations. Every overlap generated the same existing normalized ID across both sources, so current recent polling can reconcile overlapping observations without adding them twice. This sample does not establish broader sequence uniqueness, retention, or full coverage. A 120-event publication can exceed the entire recent-response window.
+
+The [wallet history implementation](https://exchange.papertrade.xyz/assets/queries-C04phKJY.js) supports cursor pagination for closed/liquidated **position outcomes**. Existing wallet-history jobs already retain those separately. Outcomes cannot be imported as interchangeable global execution events: they lack the ticker sequence identity, omit still-open positions, and do not establish complete wallet discovery. Matching approximate time, wallet, and notional could duplicate or merge distinct trades.
+
+The historical execution backfill therefore remains dependent on a verified upstream archive/export or replay capability. This finding does not mean Papertrade lacks the records internally. A usable export needs an explicit coverage window, stable event identity/source generation, and the original execution fields so overlap can be reconciled before import; older stream rows without sequence IDs need separate reconciliation. No historical execution import or gap-marker clearing was performed during this audit.
+
+Compact observations and source hashes are recorded in [the audit evidence](../docs/evidence/2026-10-22-trade-recovery-audit.json). Raw public source snapshots and bounded diagnostic captures remain private. The collector compatibility fix prevents the identified rejection case going forward; it does not retroactively restore an unretained publication.

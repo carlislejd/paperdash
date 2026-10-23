@@ -42,6 +42,91 @@ afterEach(async () => {
 });
 
 describe("bounded durable trade intake", () => {
+  it.each([1, 21, 120])(
+    "retains every observation in a supported %i-row stream publication with bounded durable appends",
+    async (count) => {
+      const append = vi.spyOn(store.tradeInbox, "append");
+      expect(
+        intake.enqueue(
+          Array.from({ length: count }, (_, i) => wire(i + 1)),
+          "public-stream",
+        ),
+      ).toBe(true);
+      await vi.advanceTimersByTimeAsync(100);
+      const trades = await store.trades(200);
+      expect(trades).toHaveLength(count);
+      expect(new Set(trades.map((trade) => trade.id)).size).toBe(count);
+      expect((await store.analytics.activity([0], now))[0].counts.total).toBe(
+        count,
+      );
+      expect(append.mock.calls.flatMap(([rows]) => rows)).toHaveLength(count);
+      expect(append.mock.calls.every(([rows]) => rows.length <= 50)).toBe(true);
+      expect(await store.tradeInbox.status()).toMatchObject({
+        pending: 0,
+        gap: null,
+      });
+    },
+  );
+
+  it.each([0, 121])(
+    "rejects an unsupported %i-row stream publication and preserves gap evidence",
+    async (count) => {
+      expect(
+        intake.enqueue(
+          Array.from({ length: count }, (_, i) => wire(i + 1)),
+          "public-stream",
+        ),
+      ).toBe(false);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(await store.trades()).toHaveLength(0);
+      expect(await store.tradeInbox.status()).toMatchObject({
+        pending: 0,
+        gap: { kind: "malformed", count: null },
+      });
+    },
+  );
+
+  it("keeps recent-API admission at its separate 50-row limit", async () => {
+    const rows = Array.from({ length: 51 }, (_, i) => ({
+      ...wire(i + 1),
+      seq: String(i + 1),
+    }));
+    expect(intake.enqueue([], "recent-api")).toBe(true);
+    expect(intake.enqueue(rows.slice(0, 50), "recent-api")).toBe(true);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await store.trades()).toHaveLength(50);
+    expect(intake.snapshot().gap).toBeNull();
+    expect(intake.enqueue(rows, "recent-api")).toBe(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await store.trades()).toHaveLength(50);
+    expect((await store.tradeInbox.status()).gap?.kind).toBe("malformed");
+  });
+
+  it("does not double count a 120-row numeric-sequence stream batch when recent history repeats 50 string-sequence rows", async () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      ...wire(i + 1),
+      seq: i + 1,
+    }));
+    expect(intake.enqueue(rows, "public-stream")).toBe(true);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(
+      intake.enqueue(
+        rows.slice(-50).map((row) => ({ ...row, seq: String(row.seq) })),
+        "recent-api",
+      ),
+    ).toBe(true);
+    await vi.advanceTimersByTimeAsync(100);
+    const trades = await store.trades(200);
+    expect(trades).toHaveLength(120);
+    expect(new Set(trades.map((trade) => trade.id)).size).toBe(120);
+    expect((await store.analytics.activity([0], now))[0].counts.total).toBe(120);
+    expect(await store.tradeInbox.status()).toMatchObject({
+      pending: 0,
+      gap: null,
+    });
+    expect(intake.snapshot().memoryRecords).toBe(0);
+  });
+
   it("retries a committed write with a lost reply using the same ID, discovers its wallet, and retains the batch suffix exactly once", async () => {
     const original = store.recordTrade.bind(store);
     let lost = true;
