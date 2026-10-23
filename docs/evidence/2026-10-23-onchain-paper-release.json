@@ -1,0 +1,1035 @@
+{
+  "release": "Deploy independently observed HyperEVM PAPER economics",
+  "deployedCommit": "3d75e6992abea7e9f42ad953e8fc4819c9541ddb",
+  "implementationCommit": "ec71b1fa043171e14ebd7416138a659235e25189",
+  "website": "https://papertrade.club",
+  "api": "https://paperdash-api.onrender.com",
+  "ci": {
+    "checkedAt": "2026-10-23T06:05:25.746239+00:00",
+    "repository": "carlislejd/paperdash",
+    "runId": 39907408479,
+    "runAttempt": 2,
+    "headSha": "3d75e6992abea7e9f42ad953e8fc4819c9541ddb",
+    "status": "completed",
+    "conclusion": "success",
+    "htmlUrl": "https://github.com/carlislejd/paperdash/actions/runs/39907408479",
+    "jobs": [
+      {
+        "id": 120266063119,
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:56:49Z",
+            "completedAt": "2026-10-23T05:56:50Z"
+          },
+          {
+            "name": "Initialize containers",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:56:50Z",
+            "completedAt": "2026-10-23T05:57:06Z"
+          },
+          {
+            "name": "Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:57:06Z",
+            "completedAt": "2026-10-23T05:57:08Z"
+          },
+          {
+            "name": "Run actions/setup-node@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:57:08Z",
+            "completedAt": "2026-10-23T05:57:10Z"
+          },
+          {
+            "name": "Run actions/setup-python@v5",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:57:10Z",
+            "completedAt": "2026-10-23T05:57:10Z"
+          },
+          {
+            "name": "Run npm ci",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:57:10Z",
+            "completedAt": "2026-10-23T05:57:13Z"
+          },
+          {
+            "name": "Run npm run build",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:57:13Z",
+            "completedAt": "2026-10-23T05:57:27Z"
+          },
+          {
+            "name": "Ensure PostgreSQL client for the private migration job test",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:57:27Z",
+            "completedAt": "2026-10-23T05:57:27Z"
+          },
+          {
+            "name": "Run npm test",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:57:27Z",
+            "completedAt": "2026-10-23T05:58:05Z"
+          },
+          {
+            "name": "Install browser test dependencies",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:58:05Z",
+            "completedAt": "2026-10-23T05:58:27Z"
+          },
+          {
+            "name": "Verify desktop and mobile browser flows",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T05:58:27Z",
+            "completedAt": "2026-10-23T06:04:29Z"
+          },
+          {
+            "name": "Preserve browser failure diagnostics",
+            "status": "completed",
+            "conclusion": "skipped",
+            "startedAt": "2026-10-23T06:04:29Z",
+            "completedAt": "2026-10-23T06:04:29Z"
+          },
+          {
+            "name": "Run python -m unittest discover -s tests",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T06:04:29Z",
+            "completedAt": "2026-10-23T06:04:30Z"
+          },
+          {
+            "name": "Validate Render Blueprint schema and mirror",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T06:04:30Z",
+            "completedAt": "2026-10-23T06:04:32Z"
+          },
+          {
+            "name": "Post Run actions/setup-python@v5",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T06:04:32Z",
+            "completedAt": "2026-10-23T06:04:32Z"
+          },
+          {
+            "name": "Post Run actions/setup-node@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T06:04:32Z",
+            "completedAt": "2026-10-23T06:04:32Z"
+          },
+          {
+            "name": "Post Run actions/checkout@v4",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T06:04:32Z",
+            "completedAt": "2026-10-23T06:04:33Z"
+          },
+          {
+            "name": "Stop containers",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T06:04:33Z",
+            "completedAt": "2026-10-23T06:04:33Z"
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "startedAt": "2026-10-23T06:04:33Z",
+            "completedAt": "2026-10-23T06:04:33Z"
+          }
+        ]
+      }
+    ]
+  },
+  "initialCi": {
+    "runId": 39905693853,
+    "conclusion": "success",
+    "headSha": "ec71b1fa043171e14ebd7416138a659235e25189"
+  },
+  "ciRerun": {
+    "firstAttempt": "Cancelled after an Ubuntu browser-font download stalled for over eight minutes.",
+    "secondAttempt": "Same commit; dependency install completed in 22 seconds; all checks succeeded.",
+    "browserSuiteCases": 306
+  },
+  "deployments": [
+    {
+      "service": "paperdash-api",
+      "serviceId": "srv-db4sq6g473hc739111lg",
+      "deploymentId": "dep-dbdfigbrjlhs73d4a87g",
+      "status": "live",
+      "instances": "3 of 3",
+      "durationSeconds": 49.1
+    },
+    {
+      "service": "paperdash-ingest",
+      "serviceId": "srv-db4sq6g473hc739111jg",
+      "deploymentId": "dep-dbdfj06i0phs739kt2q0",
+      "status": "live",
+      "durationSeconds": 31.9,
+      "standbyAt": "2026-10-23T06:07:28Z",
+      "leaseAcquiredAt": "2026-10-23T06:09:29Z"
+    },
+    {
+      "service": "paperdash-web",
+      "serviceId": "srv-db4sp78473hc7390tou0",
+      "deploymentId": "dep-dbdfkelg1s2s73bbhvv0",
+      "status": "live",
+      "durationSeconds": 20.1
+    }
+  ],
+  "initialRollout": {
+    "apiDeployment": "dep-dbdf3lss728c73bntvng",
+    "collectorDeployment": "dep-dbdf4gfavr4c739rv0dg",
+    "finding": "The public RPC intermittently returned an aggregate execution block before the matching canonical header was queryable. Observations failed closed, and previously saved chain values became stale.",
+    "correction": "At most two abortable one-second retries for the exact pending-header error; never repeat the financial eth_call. Original 20-second deadline and all validation remain.",
+    "proof": {
+      "source": "local-read-only-official-hyperevm-rpc",
+      "rpcUrl": "https://rpc.hyperliquid.xyz/evm",
+      "mutations": 0,
+      "beforeFix": {
+        "readerFailure": "HyperEVM RPC response is invalid.",
+        "failedMethod": "eth_getBlockByNumber",
+        "requestId": 10,
+        "httpStatus": 200,
+        "rpcErrorCode": -32603,
+        "rpcErrorMessage": "invalid block height: 49285315",
+        "otherMethodsSucceeded": true
+      },
+      "visibilityRaceReproduction": {
+        "beforeEthBlockNumber": 49285344,
+        "aggregateContextBlockNumber": 49285346,
+        "immediateHeaderError": {
+          "code": -32603,
+          "message": "invalid block height: 49285346"
+        },
+        "delayedHeaderWaitMs": 1500,
+        "delayedHeader": {
+          "number": "0x2f008e2",
+          "timestamp": "0x6adaf36e"
+        },
+        "note": "The identical requested height became queryable after the bounded wait; no financial call was repeated in this diagnostic."
+      },
+      "correctedReader": {
+        "rpcRequests": 11,
+        "headerRequests": 2,
+        "financialCalls": 1,
+        "snapshot": {
+          "source": "hyperevm-rpc",
+          "chainId": 999,
+          "consistency": "atomic-multicall",
+          "block": {
+            "number": "49285540",
+            "hash": "0xf568cb4ab24b0d67d992c4c459976dabebd70ec95931a8d2851fb32a7a3f469b",
+            "timestampMs": 1792734253000
+          },
+          "paper": {
+            "supplyRaw": "8950112736990956315858012857",
+            "stakedRaw": "8894532034698614874735818423",
+            "stakingCustodyRaw": "8894532034698614874735818423"
+          },
+          "staking": {
+            "accumulatorRaw": "13984913226428694625910644"
+          },
+          "receivedAt": 1792734254390,
+          "callTimestampMs": 1792734252000,
+          "deployment": {
+            "paperImplementation": "0x433bd418ec92818a960585f4d5fae563e735bb4a",
+            "stakingImplementation": "0xe6e3519455170913c5c3bfe541dd918a2d0cbb15",
+            "multicallCodeSha256": "2756d7c52baee85cacb504f6ee1df7aad6809ac8d94a4a111d76991f90d36d6e"
+          }
+        }
+      }
+    }
+  },
+  "baseline": {
+    "capturedAt": 1792733136462,
+    "sample": {
+      "sampledAt": 1792733138517,
+      "apiStartedAt": 1792733135472,
+      "apiReceivedAt": 1792733136462,
+      "independent": {
+        "source": "hyperevm-rpc",
+        "chainId": 999,
+        "consistency": "atomic-multicall",
+        "block": {
+          "number": "49284406",
+          "hash": "0xf637713d8099d8e19104d7c83453e9248b30a487ee67d31d0daf5166c1ea52ac",
+          "timestampMs": 1792733138000
+        },
+        "paper": {
+          "supplyRaw": "8950072208453569569653670167",
+          "stakedRaw": "8894322122461378662678942566",
+          "stakingCustodyRaw": "8894322122461378662678942566"
+        },
+        "staking": {
+          "accumulatorRaw": "13984913226428694625910644"
+        },
+        "receivedAt": 1792733138517,
+        "callTimestampMs": 1792733137000,
+        "deployment": {
+          "paperImplementation": "0x433bd418ec92818a960585f4d5fae563e735bb4a",
+          "stakingImplementation": "0xe6e3519455170913c5c3bfe541dd918a2d0cbb15",
+          "multicallCodeSha256": "2756d7c52baee85cacb504f6ee1df7aad6809ac8d94a4a111d76991f90d36d6e"
+        }
+      },
+      "exactComparison": {
+        "sameBlockAndCallClock": false,
+        "supplyEqual": true,
+        "stakedEqual": true,
+        "accumulatorEqual": null,
+        "productionBlock": null,
+        "freshIndependentBlock": "49284406",
+        "supplyDifferenceRaw": "0",
+        "note": "Different observations: equality is descriptive and does not establish same-block reconciliation."
+      },
+      "historical": null,
+      "api": {
+        "sourceAt": 1792733124000,
+        "receivedAt": 1792733126432,
+        "stale": false,
+        "supplyRaw": "8950072208453569569653670167",
+        "stakedRaw": "8894322122461378662678942566",
+        "stakeRatioBps": 9937,
+        "allocatedRewardsRaw": "58164387434436002531449967",
+        "pendingRewardsRaw": "14845750988123220049",
+        "stakingYield": {
+          "toMs": 1792733124000,
+          "basis": "observed-accumulator",
+          "fromMs": 1792123080000,
+          "yearDays": 365,
+          "elapsedMs": 610044000,
+          "earnedUsdPerPaperRaw": "1355427006012322",
+          "usdPerPaperPerYearRaw": "70068300092459906"
+        },
+        "stakingRewardHistory": {
+          "days": [
+            {
+              "toMs": 1792540800000,
+              "dayMs": 1792454400000,
+              "fromMs": 1792467555000,
+              "missing": false,
+              "partial": true,
+              "participation": null,
+              "earnedUsdPer1kPaperRaw": "75964759336951489"
+            },
+            {
+              "toMs": 1792627220000,
+              "dayMs": 1792540800000,
+              "fromMs": 1792540800000,
+              "missing": false,
+              "partial": true,
+              "participation": {
+                "stakedToRaw": "8847777052839501374157499153",
+                "supplyToRaw": "8902535859614178648385412938",
+                "stakedFromRaw": "8808454876927139676246793064",
+                "supplyFromRaw": "8861419798252164228520113082"
+              },
+              "earnedUsdPer1kPaperRaw": "10006010412658532"
+            },
+            {
+              "toMs": 1792713601000,
+              "dayMs": 1792627200000,
+              "fromMs": 1792627220000,
+              "missing": false,
+              "partial": true,
+              "participation": {
+                "stakedToRaw": "8892268988213504098498952189",
+                "supplyToRaw": "8947995273389351165662129849",
+                "stakedFromRaw": "8847777052839501374157499153",
+                "supplyFromRaw": "8902535859614178648385412938"
+              },
+              "earnedUsdPer1kPaperRaw": "121033129435936730"
+            },
+            {
+              "toMs": 1792733124000,
+              "dayMs": 1792713600000,
+              "fromMs": 1792713601000,
+              "missing": false,
+              "partial": true,
+              "participation": {
+                "stakedToRaw": "8894322122461378662678942566",
+                "supplyToRaw": "8950072208453569569653670167",
+                "stakedFromRaw": "8892268988213504098498952189",
+                "supplyFromRaw": "8947995273389351165662129849"
+              },
+              "earnedUsdPer1kPaperRaw": "479730970901675"
+            }
+          ],
+          "basis": "observed-accumulator",
+          "timeZone": "UTC",
+          "truncated": false,
+          "observedFromMs": 1792467555000,
+          "availableFromMs": 1792454400000
+        }
+      }
+    }
+  },
+  "productionVerification": {
+    "mode": "verify",
+    "capturedAt": 1792735803675,
+    "completedAt": 1792735881466,
+    "apiUrl": "https://paperdash-api.onrender.com/api/paper/economics",
+    "maximumSamples": 3,
+    "spacingMs": 35000,
+    "maximumRpcRequestsPerSample": 12,
+    "actualRpcRequests": 31,
+    "mutations": 0,
+    "issues": [],
+    "samples": [
+      {
+        "sampledAt": 1792735805309,
+        "apiStartedAt": 1792735802906,
+        "apiReceivedAt": 1792735803675,
+        "independent": {
+          "source": "hyperevm-rpc",
+          "chainId": 999,
+          "consistency": "atomic-multicall",
+          "block": {
+            "number": "49287118",
+            "hash": "0xb5ae69dc0b2b948668d74a3d48d7da3a3d7f026466dcceae4c48c05547d233d8",
+            "timestampMs": 1792735805000
+          },
+          "paper": {
+            "supplyRaw": "8950173505528654575917938864",
+            "stakedRaw": "8894608145756964987130664867",
+            "stakingCustodyRaw": "8894608145756964987130664867"
+          },
+          "staking": {
+            "accumulatorRaw": "13984950432453848635964710"
+          },
+          "receivedAt": 1792735805309,
+          "callTimestampMs": 1792735804000,
+          "deployment": {
+            "paperImplementation": "0x433bd418ec92818a960585f4d5fae563e735bb4a",
+            "stakingImplementation": "0xe6e3519455170913c5c3bfe541dd918a2d0cbb15",
+            "multicallCodeSha256": "2756d7c52baee85cacb504f6ee1df7aad6809ac8d94a4a111d76991f90d36d6e"
+          }
+        },
+        "independentRpcRequestCount": 10,
+        "exactComparison": {
+          "sameBlockAndCallClock": false,
+          "supplyEqual": false,
+          "stakedEqual": true,
+          "accumulatorEqual": true,
+          "productionBlock": "49287082",
+          "freshIndependentBlock": "49287118",
+          "supplyDifferenceRaw": "19759172785332737566",
+          "note": "Different observations: equality is descriptive and does not establish same-block reconciliation."
+        },
+        "historical": {
+          "series.staked": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.supply": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.allocated": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.supplyChange": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.rewardAllocation": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "daily.supplyChange": {
+            "matched": 6,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 0
+          },
+          "daily.rewardAllocation": {
+            "matched": 6,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 0
+          }
+        },
+        "api": {
+          "sourceAt": 1792735796000,
+          "receivedAt": 1792735799823,
+          "stale": false,
+          "supplyRaw": "8950173485769481790585201298",
+          "stakedRaw": "8894608145756964987130664867",
+          "stakeRatioBps": 9937,
+          "allocatedRewardsRaw": "58164719328786555129629801",
+          "pendingRewardsRaw": "15808045619202117511",
+          "onchain": {
+            "stale": false,
+            "source": "hyperevm-rpc",
+            "chainId": 999,
+            "sourceAt": 1792735769000,
+            "blockHash": "0x19fa41859a120d1d368874d646507c90506164bdbbc691e06e87f10961319774",
+            "receivedAt": 1792735770978,
+            "blockNumber": "49287082",
+            "consistency": "atomic-multicall",
+            "accumulatorRaw": "13984950432453848635964710",
+            "blockTimestampMs": 1792735770000
+          },
+          "stakingYield": {
+            "toMs": 1792735769000,
+            "basis": "observed-accumulator",
+            "fromMs": 1792734492000,
+            "reason": "Collecting the first hour of staking rewards.",
+            "yearDays": 365,
+            "elapsedMs": 1277000,
+            "earnedUsdPerPaperRaw": "25324299810",
+            "usdPerPaperPerYearRaw": null
+          },
+          "stakingRewardHistory": {
+            "days": [
+              {
+                "toMs": 1792540800000,
+                "dayMs": 1792454400000,
+                "fromMs": 1792467555000,
+                "source": "papertrade-api",
+                "missing": false,
+                "partial": true,
+                "participation": null,
+                "earnedUsdPer1kPaperRaw": "75964759336951489"
+              },
+              {
+                "toMs": 1792627220000,
+                "dayMs": 1792540800000,
+                "fromMs": 1792540800000,
+                "source": "papertrade-api",
+                "missing": false,
+                "partial": true,
+                "participation": {
+                  "stakedToRaw": "8847777052839501374157499153",
+                  "supplyToRaw": "8902535859614178648385412938",
+                  "stakedFromRaw": "8808454876927139676246793064",
+                  "supplyFromRaw": "8861419798252164228520113082"
+                },
+                "earnedUsdPer1kPaperRaw": "10006010412658532"
+              },
+              {
+                "toMs": 1792713601000,
+                "dayMs": 1792627200000,
+                "fromMs": 1792627220000,
+                "source": "papertrade-api",
+                "missing": false,
+                "partial": true,
+                "participation": {
+                  "stakedToRaw": "8892268988213504098498952189",
+                  "supplyToRaw": "8947995273389351165662129849",
+                  "stakedFromRaw": "8847777052839501374157499153",
+                  "supplyFromRaw": "8902535859614178648385412938"
+                },
+                "earnedUsdPer1kPaperRaw": "121033129435936730"
+              },
+              {
+                "toMs": 1792735769000,
+                "dayMs": 1792713600000,
+                "fromMs": 1792734492000,
+                "source": "hyperevm-rpc",
+                "missing": false,
+                "partial": true,
+                "participation": {
+                  "stakedToRaw": "8894608145756964987130664867",
+                  "supplyToRaw": "8950173485769481790585201298",
+                  "stakedFromRaw": "8894543208335028468312207204",
+                  "supplyFromRaw": "8950121763812348192696001074"
+                },
+                "earnedUsdPer1kPaperRaw": "25324299810358"
+              }
+            ],
+            "basis": "observed-accumulator",
+            "timeZone": "UTC",
+            "truncated": false,
+            "observedFromMs": 1792467555000,
+            "availableFromMs": 1792454400000
+          }
+        }
+      },
+      {
+        "sampledAt": 1792735844082,
+        "apiStartedAt": 1792735840312,
+        "apiReceivedAt": 1792735841050,
+        "independent": {
+          "source": "hyperevm-rpc",
+          "chainId": 999,
+          "consistency": "atomic-multicall",
+          "block": {
+            "number": "49287156",
+            "hash": "0x4c44185edefc73e6588083fdc4eb332a18aaa3f7f56da7f37c287e69063fd67b",
+            "timestampMs": 1792735843000
+          },
+          "paper": {
+            "supplyRaw": "8950173517144631710960718161",
+            "stakedRaw": "8894608145756964987130664867",
+            "stakingCustodyRaw": "8894608145756964987130664867"
+          },
+          "staking": {
+            "accumulatorRaw": "13984950432453848635964710"
+          },
+          "receivedAt": 1792735844082,
+          "callTimestampMs": 1792735842000,
+          "deployment": {
+            "paperImplementation": "0x433bd418ec92818a960585f4d5fae563e735bb4a",
+            "stakingImplementation": "0xe6e3519455170913c5c3bfe541dd918a2d0cbb15",
+            "multicallCodeSha256": "2756d7c52baee85cacb504f6ee1df7aad6809ac8d94a4a111d76991f90d36d6e"
+          }
+        },
+        "independentRpcRequestCount": 11,
+        "exactComparison": {
+          "sameBlockAndCallClock": false,
+          "supplyEqual": true,
+          "stakedEqual": true,
+          "accumulatorEqual": true,
+          "productionBlock": "49287146",
+          "freshIndependentBlock": "49287156",
+          "supplyDifferenceRaw": "0",
+          "note": "Different observations: equality is descriptive and does not establish same-block reconciliation."
+        },
+        "historical": {
+          "series.staked": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.supply": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.allocated": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.supplyChange": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.rewardAllocation": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "daily.supplyChange": {
+            "matched": 6,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 0
+          },
+          "daily.rewardAllocation": {
+            "matched": 6,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 0
+          }
+        },
+        "api": {
+          "sourceAt": 1792735835000,
+          "receivedAt": 1792735840171,
+          "stale": false,
+          "supplyRaw": "8950173517144631710960718161",
+          "stakedRaw": "8894608145756964987130664867",
+          "stakeRatioBps": 9937,
+          "allocatedRewardsRaw": "58164719698974996058752769",
+          "pendingRewardsRaw": "16178234060131240479",
+          "onchain": {
+            "stale": false,
+            "source": "hyperevm-rpc",
+            "chainId": 999,
+            "sourceAt": 1792735832000,
+            "blockHash": "0x5dc8a3e717eb4d5c6647270a327e445a44762d5c1039da1e12234f053c5bbb0d",
+            "receivedAt": 1792735834071,
+            "blockNumber": "49287146",
+            "consistency": "atomic-multicall",
+            "accumulatorRaw": "13984950432453848635964710",
+            "blockTimestampMs": 1792735833000
+          },
+          "stakingYield": {
+            "toMs": 1792735832000,
+            "basis": "observed-accumulator",
+            "fromMs": 1792734492000,
+            "reason": "Collecting the first hour of staking rewards.",
+            "yearDays": 365,
+            "elapsedMs": 1340000,
+            "earnedUsdPerPaperRaw": "25324299810",
+            "usdPerPaperPerYearRaw": null
+          },
+          "stakingRewardHistory": {
+            "days": [
+              {
+                "toMs": 1792540800000,
+                "dayMs": 1792454400000,
+                "fromMs": 1792467555000,
+                "source": "papertrade-api",
+                "missing": false,
+                "partial": true,
+                "participation": null,
+                "earnedUsdPer1kPaperRaw": "75964759336951489"
+              },
+              {
+                "toMs": 1792627220000,
+                "dayMs": 1792540800000,
+                "fromMs": 1792540800000,
+                "source": "papertrade-api",
+                "missing": false,
+                "partial": true,
+                "participation": {
+                  "stakedToRaw": "8847777052839501374157499153",
+                  "supplyToRaw": "8902535859614178648385412938",
+                  "stakedFromRaw": "8808454876927139676246793064",
+                  "supplyFromRaw": "8861419798252164228520113082"
+                },
+                "earnedUsdPer1kPaperRaw": "10006010412658532"
+              },
+              {
+                "toMs": 1792713601000,
+                "dayMs": 1792627200000,
+                "fromMs": 1792627220000,
+                "source": "papertrade-api",
+                "missing": false,
+                "partial": true,
+                "participation": {
+                  "stakedToRaw": "8892268988213504098498952189",
+                  "supplyToRaw": "8947995273389351165662129849",
+                  "stakedFromRaw": "8847777052839501374157499153",
+                  "supplyFromRaw": "8902535859614178648385412938"
+                },
+                "earnedUsdPer1kPaperRaw": "121033129435936730"
+              },
+              {
+                "toMs": 1792735832000,
+                "dayMs": 1792713600000,
+                "fromMs": 1792734492000,
+                "source": "hyperevm-rpc",
+                "missing": false,
+                "partial": true,
+                "participation": {
+                  "stakedToRaw": "8894608145756964987130664867",
+                  "supplyToRaw": "8950173517144631710960718161",
+                  "stakedFromRaw": "8894543208335028468312207204",
+                  "supplyFromRaw": "8950121763812348192696001074"
+                },
+                "earnedUsdPer1kPaperRaw": "25324299810358"
+              }
+            ],
+            "basis": "observed-accumulator",
+            "timeZone": "UTC",
+            "truncated": false,
+            "observedFromMs": 1792467555000,
+            "availableFromMs": 1792454400000
+          }
+        }
+      },
+      {
+        "sampledAt": 1792735881465,
+        "apiStartedAt": 1792735879085,
+        "apiReceivedAt": 1792735879816,
+        "independent": {
+          "source": "hyperevm-rpc",
+          "chainId": 999,
+          "consistency": "atomic-multicall",
+          "block": {
+            "number": "49287195",
+            "hash": "0x35edb302e72e406af76eea9484a833f3788cecf7ab4206fa795d26e53d6bfdaa",
+            "timestampMs": 1792735881000
+          },
+          "paper": {
+            "supplyRaw": "8950173711973330441636928544",
+            "stakedRaw": "8894615018603722819543444166",
+            "stakingCustodyRaw": "8894615018603722819543444166"
+          },
+          "staking": {
+            "accumulatorRaw": "13984950432453848635964710"
+          },
+          "receivedAt": 1792735881465,
+          "callTimestampMs": 1792735880000,
+          "deployment": {
+            "paperImplementation": "0x433bd418ec92818a960585f4d5fae563e735bb4a",
+            "stakingImplementation": "0xe6e3519455170913c5c3bfe541dd918a2d0cbb15",
+            "multicallCodeSha256": "2756d7c52baee85cacb504f6ee1df7aad6809ac8d94a4a111d76991f90d36d6e"
+          }
+        },
+        "independentRpcRequestCount": 10,
+        "exactComparison": {
+          "sameBlockAndCallClock": false,
+          "supplyEqual": false,
+          "stakedEqual": false,
+          "accumulatorEqual": true,
+          "productionBlock": "49287178",
+          "freshIndependentBlock": "49287195",
+          "supplyDifferenceRaw": "194828698730676210383",
+          "note": "Different observations: equality is descriptive and does not establish same-block reconciliation."
+        },
+        "historical": {
+          "series.staked": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.supply": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.allocated": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.supplyChange": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "series.rewardAllocation": {
+            "matched": 162,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 1,
+            "hourlyCutoff": 1792130400000
+          },
+          "daily.supplyChange": {
+            "matched": 6,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 0
+          },
+          "daily.rewardAllocation": {
+            "matched": 6,
+            "changed": 0,
+            "unavailable": 0,
+            "expiredByRollingWindow": 0
+          }
+        },
+        "api": {
+          "sourceAt": 1792735867000,
+          "receivedAt": 1792735870284,
+          "stale": false,
+          "supplyRaw": "8950173517144631710960718161",
+          "stakedRaw": "8894608145756964987130664867",
+          "stakeRatioBps": 9937,
+          "allocatedRewardsRaw": "58164726666419640414446061",
+          "pendingRewardsRaw": "23145678704486933771",
+          "onchain": {
+            "stale": false,
+            "source": "hyperevm-rpc",
+            "chainId": 999,
+            "sourceAt": 1792735863000,
+            "blockHash": "0x1de81bd9af10af4e73b70607dd672bf3d20db0b682a1df6576aff676c0313bdc",
+            "receivedAt": 1792735865588,
+            "blockNumber": "49287178",
+            "consistency": "atomic-multicall",
+            "accumulatorRaw": "13984950432453848635964710",
+            "blockTimestampMs": 1792735864000
+          },
+          "stakingYield": {
+            "toMs": 1792735863000,
+            "basis": "observed-accumulator",
+            "fromMs": 1792734492000,
+            "reason": "Collecting the first hour of staking rewards.",
+            "yearDays": 365,
+            "elapsedMs": 1371000,
+            "earnedUsdPerPaperRaw": "25324299810",
+            "usdPerPaperPerYearRaw": null
+          },
+          "stakingRewardHistory": {
+            "days": [
+              {
+                "toMs": 1792540800000,
+                "dayMs": 1792454400000,
+                "fromMs": 1792467555000,
+                "source": "papertrade-api",
+                "missing": false,
+                "partial": true,
+                "participation": null,
+                "earnedUsdPer1kPaperRaw": "75964759336951489"
+              },
+              {
+                "toMs": 1792627220000,
+                "dayMs": 1792540800000,
+                "fromMs": 1792540800000,
+                "source": "papertrade-api",
+                "missing": false,
+                "partial": true,
+                "participation": {
+                  "stakedToRaw": "8847777052839501374157499153",
+                  "supplyToRaw": "8902535859614178648385412938",
+                  "stakedFromRaw": "8808454876927139676246793064",
+                  "supplyFromRaw": "8861419798252164228520113082"
+                },
+                "earnedUsdPer1kPaperRaw": "10006010412658532"
+              },
+              {
+                "toMs": 1792713601000,
+                "dayMs": 1792627200000,
+                "fromMs": 1792627220000,
+                "source": "papertrade-api",
+                "missing": false,
+                "partial": true,
+                "participation": {
+                  "stakedToRaw": "8892268988213504098498952189",
+                  "supplyToRaw": "8947995273389351165662129849",
+                  "stakedFromRaw": "8847777052839501374157499153",
+                  "supplyFromRaw": "8902535859614178648385412938"
+                },
+                "earnedUsdPer1kPaperRaw": "121033129435936730"
+              },
+              {
+                "toMs": 1792735863000,
+                "dayMs": 1792713600000,
+                "fromMs": 1792734492000,
+                "source": "hyperevm-rpc",
+                "missing": false,
+                "partial": true,
+                "participation": {
+                  "stakedToRaw": "8894608145756964987130664867",
+                  "supplyToRaw": "8950173517144631710960718161",
+                  "stakedFromRaw": "8894543208335028468312207204",
+                  "supplyFromRaw": "8950121763812348192696001074"
+                },
+                "earnedUsdPer1kPaperRaw": "25324299810358"
+              }
+            ],
+            "basis": "observed-accumulator",
+            "timeZone": "UTC",
+            "truncated": false,
+            "observedFromMs": 1792467555000,
+            "availableFromMs": 1792454400000
+          }
+        }
+      }
+    ],
+    "initialStrictIssues": [
+      "series.staked lost 1 earlier retained points",
+      "series.supply lost 1 earlier retained points",
+      "series.allocated lost 1 earlier retained points",
+      "series.supplyChange lost 1 earlier retained points",
+      "series.rewardAllocation lost 1 earlier retained points",
+      "series.staked lost 1 earlier retained points",
+      "series.supply lost 1 earlier retained points",
+      "series.allocated lost 1 earlier retained points",
+      "series.supplyChange lost 1 earlier retained points",
+      "series.rewardAllocation lost 1 earlier retained points",
+      "series.staked lost 1 earlier retained points",
+      "series.supply lost 1 earlier retained points",
+      "series.allocated lost 1 earlier retained points",
+      "series.supplyChange lost 1 earlier retained points",
+      "series.rewardAllocation lost 1 earlier retained points"
+    ],
+    "rollingWindowReview": {
+      "originalArtifact": "Initial strict warnings are preserved in initialStrictIssues; reviewed comparisons and observed clocks are included here.",
+      "reviewedAt": 1792735914186,
+      "networkRequests": 0,
+      "hourlyRetentionRule": "point.time >= floor(publication.receivedAt/3600000)*3600000 - 168*3600000",
+      "implementation": "apps/server/src/protocol-charts.ts series() final point filter",
+      "note": "Only points deterministically outside the existing hourly publication window are excluded. Missing in-window points still fail."
+    }
+  },
+  "readiness": {
+    "checkedAt": 1792735907418,
+    "url": "https://paperdash-api.onrender.com/health/ready",
+    "health": {
+      "ready": true,
+      "degraded": false,
+      "status": {
+        "stale": false,
+        "stream": "connected",
+        "message": "trade-ingestion-gap: Trade observation coverage has an unresolved intake gap. Saved observations remain available.",
+        "sourceAt": 1792735903000,
+        "receivedAt": 1792735906174,
+        "persistence": "postgres",
+        "indexedBlock": "49287217"
+      }
+    }
+  },
+  "indexing": {
+    "receivedAt": 1792735800024,
+    "collectorAt": 1792735816190,
+    "stale": false,
+    "coverage": "available-source-history-and-retained-observations"
+  },
+  "browserVerification": {
+    "viewport": {
+      "width": 1263,
+      "horizontalOverflow": false
+    },
+    "visible": [
+      "CHAIN + PROTOCOL",
+      "Onchain supply and staked headlines",
+      "99.37% of supply",
+      "Current chain reward day begins 05:48:12 UTC and is partial",
+      "Prior three reward days remain visible",
+      "Measured from onchain staking rewards",
+      "Collecting the first hour of staking rewards"
+    ],
+    "consoleErrors": [],
+    "mobile": "Desktop/mobile regression suite passed in CI. Live Chrome viewport override did not apply (actual width remained 1263); it was reset, so no live mobile-width claim is made.",
+    "screenshot": "../previews/production-onchain-paper-2026-10-23.jpg",
+    "recordedAt": "2026-10-23T06:15:20.741059+00:00"
+  },
+  "limits": [
+    "Current allocations, pending rewards and historical supply/stake charts remain Papertrade API-backed and separately timestamped.",
+    "Different chain heads were compared. Exact equality in one sample corroborates current values but is not same-block reconciliation.",
+    "The onchain annualized reward rate remains in its first-hour collection window; no API baseline was reused.",
+    "Pre-existing historical trade-intake-gap warning remains; current readiness and indexing were fresh."
+  ],
+  "changesToInfrastructure": {
+    "plans": false,
+    "environment": false,
+    "schema": false,
+    "historyReset": false
+  },
+  "transactionsSubmitted": 0
+}
