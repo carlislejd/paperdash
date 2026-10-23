@@ -22,7 +22,9 @@
     "test:e2e": "playwright test",
     "db:migrate": "tsx apps/server/src/migrate.ts",
     "ingest:status": "tsx apps/server/src/status.ts",
-    "stats": "node scripts/paperdash.mjs"
+    "stats": "node scripts/paperdash.mjs",
+    "chain:archive": "node --import tsx scripts/chain-events.ts",
+    "relayer": "node --import tsx scripts/papertrade-relayer.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.0",

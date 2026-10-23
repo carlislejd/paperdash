@@ -20,6 +20,22 @@ const measured: AnnualizedStakerYield = {
 };
 
 describe("staker yield display", () => {
+  it("ages independent chain clocks even when API history is unavailable", () => {
+    const data = {
+      sourceAt: null, receivedAt: at, stale: true, error: "API delayed",
+      onchain: {
+        source: "hyperevm-rpc" as const, chainId: 999 as const,
+        blockNumber: "50000000", blockHash: `0x${"a".repeat(64)}`,
+        consistency: "atomic-multicall" as const, sourceAt: at, blockTimestampMs: at,
+        receivedAt: at, stale: false, accumulatorRaw: "1",
+      },
+    };
+    expect(stakerYieldDelayed(data, at)).toBe(false);
+    expect(stakerYieldDelayed(data, at + 90000)).toBe(false);
+    expect(stakerYieldDelayed(data, at + 90001)).toBe(true);
+    expect(stakerYieldDelayed({ ...data, onchain: { ...data.onchain, stale: true } }, at)).toBe(true);
+    expect(stakerYieldDelayed({ ...data, onchain: { ...data.onchain, receivedAt: NaN } }, at)).toBe(true);
+  });
   it("marks an aging, malformed or future source or receipt clock as delayed", () => {
     const fresh = { sourceAt: at, receivedAt: at, stale: false };
     expect(stakerYieldDelayed(fresh, at)).toBe(false);

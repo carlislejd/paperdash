@@ -60,7 +60,7 @@ describe("retained staking yield", () => {
     const store = await memory();
     const upstream = new Upstream(store);
     const bus = new ChangeBus();
-    const collector = new Collector(store, upstream, bus);
+    const collector = new Collector(store, upstream, bus, null);
     upstreams.push(upstream);
     buses.push(bus);
     collectors.push(collector);
@@ -167,7 +167,7 @@ describe("retained staking yield", () => {
     const reads = vi.spyOn(reopened, "get");
     const chartReads = vi.spyOn(reopened.history, "protocolChartRows");
     await refreshProtocolCharts(reopened, finish);
-    expect(reads.mock.calls).toEqual([["summary"], ["staking-yield-window"], ["staking-reward-history"], ["staking-reward-history-days"]]);
+    expect(reads.mock.calls).toEqual([["summary"], ["onchain-paper"], ["staking-yield-window"], ["staking-reward-history"], ["staking-reward-history-days"]]);
     expect(chartReads.mock.calls).toEqual([["history"], ["summary"]]);
     expect((await readPaperEconomics(reopened, finish)).stakingYield).toMatchObject({
       fromMs: start,

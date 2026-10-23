@@ -12,6 +12,7 @@ import { StakingRewardHistory } from "./StakingRewardHistory";
 import { StakerRevenue } from "./StakerRevenue";
 import "./paper-economics.css";
 import { hourlyChartRangeLabel } from "../lib/chart-summary";
+import { stakerYieldDelayed } from "../lib/staker-yield";
 
 function paperTitle(raw: string | null | undefined): string {
   if (raw == null || !/^\d+$/.test(raw)) return "Unavailable";
@@ -53,6 +54,8 @@ export function PaperEconomics({
   };
   const stale = Boolean(error || data?.error || data?.stale);
   const common = { range, sourceAt, stale, loading };
+  const chainAt = data?.onchain?.sourceAt ?? sourceAt;
+  const chainStale = Boolean(error || stakerYieldDelayed(data));
   const stakeRatio =
     data?.stakeRatioBps != null &&
     Number.isSafeInteger(data.stakeRatioBps) &&
@@ -70,7 +73,7 @@ export function PaperEconomics({
         <div className="section-heading">
           <h2>PAPER</h2>
           <span className="tiny-caption" title={formatChartTime(sourceAt)}>
-            {stale
+            {data?.onchain ? "CHAIN + PROTOCOL" : stale
               ? "LAST AVAILABLE"
               : sourceAt === null
                 ? "AWAITING DATA"
@@ -80,8 +83,9 @@ export function PaperEconomics({
         <StakerRevenue data={data} stale={stale} loading={loading} />
         <StakingRewardHistory
           history={data?.stakingRewardHistory}
-          sourceAt={sourceAt}
-          stale={stale}
+          sourceAt={chainAt}
+          stale={data?.onchain ? chainStale : stale}
+          maxAgeMs={data?.onchain ? 90000 : 60000}
           loading={loading}
         />
         <div className="paper-details">
@@ -95,7 +99,9 @@ export function PaperEconomics({
             points={data?.series?.supply?.points ?? []}
             valueLabel={formatChartNumber(rawToNumber(data?.supplyRaw))}
             valueTitle={paperTitle(data?.supplyRaw)}
-            coverage="Total supply · approximate hourly snapshots · available history"
+            valueCaption={data?.onchain ? `Onchain${chainStale ? " · last available" : ""}` : undefined}
+            timestampLabel={data?.onchain ? "Protocol history" : undefined}
+            coverage="Total supply · approximate protocol hourly snapshots · available history"
           />
           <ChartCard
             {...common}
@@ -107,7 +113,8 @@ export function PaperEconomics({
             points={data?.series?.staked?.points ?? []}
             valueLabel={formatChartNumber(rawToNumber(data?.stakedRaw))}
             valueTitle={paperTitle(data?.stakedRaw)}
-            valueCaption={stakeRatio}
+            valueCaption={`${stakeRatio}${data?.onchain ? ` · Onchain${chainStale ? " · last available" : ""}` : ""}`}
+            timestampLabel={data?.onchain ? "Protocol history" : undefined}
             coverage="Currently staked · approximate hourly snapshots · available history"
           />
           <ChartCard
@@ -143,7 +150,9 @@ export function PaperEconomics({
         </div>
         {(error || data?.error) && (
           <p className="paper-read-error" role="status">
-            {data
+            {data?.onchain && !error
+              ? "Protocol allocations and history are delayed. Onchain balances and staking rewards update separately."
+              : data
               ? "PAPER data could not be refreshed. Saved values shown."
               : "PAPER economics data is not available yet."}{" "}
             <button type="button" onClick={refresh} disabled={loading}>

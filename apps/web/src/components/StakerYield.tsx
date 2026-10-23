@@ -81,6 +81,7 @@ export function StakerYieldMetric() {
       <div className="staker-yield-method" id={methodId} role="tooltip" hidden={!methodOpen}>
           <p className="staker-yield-method-heading">How it’s calculated</p>
           <p>Historical annualized rate · {rate === null ? "unavailable" : rewardDelayed ? "last available" : "observed rewards"}</p>
+          {data?.onchain && <p>Measured from onchain staking rewards.</p>}
           <p>
             Observed USDC earned per 1,000 staked PAPER, annualized over the measured
             interval. No compounding; future rewards vary.

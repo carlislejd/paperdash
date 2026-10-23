@@ -53,6 +53,9 @@ export const config = {
   streamUrl:
     process.env.STREAM_URL ??
     "wss://stream.papertrade.xyz/connection/websocket",
+  hyperevmEnabled: process.env.HYPEREVM_PAPER_ENABLED !== "false",
+  hyperevmRpcUrl: process.env.HYPEREVM_RPC_URL ?? "https://rpc.hyperliquid.xyz/evm",
+  hyperevmInterval: integer("HYPEREVM_PAPER_INTERVAL_MS", 30000, 30000, 60000),
   summaryInterval: integer("SUMMARY_INTERVAL_MS", 2000, 1000, 300000),
   recentInterval: integer("RECENT_INTERVAL_MS", 10000, 3000, 300000),
   directoryInterval: integer("DIRECTORY_INTERVAL_MS", 30000, 5000, 300000),

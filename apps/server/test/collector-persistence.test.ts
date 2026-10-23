@@ -33,7 +33,7 @@ beforeEach(async () => {
   store = await createStore({ memory: true, databaseUrl: "" });
   upstream = new Upstream(store);
   bus = new ChangeBus();
-  collector = new Collector(store, upstream, bus);
+  collector = new Collector(store, upstream, bus, null);
   await store.put("summary", summary);
   await store.sample(start, 1);
 });

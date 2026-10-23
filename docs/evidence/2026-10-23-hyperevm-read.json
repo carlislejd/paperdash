@@ -1,0 +1,97 @@
+{
+  "checkedAt": "2026-10-23T00:37:10.173Z",
+  "sources": {
+    "papertradeAddresses": "https://docs.papertrade.xyz/dev/contract-addresses/",
+    "staking": "https://docs.papertrade.xyz/paper/staking/",
+    "multicallDeployment": "https://github.com/mds1/multicall3/blob/main/deployments.json",
+    "multicallSourceAndDeploymentPayload": "https://github.com/mds1/multicall3",
+    "rpcLimits": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/hyperevm/json-rpc"
+  },
+  "verification": {
+    "rpcRequests": 10,
+    "transactionsSubmitted": 0,
+    "multicallRuntimeBytes": 3808,
+    "multicallRuntimeComparedWithOfficialDeploymentPayload": true,
+    "historicalStateRequested": false,
+    "stakingGetterMatchedTokenCustodyInSameCall": true,
+    "completeStakingSourceAbiAvailable": false,
+    "latestCallClockSkewMs": -1000,
+    "callTimestampToleranceMs": 2000,
+    "callTimestampToleranceBasis": "Observed one-second default-RPC skew; compatibility bound only, not documented protocol guarantee."
+  },
+  "deployment": {
+    "paper": "0xe40f17915daa230324030003a197cdaef2261c0e",
+    "staking": "0xaad6c7b0cc3014fc80ffedae0ed7ce5967b0f016",
+    "paperImplementation": "0x433bd418ec92818a960585f4d5fae563e735bb4a",
+    "stakingImplementation": "0xe6e3519455170913c5c3bfe541dd918a2d0cbb15",
+    "paperCodeSha256": "f77b91537421a0092f1c068f85af316caf7fd8d8461e8b0305022ee6f5f0faae",
+    "stakingCodeSha256": "3e006d0daee1fcbaa71c160a72291374783da5f720a33db0a51c8f84bde3aa04",
+    "multicall": "0xca11bde05977b3631167028862be2a173976ca11",
+    "multicallCodeSha256": "2756d7c52baee85cacb504f6ee1df7aad6809ac8d94a4a111d76991f90d36d6e"
+  },
+  "selectors": {
+    "aggregate": "252dba42",
+    "totalSupply": "18160ddd",
+    "totalStaked": "817b1cd2",
+    "accumulator": "939d6237",
+    "balanceOf": "70a08231",
+    "decimals": "313ce567",
+    "timestamp": "0f28c97d",
+    "parentHash": "27e86d6e",
+    "chainId": "3408e470"
+  },
+  "snapshot": {
+    "source": "hyperevm-rpc",
+    "chainId": 999,
+    "consistency": "atomic-multicall",
+    "block": {
+      "number": "49266810",
+      "hash": "0x58452630ff1f501c8edc31741c8133170cd8cd88149f7d995bedbb80af87b14a",
+      "timestampMs": 1792715830000
+    },
+    "paper": {
+      "supplyRaw": "8948133632198902565201355919",
+      "stakedRaw": "8892353478287242154996999048",
+      "stakingCustodyRaw": "8892353478287242154996999048"
+    },
+    "staking": {
+      "accumulatorRaw": "13984458099762006957796108"
+    },
+    "receivedAt": 1792715830173,
+    "callTimestampMs": 1792715829000,
+    "deployment": {
+      "paperImplementation": "0x433bd418ec92818a960585f4d5fae563e735bb4a",
+      "stakingImplementation": "0xe6e3519455170913c5c3bfe541dd918a2d0cbb15",
+      "multicallCodeSha256": "2756d7c52baee85cacb504f6ee1df7aad6809ac8d94a4a111d76991f90d36d6e"
+    }
+  },
+  "sourceArtifacts": {
+    "README.md": {
+      "url": "https://raw.githubusercontent.com/mds1/multicall3/main/README.md",
+      "sha256": "fd8a929918ebcc9a2cf26c3d072c0566718937e2f980751ba2be4e1b8b143b9e"
+    },
+    "deployments.json": {
+      "url": "https://raw.githubusercontent.com/mds1/multicall3/main/deployments.json",
+      "sha256": "16b266060791cea56526a70aabe61c20ec3416f47e6be31ef999c0adcab36aee"
+    },
+    "src/Multicall3.sol": {
+      "url": "https://raw.githubusercontent.com/mds1/multicall3/main/src/Multicall3.sol",
+      "sha256": "2054218939d3fa0f52f8ce1a33658d570a550671f63197356ee5744f7e188b1e"
+    }
+  },
+  "officialSummaryComparison": {
+    "url": "https://exchange.papertrade.xyz/query/protocol/summary",
+    "source": {
+      "block": "49266840",
+      "at": 1792715860000,
+      "genesis": 1791326520000
+    },
+    "supplyRaw": "8948133680809667976731911095",
+    "stakedRaw": "8892353478287242154996999048",
+    "accumulatorRaw": "13984458099762006957796108",
+    "stakedMatchesRpcGetterAndCustody": true,
+    "accumulatorMatchesRpc": true,
+    "comparisonIsSameBlock": false,
+    "note": "Summary is 30 blocks later; unchanged staked and accumulator match, supply has advanced. This corroborates getter semantics, not exact same-block reconciliation."
+  }
+}

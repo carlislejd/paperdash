@@ -15,7 +15,7 @@ interface YieldWindow {
 const KEY = "staking-yield-window";
 
 /** Optional for compatibility with retained accumulator-only observations. */
-interface RewardObservation extends StakingYieldObservation {
+export interface RewardObservation extends StakingYieldObservation {
   participation?: { supplyRaw: string; stakedRaw: string } | null;
 }
 function validParticipation(value: RewardObservation["participation"]): value is NonNullable<RewardObservation["participation"]> {
@@ -44,7 +44,16 @@ export async function refreshStakerYield(
   summary: ProtocolSummary | null,
   now = Date.now(),
 ) {
-  const current = observation(summary);
+  return refreshStakerYieldObservation(store, observation(summary), now);
+}
+
+/** Source adapters use separate storage namespaces; an API baseline must not
+ * silently become the start of an independently measured chain interval. */
+export async function refreshStakerYieldObservation(
+  store: Pick<Store, "get" | "put">,
+  current: RewardObservation | null,
+  now = Date.now(),
+) {
   if (!validYieldObservation(current, now))
     return annualizedStakerYield(null, null, now);
   const saved = (await store.get<YieldWindow>(KEY))?.value;
@@ -71,7 +80,14 @@ export async function readStakerYield(
   summary: ProtocolSummary | null,
   now = Date.now(),
 ) {
-  const current = observation(summary);
+  return readStakerYieldObservation(store, observation(summary), now);
+}
+
+export async function readStakerYieldObservation(
+  store: Pick<Store, "get">,
+  current: RewardObservation | null,
+  now = Date.now(),
+) {
   if (!validYieldObservation(current, now))
     return annualizedStakerYield(null, null, now);
   const saved = (await store.get<YieldWindow>(KEY))?.value;

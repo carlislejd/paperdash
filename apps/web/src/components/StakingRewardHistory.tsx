@@ -63,11 +63,13 @@ export function StakingRewardHistory({
   sourceAt,
   stale,
   loading,
+  maxAgeMs = 60000,
 }: {
   history: RewardHistory | undefined;
   sourceAt: number | null;
   stale: boolean;
   loading: boolean;
+  maxAgeMs?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -88,7 +90,7 @@ export function StakingRewardHistory({
   );
   const visible = expanded ? days : days.slice(0, 7);
   const hasClock = validChartTime(sourceAt);
-  const delayed = stale || (hasClock && (now - sourceAt > 60_000 || sourceAt > now + 30_000));
+  const delayed = stale || (hasClock && (now - sourceAt > maxAgeMs || sourceAt > now + 30_000));
   const observedFrom = history?.observedFromMs;
   const missingParticipation = visible.some(day => rewardValue(day) !== null && !participationChanges(day.participation));
 

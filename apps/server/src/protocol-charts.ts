@@ -22,6 +22,8 @@ import {
   snapshotPanelRevision,
   type PanelPublication,
 } from "./panel-revisions.js";
+import { ageOnchainPaper, applyOnchainPaper, ONCHAIN_PAPER_KEY, type OnchainPaperPublication } from "./onchain-paper.js";
+import { config } from "./config.js";
 
 const HOUR = 3600000;
 const DAY = 86400000;
@@ -504,11 +506,12 @@ export async function refreshProtocolCharts(
   store: Context & Pick<Store, "depositMetrics">,
   now = Date.now(),
 ): Promise<PanelPublication[]> {
-  const [histories, summaries, summary, deposits] = await Promise.all([
+  const [histories, summaries, summary, deposits, onchain] = await Promise.all([
     store.history.protocolChartRows("history"),
     store.history.protocolChartRows("summary"),
     store.get<ProtocolSummary>("summary"),
     retainedDepositCharts(store, now),
+    config.hyperevmEnabled ? store.get<OnchainPaperPublication>(ONCHAIN_PAPER_KEY) : Promise.resolve(null),
   ]);
   const sourceAt = summary?.value.source.at ?? null;
   const current = summary?.value ?? null;
@@ -545,7 +548,7 @@ export async function refreshProtocolCharts(
   await store.put("protocol-charts", data, now);
   // Reuse this invocation's bounded observations and summary. Viewers read the
   // saved response; economics adds no upstream request or history scan.
-  const economics: PaperEconomicsResponse = {
+  const economics: PaperEconomicsResponse = applyOnchainPaper({
     ...emptyEconomics(),
     sourceAt,
     receivedAt: now,
@@ -593,7 +596,7 @@ export async function refreshProtocolCharts(
         now,
       ),
     },
-  };
+  }, onchain, now);
   economics.panelRevision = snapshotPanelRevision(economics);
   await store.put("paper-economics", economics, now);
   const publication = {
@@ -701,7 +704,7 @@ export async function readPaperEconomics(
       error: "Waiting for retained PAPER observations.",
     };
   const stale = snapshotStale(saved, heartbeat, now);
-  return {
+  return ageOnchainPaper({
     ...saved.value,
     stale,
     ...(stale
@@ -710,7 +713,7 @@ export async function readPaperEconomics(
             "PAPER economics collection is delayed; showing retained observations.",
         }
       : {}),
-  };
+  }, heartbeat?.value, now);
 }
 export async function readProtocolCharts(
   store: Pick<Store, "get">,

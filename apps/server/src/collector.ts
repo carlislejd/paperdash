@@ -33,6 +33,8 @@ import { readLiveTvl } from "../../../packages/shared/src/live-tvl.js";
 import { TradeIntake, type IntakeState } from "./trade-intake.js";
 import { PanelPublisher, type PanelPublication } from "./panel-revisions.js";
 import { refreshStakerYield } from "./staking-yield.js";
+import { refreshOnchainPaper } from "./onchain-paper.js";
+import { readHyperEvmPaperSnapshot, type HyperEvmPaperSnapshot } from "./hyperevm.js";
 import {
   retainProtocolChartHistory,
   retainProtocolChartSummary,
@@ -260,6 +262,8 @@ export class Collector {
     private store: Store,
     private upstream: Upstream,
     private bus: ChangeBus,
+    private onchainReader: (() => Promise<HyperEvmPaperSnapshot>) | null = config.hyperevmEnabled
+      ? () => readHyperEvmPaperSnapshot({ rpcUrl: config.hyperevmRpcUrl }) : null,
   ) {
     this.panels = new PanelPublisher(
       store,
@@ -311,6 +315,11 @@ export class Collector {
     if (!this.release) return false;
     this.panels.start();
     this.intake.start();
+    if (this.onchainReader) {
+      this.loop("onchain-paper", config.hyperevmInterval, () =>
+        refreshOnchainPaper(this.store, this.onchainReader!),
+      );
+    }
     this.marketFeed = new MarketFeed(
       async (quote) => {
         if (await this.store.market.quote(quote)) this.bus.notify();

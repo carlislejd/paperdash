@@ -46,6 +46,7 @@ After building, `npm run start:api` and `npm run start:ingest` run the compiled 
 ```mermaid
 flowchart LR
   S[Papertrade public HTTP and trade stream] --> W[Collector worker]
+  H[HyperEVM atomic PAPER and staking reads] --> W
   W --> D[(Postgres)]
   W --> R[(Redis coordination and notifications)]
   D --> A[API replicas]
@@ -82,6 +83,18 @@ The leaderboard defaults to the protocol's `totalWindowedPnl` for `window=24h`. 
 ## Data boundaries
 
 TVL, wallet counts and lifetime amounts are reported by Papertrade. They are not independently reconciled against custody. We retain available wallet history and expose indexing progress, source coverage and ambiguous source identities. Reaching the end of the source's pagination means that available backfill finished; it does not establish a complete lifetime ledger. Missing data remains unavailable rather than becoming zero. Cached data retains freshness information.
+
+Current PAPER supply, total staked PAPER, staking participation and newly measured staking rewards use an independent HyperEVM collector. One verified Multicall3 simulation reads all financial fields atomically; pinned implementation fingerprints and a staking-custody comparison detect incompatible changes. These fields have their own source clocks and remain usable during a Papertrade API outage. Allocation totals, wallet rewards, protocol charts and trading analytics still use Papertrade. Chain reward measurement starts from an observed baseline; it does not assume zero at launch or splice API and RPC endpoints together. See [PAPER sources](docs/PAPER_ECONOMICS.md).
+
+Two optional developer tools are included:
+
+```sh
+npm run chain:archive -- --help
+npm run relayer -- verify
+npm run relayer -- queue 0x0000000000000000000000000000000000000000
+```
+
+The archive stores bounded raw contract logs and resumes from a durable SQLite checkpoint. It requires explicit contract addresses, deployment identity and coverage start; it does not decode trades or import them into the dashboard. The relayer CLI verifies the published interface, reads queue placement and prepares unsigned intents. A separate library method accepts an explicitly supplied signed intent, verifies current source fingerprints and submits once; it is not exposed by the dashboard or CLI. Neither tool manages wallets, nonces or signing keys. [Operational details](docs/OPERATIONS.md#independent-chain-reads-and-relayer-tools).
 
 Use `npm run ingest:status` from an environment with the database settings to inspect the collector heartbeat and queue. Add `--` followed by a full wallet address to inspect its checkpoints. `/api/indexing` provides a read-only, periodically saved aggregate without scanning the queue on each browser request.
 

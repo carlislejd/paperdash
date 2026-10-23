@@ -355,16 +355,34 @@ export class AnalyticsResources {
         entry.path === "/api/house"
           ? Boolean((record.houseStale ?? record.stale) || overlay)
           : undefined;
+      const onchain = entry.path === "/api/paper/economics" &&
+        record.onchain && typeof record.onchain === "object" && !Array.isArray(record.onchain)
+        ? record.onchain as Record<string, unknown> : undefined;
+      // API/protocol health cannot age a separate chain observation. Age both
+      // original chain clocks even when top-level stale was already true, so
+      // clock expiry produces a new immutable snapshot for mounted consumers.
+      const onchainStale = onchain ? Boolean(
+        error || onchain.stale !== false || !Number.isSafeInteger(now) ||
+        [onchain.sourceAt, onchain.receivedAt].some(time =>
+          typeof time !== "number" || !Number.isSafeInteger(time) ||
+          time <= 0 || time > 8.64e15 || time > now + 30000 || now - time > 90000),
+      ) : undefined;
       const prior = entry.snapshot.data as Record<string, unknown> | null;
+      const priorOnchain = prior?.onchain as Record<string, unknown> | undefined;
       data =
         entry.emittedRaw === entry.raw &&
         prior?.stale === stale &&
-        (houseStale === undefined || prior?.houseStale === houseStale)
+        (houseStale === undefined || prior?.houseStale === houseStale) &&
+        (onchainStale === undefined || priorOnchain?.stale === onchainStale)
           ? prior
           : {
               ...record,
               stale,
               ...(houseStale === undefined ? {} : { houseStale }),
+              ...(onchain === undefined ? {} : {
+                onchain: priorOnchain && entry.emittedRaw === entry.raw && priorOnchain.stale === onchainStale
+                  ? priorOnchain : { ...onchain, stale: onchainStale },
+              }),
             };
     } else if (data && typeof data === "object" && assetPath(entry.path)) {
       const record = data as Record<string, unknown>;

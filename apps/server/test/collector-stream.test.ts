@@ -89,7 +89,7 @@ beforeEach(async () => {
     async <T>(path: string) => source(path) as T,
   );
   bus = new ChangeBus();
-  collector = new Collector(store, upstream, bus);
+  collector = new Collector(store, upstream, bus, null);
   await collector.start();
   client = clients[0];
   await flush();

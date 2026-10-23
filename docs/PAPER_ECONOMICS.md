@@ -1,21 +1,23 @@
 # PAPER economics
 
-Verified October 10, 2026 against the captured official frontend, public protocol summary and current official documentation. This release explains supply, staking participation and USDC allocation. It does not establish a complete mint, distribution or claim ledger.
+Originally verified October 10, 2026 against the captured official frontend and protocol summary. Updated October 22 with independent atomic HyperEVM reads for current supply, stake and prospective reward-accumulator measurements. This does not establish a complete mint, distribution or claim ledger.
 
 ## Current totals
 
-The public `/api/paper/economics` response preserves the following fields from one coherent [protocol summary](https://exchange.papertrade.xyz/query/protocol/summary):
+The public `/api/paper/economics` response uses these sources after the first successful chain collection. Until that observation exists, or when chain collection is disabled, the earlier coherent [protocol summary](https://exchange.papertrade.xyz/query/protocol/summary) supplies the fallback:
 
 | Response field | Source | Meaning |
 | --- | --- | --- |
-| `supplyRaw` | `paper.supply` | Current PAPER supply |
-| `stakedRaw` | `paper.staked` | Currently staked PAPER |
+| `supplyRaw` | Atomic RPC `PAPER.totalSupply()` | Current PAPER supply |
+| `stakedRaw` | Atomic RPC `PaperStaking.totalStaked()`, checked against custody | Currently staked PAPER |
 | `allocatedRewardsRaw` | `fees.lifetime` | Lifetime USDC allocated to stakers |
 | `pendingRewardsRaw` | `paper.pendingRewards` | Source-reported protocol pending rewards |
 
-These are exact representations of the supplied decimal integer strings, with 18 decimals. Preserving their precision does not independently reconcile them to chain state. Missing values remain null, not zero. The official [selectors](https://exchange.papertrade.xyz/assets/selectors-BDXWQuej.js) and [PAPER summary component](https://exchange.papertrade.xyz/assets/PaperSummaryCard-DhkJzzzL.js) establish the headline mappings; local source captures preserve them if deployment-specific asset URLs expire.
+All amounts are decimal integer strings with 18 decimals. The optional `onchain` envelope identifies independent balances and accumulator measurements with chain/block identity, the execution clock, canonical header time and receipt time. Allocation/pending totals and plotted protocol histories retain their existing API clocks; the RPC observation must never freshen them. Missing values remain null, not zero. The original [selectors](https://exchange.papertrade.xyz/assets/selectors-BDXWQuej.js) and [PAPER summary component](https://exchange.papertrade.xyz/assets/PaperSummaryCard-DhkJzzzL.js) establish API fallback mappings.
 
-`stakeRatioBps` is staked PAPER divided by supply from that same summary, truncated to integer basis points. Zero supply or invalid inputs make the ratio unavailable. It is participation, not yield.
+`stakeRatioBps` divides staked PAPER by supply from the same atomic RPC call, or the same summary before chain activation, truncated to integer basis points. Zero supply or invalid inputs make the ratio unavailable. It is participation, not yield.
+
+The chain collector uses a separate `hyperevm:` observation namespace for `stakingYield` and newly measured daily rewards. It never uses an API accumulator as an RPC starting endpoint. The first chain hour therefore shows collecting; existing older daily API rows remain tagged `papertrade-api`, while chain rows are tagged `hyperevm-rpc`. The first chain day is partial, and a prior API day whose approximate closing endpoint overlaps chain capture is unavailable rather than silently trimmed. Historical figures are not retroactively reclassified as chain-verified. The mechanics below remain the same; references to summary-only collection describe the retained API fallback. [Collector configuration and safeguards](OPERATIONS.md#independent-chain-reads-and-relayer-tools).
 
 `pendingRewardsRaw` must not be relabeled as wallet claimable rewards or as a verified amount awaiting a particular distribution stage. It is distinct from `fees.pending`, the global accumulator and a wallet's `pendingBase`.
 

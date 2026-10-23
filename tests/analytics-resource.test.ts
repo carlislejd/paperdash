@@ -219,6 +219,62 @@ describe("shared snapshot refresh", () => {
     expect(resources.diagnostics().resources[0].sourceAgeMs).toBe(71000);
   });
 
+  it("ages chain observations independently when protocol data was already stale, without mutating saved clocks", async () => {
+    const onchain = Object.freeze({ source: "hyperevm-rpc", sourceAt: AT, receivedAt: AT, stale: false });
+    const original = Object.freeze({ ...response(), stale: true, onchain });
+    read.mockResolvedValue(original);
+    resources.setDelivery(publication("a", true));
+    resources.subscribe(paths[2], () => {});
+    await flush();
+    const first = resources.get(paths[2]).data;
+    expect(first).toMatchObject({ stale: true, onchain: { stale: false } });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(resources.get(paths[2]).data).toBe(first);
+    // Healthy delivery heartbeats are not new chain observations. Repeated
+    // reads return the same retained body while both source clocks keep aging.
+    for (let i = 0; i < 9; i++) {
+      resources.setDelivery(publication("a", true));
+      await vi.advanceTimersByTimeAsync(10000);
+    }
+    const expired = resources.get(paths[2]).data;
+    expect(expired).not.toBe(first);
+    expect(expired).toMatchObject({ stale: true, onchain: { stale: true, sourceAt: AT, receivedAt: AT } });
+    expect(original.onchain).toEqual({ source: "hyperevm-rpc", sourceAt: AT, receivedAt: AT, stale: false });
+    expect(first).toMatchObject({ onchain: { stale: false } });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(resources.get(paths[2]).data).toBe(expired);
+  });
+
+  it.each([
+    { sourceAt: AT - 90001 }, { receivedAt: AT - 90001 },
+    { sourceAt: AT + 30001 }, { receivedAt: AT + 30001 },
+    { sourceAt: NaN }, { receivedAt: Infinity }, { sourceAt: AT + 0.5 },
+    { receivedAt: 0 }, { sourceAt: null }, { receivedAt: "1791763200000" },
+    { stale: true }, { stale: undefined },
+  ])("marks invalid or expired chain clocks stale independently: %j", async override => {
+    read.mockResolvedValue({ ...response(), onchain: {
+      source: "hyperevm-rpc", sourceAt: AT, receivedAt: AT, stale: false, ...override,
+    } });
+    resources.subscribe(paths[2], () => {});
+    await flush();
+    expect(resources.get(paths[2]).data).toMatchObject({ stale: false, onchain: { stale: true } });
+  });
+
+  it("a fresh chain observation recovers nested health without renewing protocol freshness", async () => {
+    read.mockResolvedValue({ ...response(), stale: true, onchain: {
+      source: "hyperevm-rpc", sourceAt: AT - 90001, receivedAt: AT - 90001, stale: false,
+    } });
+    resources.subscribe(paths[2], () => {});
+    await flush();
+    expect(resources.get(paths[2]).data).toMatchObject({ stale: true, onchain: { stale: true } });
+    read.mockResolvedValue({ ...response(), stale: true, onchain: {
+      source: "hyperevm-rpc", sourceAt: AT, receivedAt: AT, stale: false,
+    } });
+    resources.refresh(paths[2]);
+    await flush();
+    expect(resources.get(paths[2]).data).toMatchObject({ stale: true, onchain: { stale: false } });
+  });
+
   it("suspends hidden requests and aborts unused navigation requests without overwriting another path", async () => {
     let signal!: AbortSignal, resolve!: (value: unknown) => void;
     read.mockImplementationOnce(

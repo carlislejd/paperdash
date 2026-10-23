@@ -3,9 +3,15 @@ import type { PaperEconomicsResponse } from "../../../../packages/shared/src/typ
 import { formatRawUsd } from "./format";
 
 export function stakerYieldDelayed(
-  data: Pick<PaperEconomicsResponse, "sourceAt" | "receivedAt" | "stale" | "error"> | null | undefined,
+  data: Pick<PaperEconomicsResponse, "sourceAt" | "receivedAt" | "stale" | "error" | "onchain"> | null | undefined,
   now = Date.now(),
 ): boolean {
+  if (data?.onchain) {
+    const observation = data.onchain;
+    return observation.stale || !Number.isSafeInteger(now) ||
+      [observation.sourceAt, observation.receivedAt].some(time =>
+        !Number.isSafeInteger(time) || time <= 0 || time > now + 30000 || now - time > 90000);
+  }
   if (!data || data.stale || data.error || !Number.isSafeInteger(now))
     return true;
   return [data.sourceAt, data.receivedAt].some(

@@ -595,6 +595,8 @@ export interface ProtocolChartsResponse {
 }
 
 export interface StakingRewardDay {
+  /** Legacy rows without this field were observed through the Papertrade API. */
+  source?: "papertrade-api" | "hyperevm-rpc";
   /** UTC date assigned to this measured interval. Boundary samples may be approximate. */
   dayMs: number;
   fromMs: number | null;
@@ -644,6 +646,22 @@ export interface PaperEconomicsResponse {
   stakingYield?: AnnualizedStakerYield;
   /** Collector-owned daily observed rewards; unavailable before capture began. */
   stakingRewardHistory?: StakingRewardHistory;
+  /** Independent current supply/stake and reward-accumulator observation.
+   * Allocation totals and existing protocol charts retain their API clocks. */
+  onchain?: {
+    source: "hyperevm-rpc";
+    chainId: 999;
+    blockNumber: string;
+    /** Subsequently fetched canonical header; latest state is not hash-pinned. */
+    blockHash: string;
+    consistency: "atomic-multicall";
+    /** Canonical header time; sourceAt is the actual eth_call execution clock. */
+    blockTimestampMs: number;
+    sourceAt: number;
+    receivedAt: number;
+    stale: boolean;
+    accumulatorRaw: Raw;
+  };
   /** Collector-owned reference quote. Its clocks age independently of rewards. */
   paperPrice?: PaperPriceQuote | null;
   series: {
