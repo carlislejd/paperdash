@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 
 export const HYPEREVM_RPC_URL = "https://rpc.hyperliquid.xyz/evm";
 export const HYPEREVM_PAPER_INTERVAL_MS = 30000;
@@ -49,6 +50,9 @@ export interface HyperEvmPaperSnapshot {
 }
 export class HyperEvmReadError extends Error {
   constructor(message: string, public retryAt = 0) { super(message); }
+}
+class HeaderNotYetAvailable extends HyperEvmReadError {
+  constructor() { super("HyperEVM block header is not yet available."); }
 }
 interface ReadOptions { rpcUrl?: string; fetcher?: typeof fetch; clock?: () => number }
 function fail(message: string): never { throw new HyperEvmReadError(message); }
@@ -153,7 +157,7 @@ function retryDeadline(value: string | null, now: number): number {
   return Number.isFinite(time) ? Math.max(now, Math.min(time, now + 86400000)) : 0;
 }
 
-/** Ten bounded RPC requests, zero retries, no indexer/API dependency. All
+/** Ten normal RPC requests, at most two header-only retries, no indexer/API dependency. All
  * financial reads and their chain clock come from ONE latest eth_call. The
  * block header supplies the matching hash and canonical time; historical state is never
  * requested. Call from the shared collector at most once per 30 seconds.
@@ -183,8 +187,23 @@ export async function readHyperEvmPaperSnapshot(options: ReadOptions = {}): Prom
         throw new HyperEvmReadError(`HyperEVM RPC HTTP ${response.status}.`, retryAt);
       }
       const payload = await readResponse(response) as Record<string, unknown> | null;
-      if (!payload || payload.jsonrpc !== "2.0" || payload.id !== requestId ||
-          "error" in payload || !("result" in payload)) fail("HyperEVM RPC response is invalid.");
+      if (!payload || payload.jsonrpc !== "2.0" || payload.id !== requestId)
+        fail("HyperEVM RPC response is invalid.");
+      if ("error" in payload) {
+        const error = payload.error as { code?: unknown; message?: unknown } | null;
+        const requested = params[0];
+        // The default RPC can expose the call's execution-context number a
+        // moment before that exact canonical header is queryable. Recognize
+        // only its observed error for OUR requested height; never retry an
+        // arbitrary server message, another height, or a financial read.
+        if (!("result" in payload) && method === "eth_getBlockByNumber" &&
+            typeof requested === "string" && quantity.test(requested) &&
+            error?.code === -32603 &&
+            error.message === `invalid block height: ${BigInt(requested).toString()}`)
+          throw new HeaderNotYetAvailable();
+        fail("HyperEVM RPC response is invalid.");
+      }
+      if (!("result" in payload)) fail("HyperEVM RPC response is invalid.");
       return payload.result;
     } catch (error) {
       if (error instanceof HyperEvmReadError) throw error;
@@ -223,10 +242,21 @@ export async function readHyperEvmPaperSnapshot(options: ReadOptions = {}): Prom
     fail("HyperEVM PAPER units or chain changed.");
   const timestampMs = Number(BigInt("0x" + timestamp) * 1000n);
   if (!validClock(timestampMs)) fail("HyperEVM block clock is invalid.");
+  const readHeader = async () => {
+    const params = ["0x" + BigInt(aggregate.number).toString(16), false];
+    for (let attempt = 0; ; attempt++) {
+      try { return await rpc("eth_getBlockByNumber", params); }
+      catch (error) {
+        if (!(error instanceof HeaderNotYetAvailable) || attempt === 2) throw error;
+        try { await delay(1000, undefined, { signal: overall }); }
+        catch { fail("HyperEVM RPC read failed."); }
+      }
+    }
+  };
   const after = await Promise.allSettled([
     readImplementation(d.paper, d.paperImplementation),
     readImplementation(d.staking, d.stakingImplementation),
-    rpc("eth_getBlockByNumber", ["0x" + BigInt(aggregate.number).toString(16), false]),
+    readHeader(),
   ]);
   for (const result of after) if (result.status === "rejected") throw result.reason;
   const header = after[2].status === "fulfilled" ? after[2].value as Record<string, unknown> | null : null;

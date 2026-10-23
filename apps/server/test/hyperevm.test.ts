@@ -23,7 +23,7 @@ vi.mock("node:crypto", async (original) => {
     }; return instance;
   } };
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 const now = 1800000000000;
 const blockHash = "0x" + "a".repeat(64), parentHash = "0x" + "b".repeat(64);
 const word = (n: number | bigint) => BigInt(n).toString(16).padStart(64, "0");
@@ -121,6 +121,85 @@ describe("independent HyperEVM PAPER state", () => {
       return r.method === "eth_getStorageAt" && calls ? "0x" + word(99) : value;
     });
     await expect(read(fetcher)).rejects.toThrow("implementation changed");
+  });
+
+  it("waits for only the exact aggregate header without replaying financial reads", async () => {
+    let headers = 0;
+    const fetcher = transport((r, value) => {
+      if (r.method === "eth_getBlockByNumber" && ++headers <= 2)
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id: r.id,
+          error: { code: -32603, message: "invalid block height: 100" } }));
+      return value;
+    });
+    const pending = read(fetcher);
+    await vi.waitFor(() => expect(headers).toBe(1));
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(headers).toBe(1);
+    expect((await pending).block.hash).toBe(blockHash);
+    expect(headers).toBe(3);
+    expect(fetcher).toHaveBeenCalledTimes(12);
+    const calls = fetcher.mock.calls.map(([, init]) => JSON.parse(init!.body as string) as RpcRequest);
+    expect(calls.filter(r => r.method === "eth_call")).toHaveLength(1);
+    expect(calls.filter(r => r.method === "eth_getBlockByNumber").map(r => r.params))
+      .toEqual(Array(3).fill(["0x64", false]));
+  });
+
+  it("stops after two pending-header retries and exposes only the fixed status", async () => {
+    let headers = 0;
+    const fetcher = transport((r, value) => {
+      if (r.method !== "eth_getBlockByNumber") return value;
+      headers++;
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: r.id,
+        error: { code: -32603, message: "invalid block height: 100" } }));
+    });
+    const pending = expect(read(fetcher)).rejects.toThrow(/^HyperEVM block header is not yet available\.$/);
+    await pending;
+    expect(headers).toBe(3);
+    expect(fetcher).toHaveBeenCalledTimes(12);
+  });
+
+  it.each([
+    { code: -32603, message: "invalid block height: 101" },
+    { code: -32602, message: "invalid block height: 100" },
+    { code: -32603, message: "invalid block height: 100 private-provider" },
+  ])("never retries unrelated RPC errors or a different header height", async (error) => {
+    const fetcher = transport((r, value) => r.method === "eth_getBlockByNumber" ?
+      new Response(JSON.stringify({ jsonrpc: "2.0", id: r.id, error })) : value);
+    await expect(read(fetcher)).rejects.toThrow(/^HyperEVM RPC response is invalid\.$/);
+    expect(fetcher).toHaveBeenCalledTimes(10);
+  });
+
+  it("does not retry the same unavailable-height error from a financial call", async () => {
+    const fetcher = transport((r, value) => r.method === "eth_call" ?
+      new Response(JSON.stringify({ jsonrpc: "2.0", id: r.id,
+        error: { code: -32603, message: "invalid block height: 100" } })) : value);
+    await expect(read(fetcher)).rejects.toThrow(/^HyperEVM RPC response is invalid\.$/);
+    expect(fetcher).toHaveBeenCalledTimes(7);
+  });
+
+  it.each([null, {}])("rejects null or malformed headers without retrying", async (header) => {
+    const fetcher = transport((r, value) => r.method === "eth_getBlockByNumber" ? header : value);
+    await expect(read(fetcher)).rejects.toThrow("block header does not match");
+    expect(fetcher).toHaveBeenCalledTimes(10);
+  });
+
+  it("aborts the bounded header wait under the original overall deadline", async () => {
+    const overall = new AbortController();
+    const original = AbortSignal.timeout.bind(AbortSignal);
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(ms => ms === 20000 ? overall.signal : original(ms));
+    let headers = 0;
+    const fetcher = transport((r, value) => {
+      if (r.method !== "eth_getBlockByNumber") return value;
+      headers++;
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: r.id,
+        error: { code: -32603, message: "invalid block height: 100" } }));
+    });
+    const pending = expect(read(fetcher)).rejects.toThrow(/^HyperEVM RPC read failed\.$/);
+    await vi.waitFor(() => expect(headers).toBe(1));
+    overall.abort();
+    await pending;
+    expect(headers).toBe(1);
+    expect(fetcher).toHaveBeenCalledTimes(10);
   });
 
   it.each([
