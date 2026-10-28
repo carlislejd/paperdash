@@ -1,0 +1,98 @@
+{
+  "dateLocal": "2026-10-27",
+  "timezone": "America/Los_Angeles",
+  "commit": "460940f14b1f01dece499fbf25abb7f3e69a1af7",
+  "scope": "Frontend overview layout only",
+  "ci": {
+    "url": "https://github.com/carlislejd/paperdash/actions/runs/40622646786",
+    "status": "success",
+    "browserTestsPassed": 306
+  },
+  "deployment": {
+    "service": "paperdash-web",
+    "serviceId": "srv-db4sp78473hc7390tou0",
+    "deploymentId": "dep-dbgm6l67bikc73b16790",
+    "status": "live",
+    "url": "https://papertrade.club/"
+  },
+  "verification": {
+    "recordedAt": "2026-10-28T02:53:27.918Z",
+    "desktop": {
+      "rewardRows": 7,
+      "scrollWidth": 1626,
+      "sections": [
+        {
+          "height": 830.6484375,
+          "parent": "house-panel",
+          "s": ".house-funds",
+          "width": 799.65625,
+          "x": 117,
+          "y": 267.5
+        },
+        {
+          "height": 830.6484375,
+          "parent": "house-panel",
+          "s": ".paper-panel",
+          "width": 592.34375,
+          "x": 916.65625,
+          "y": 267.5
+        },
+        {
+          "height": 507.5,
+          "parent": "house-panel",
+          "s": ".staking-reward-history",
+          "width": 1392,
+          "x": 117,
+          "y": 1098.1484375
+        }
+      ],
+      "width": 1626
+    },
+    "mobile": {
+      "rewardRows": 7,
+      "scrollWidth": 390,
+      "sections": [
+        {
+          "height": 823.3984375,
+          "s": ".house-funds",
+          "width": 350,
+          "x": 20,
+          "y": -655.265625
+        },
+        {
+          "height": 792.796875,
+          "s": ".paper-panel",
+          "width": 350,
+          "x": 20,
+          "y": 168.1328125
+        },
+        {
+          "height": 748.71875,
+          "s": ".staking-reward-history",
+          "width": 350,
+          "x": 20,
+          "y": 960.9296875
+        }
+      ],
+      "width": 390
+    },
+    "expandedRewardRows": 9,
+    "collapsedRewardRows": 7
+  },
+  "console": {
+    "applicationErrors": 0,
+    "extensionErrors": "Two errors from a Chrome wallet extension attempting to redefine window.ethereum; unrelated to application code."
+  },
+  "screenshots": [
+    "docs/previews/production-overview-balance-2026-10-27.png",
+    "docs/previews/production-overview-balance-mobile-2026-10-27.png"
+  ],
+  "unchanged": [
+    "API",
+    "collector",
+    "database schema",
+    "environment settings",
+    "resource plans",
+    "data collection and rewards calculations"
+  ]
+}
