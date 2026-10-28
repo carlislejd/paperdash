@@ -39,8 +39,12 @@ test("PAPER uses its own coherent totals and clock, shares daily changes and pre
   await expect(paper).toContainText("Pending rewards source-reported");
   await expect(paper.locator(".paper-pending")).toContainText("$324");
   await expect(paper).not.toContainText("LAST AVAILABLE");
-  await expect(paper).toContainText("Rewards & dilution");
-  await expect(paper).toContainText("Earlier daily history is unavailable");
+  const stakingHistory = page.getByRole("region", {
+    name: "Daily staking rewards",
+    exact: true,
+  });
+  await expect(stakingHistory).toContainText("Rewards & dilution");
+  await expect(stakingHistory).toContainText("Earlier daily history is unavailable");
   await expect(paper).not.toContainText("Annualized reward allocations");
   await expect(paper).not.toContainText("Average daily reward allocations");
   await expect(paper).not.toContainText("protocol age");
@@ -215,7 +219,7 @@ test("legacy allocation rates cannot substitute for missing actual staking rewar
   });
   await page.goto("/");
   const paper = page.getByRole("region", { name: "PAPER economics", exact: true });
-  const history = paper.getByRole("region", { name: "Daily staking rewards", exact: true });
+  const history = page.getByRole("region", { name: "Daily staking rewards", exact: true });
   for (const next of ["legacy", "missing-baseline", "corrected"] as const) {
     if (mode !== next) {
       mode = next;
@@ -241,7 +245,7 @@ test("the trading launch allocation window preserves October 8 deposit volume an
   );
   await page.goto("/");
   const paper = page.getByRole("region", { name: "PAPER economics", exact: true });
-  await expect(paper).toContainText("Rewards & dilution");
+  await expect(page.getByRole("region", { name: "Daily staking rewards", exact: true })).toContainText("Rewards & dilution");
   for (const [name, amount] of [
     ["Deposit volume / day chart card", "2,000 USDC"],
     ["First-time depositors chart card", "2 wallets"],

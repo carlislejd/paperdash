@@ -56,7 +56,7 @@ test("chain balances and rewards age independently while protocol allocations an
   await page.goto("/");
   const paper = page.getByRole("region", { name: "PAPER economics", exact: true });
   const headline = page.locator(".metric-staker-yield");
-  const rewards = paper.getByRole("region", { name: "Daily staking rewards", exact: true });
+  const rewards = page.getByRole("region", { name: "Daily staking rewards", exact: true });
   const allocation = paper.getByRole("region", { name: "Staker revenue", exact: true });
   const supply = paper.getByRole("region", { name: "PAPER supply chart card", exact: true });
   const staked = paper.getByRole("region", { name: "PAPER staked chart card", exact: true });

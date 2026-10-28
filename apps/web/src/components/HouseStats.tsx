@@ -3,7 +3,7 @@ import type { HouseResponse } from "../../../../packages/shared/src/types";
 import { useAnalytics } from "../lib/use-analytics";
 import { formatRawUsd, rawToNumber } from "../lib/format";
 import { ChartCard } from "./ChartCard";
-import { PaperEconomics, type PaperEconomicsResource } from "./PaperEconomics";
+import { PaperEconomics, PaperRewardHistory, type PaperEconomicsResource } from "./PaperEconomics";
 import {
   formatChartTime,
   validChartTime,
@@ -234,6 +234,7 @@ export function HouseStats({
         )}
       </section>
       <PaperEconomics chartRange={chartRange} resource={paper} />
+      <PaperRewardHistory resource={paper} />
     </section>
   );
 }

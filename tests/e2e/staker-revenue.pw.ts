@@ -39,7 +39,7 @@ test("staker revenue highlights protocol-wide total and annual run rate from the
   await expect(panel).toContainText("Updated · Just now");
   // The investor-sized reward metric remains distinct from protocol revenue.
   await expect(page.locator(".metric-staker-yield")).toContainText("USDC / 1K staked PAPER");
-  const daily = paper.getByRole("region", { name: "Daily staking rewards", exact: true });
+  const daily = page.getByRole("region", { name: "Daily staking rewards", exact: true });
   await expect(daily).toContainText("Earlier daily history is unavailable");
   await expect(daily.getByRole("table")).toHaveCount(0);
   expect((await panel.boundingBox())!.y).toBeLessThan((await daily.boundingBox())!.y);

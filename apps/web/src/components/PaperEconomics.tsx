@@ -32,6 +32,21 @@ export interface PaperEconomicsResource {
   refresh: () => void;
 }
 
+export function PaperRewardHistory({ resource }: { resource: PaperEconomicsResource }) {
+  const { data, error, loading } = resource;
+  const sourceAt = validChartTime(data?.sourceAt) ? data.sourceAt : null;
+  const stale = Boolean(error || data?.error || data?.stale);
+  return (
+    <StakingRewardHistory
+      history={data?.stakingRewardHistory}
+      sourceAt={data?.onchain?.sourceAt ?? sourceAt}
+      stale={data?.onchain ? Boolean(error || stakerYieldDelayed(data)) : stale}
+      maxAgeMs={data?.onchain ? 90000 : 60000}
+      loading={loading}
+    />
+  );
+}
+
 export function PaperEconomics({
   chartRange,
   resource,
@@ -54,7 +69,6 @@ export function PaperEconomics({
   };
   const stale = Boolean(error || data?.error || data?.stale);
   const common = { range, sourceAt, stale, loading };
-  const chainAt = data?.onchain?.sourceAt ?? sourceAt;
   const chainStale = Boolean(error || stakerYieldDelayed(data));
   const stakeRatio =
     data?.stakeRatioBps != null &&
@@ -81,13 +95,6 @@ export function PaperEconomics({
           </span>
         </div>
         <StakerRevenue data={data} stale={stale} loading={loading} />
-        <StakingRewardHistory
-          history={data?.stakingRewardHistory}
-          sourceAt={chainAt}
-          stale={data?.onchain ? chainStale : stale}
-          maxAgeMs={data?.onchain ? 90000 : 60000}
-          loading={loading}
-        />
         <div className="paper-details">
           <ChartCard
             {...common}
